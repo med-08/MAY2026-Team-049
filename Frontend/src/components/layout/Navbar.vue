@@ -49,7 +49,7 @@ const searchEnabled = computed(() => searchablePages.includes(route.name))
           <SunIcon v-if="isDark" class="w-5 h-5" />
           <MoonIcon v-else class="w-5 h-5" />
         </button>
-        <router-link to="/profile" class="flex items-center gap-2.5">
+        <router-link to="/admin/profile" class="flex items-center gap-2.5">
           <div class="w-9 h-9 rounded-full bg-gradient-to-br from-brand-green-500 via-brand-blue-500 to-brand-purple-500 flex items-center justify-center text-white text-sm font-semibold shadow-soft">
             A
           </div>

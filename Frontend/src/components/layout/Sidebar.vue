@@ -33,7 +33,7 @@ const links = [
     :class="mobileOpen ? 'translate-x-0' : '-translate-x-full'"
   >
     <div class="flex items-center justify-between px-5 h-16 border-b border-slate-200 dark:border-white/10">
-      <router-link to="/" class="flex items-center gap-2 text-slate-900 dark:text-white font-display font-bold text-lg">
+      <router-link to="/admin" class="flex items-center gap-2 text-slate-900 dark:text-white font-display font-bold text-lg">
         <span>✷</span>
         <span>LearnAtHome</span>
       </router-link>
@@ -44,7 +44,7 @@ const links = [
 
     <nav class="flex-1 overflow-y-auto px-3 py-5 space-y-1">
       <router-link
-        to="/"
+        to="/admin"
         class="nav-link"
         :class="isActive('dashboard') ? 'nav-link-active' : ''"
       >
@@ -67,7 +67,7 @@ const links = [
         <router-link
           v-for="l in links"
           :key="l.name"
-          :to="`/${l.name}`"
+          :to="`/admin/${l.name}`"
           class="nav-link text-sm"
           :class="isActive(l.name) ? 'nav-link-active' : ''"
         >
@@ -76,17 +76,17 @@ const links = [
         </router-link>
       </div>
 
-      <router-link to="/pending-approvals" class="nav-link" :class="isActive('pending-approvals') ? 'nav-link-active' : ''">
+      <router-link to="/admin/pending-approvals" class="nav-link" :class="isActive('pending-approvals') ? 'nav-link-active' : ''">
         <ClockIcon class="w-5 h-5" />
         <span>Pending Approvals</span>
       </router-link>
 
-      <router-link to="/analytics" class="nav-link" :class="isActive('analytics') ? 'nav-link-active' : ''">
+      <router-link to="/admin/analytics" class="nav-link" :class="isActive('analytics') ? 'nav-link-active' : ''">
         <ChartBarIcon class="w-5 h-5" />
         <span>Analytics</span>
       </router-link>
 
-      <router-link to="/profile" class="nav-link" :class="isActive('profile') ? 'nav-link-active' : ''">
+      <router-link to="/admin/profile" class="nav-link" :class="isActive('profile') ? 'nav-link-active' : ''">
         <UserCircleIcon class="w-5 h-5" />
         <span>Admin Profile</span>
       </router-link>
