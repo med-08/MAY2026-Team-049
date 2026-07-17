@@ -1,10 +1,15 @@
 <script setup>
 
 import { ref } from "vue"
+import { useRouter } from "vue-router"
 import AuthNavbar from "../components/layout/AuthNavbar.vue"
 
 
+const router = useRouter()
+
 const selectedRole = ref("Student")
+
+const authError = ref("")
 
 
 const roles = [
@@ -46,10 +51,20 @@ password:""
 
 const login = () => {
 
-console.log({
-role:selectedRole.value,
-...form.value
-})
+authError.value = ""
+
+if(selectedRole.value === "Admin"){
+  router.push("/admin")
+}
+else if(selectedRole.value === "Student"){
+  router.push("/student")
+}
+else if(selectedRole.value === "Parent"){
+  router.push("/parent")
+}
+else{
+  authError.value = `${selectedRole.value} portal is coming soon.`
+}
 
 }
 
@@ -315,6 +330,14 @@ role:selectedRole.value,
           Login as {{selectedRole}}
 
         </button>
+
+
+        <p
+          v-if="authError"
+          class="text-center text-sm text-amber-600 font-medium"
+        >
+          {{ authError }}
+        </p>
 
 
 
