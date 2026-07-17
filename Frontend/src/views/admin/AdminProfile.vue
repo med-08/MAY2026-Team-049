@@ -5,8 +5,8 @@ import {
   KeyIcon,
 } from "@heroicons/vue/24/outline"
 
-import { adminProfile } from "../data/mockData"
-import { useToast } from "../composables/useToast"
+import { adminProfile } from "../../data/mockData"
+import { useToast } from "../../composables/useToast"
 
 const { showToast } = useToast()
 

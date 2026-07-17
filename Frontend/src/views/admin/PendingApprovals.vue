@@ -1,12 +1,12 @@
 <script setup>
 import { ref } from 'vue'
 import { CheckIcon, XMarkIcon } from '@heroicons/vue/24/outline'
-import { pendingApprovals } from '../data/mockData'
-import { useTableControls } from '../composables/useTableControls'
-import { useToast } from '../composables/useToast'
-import Pagination from '../components/ui/Pagination.vue'
-import EmptyState from '../components/ui/EmptyState.vue'
-import LoadingRows from '../components/ui/LoadingRows.vue'
+import { pendingApprovals } from '../../data/mockData'
+import { useTableControls } from '../../composables/useTableControls'
+import { useToast } from '../../composables/useToast'
+import Pagination from '../../components/ui/Pagination.vue'
+import EmptyState from '../../components/ui/EmptyState.vue'
+import LoadingRows from '../../components/ui/LoadingRows.vue'
 
 const { showToast } = useToast()
 

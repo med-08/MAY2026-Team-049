@@ -1,10 +1,10 @@
 <script setup>
 import { ref } from 'vue'
-import { tutors } from '../data/mockData'
-import { useTableControls } from '../composables/useTableControls'
-import Pagination from '../components/ui/Pagination.vue'
-import EmptyState from '../components/ui/EmptyState.vue'
-import LoadingRows from '../components/ui/LoadingRows.vue'
+import { tutors } from '../../data/mockData'
+import { useTableControls } from '../../composables/useTableControls'
+import Pagination from '../../components/ui/Pagination.vue'
+import EmptyState from '../../components/ui/EmptyState.vue'
+import LoadingRows from '../../components/ui/LoadingRows.vue'
 
 const { page, perPage, total, pageItems } = useTableControls(tutors, {
   searchFields: ['name', 'email'],

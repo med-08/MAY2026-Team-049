@@ -12,13 +12,32 @@ import AppLayout from '../components/layout/AppLayout.vue'
 
 
 // Admin Pages
-import Dashboard from '../views/Dashboard.vue'
-import Students from '../views/Students.vue'
-import Tutors from '../views/Tutors.vue'
-import Parents from '../views/Parents.vue'
-import PendingApprovals from '../views/PendingApprovals.vue'
-import Analytics from '../views/Analytics.vue'
-import AdminProfile from '../views/AdminProfile.vue'
+import Dashboard from '../views/admin/Dashboard.vue'
+import Students from '../views/admin/Students.vue'
+import Tutors from '../views/admin/Tutors.vue'
+import Parents from '../views/admin/Parents.vue'
+import PendingApprovals from '../views/admin/PendingApprovals.vue'
+import Analytics from '../views/admin/Analytics.vue'
+import AdminProfile from '../views/admin/AdminProfile.vue'
+
+
+// Student Layout
+import StudentLayout from '../components/layout/StudentLayout.vue'
+
+
+// Student Pages
+import StudentDashboard from '../views/student/Dashboard.vue'
+import StudentMySessions from '../views/student/MySessions.vue'
+import StudentSessionBooking from '../views/student/SessionBooking.vue'
+import StudentTimetable from '../views/student/Timetable.vue'
+import StudentWeeklyQuiz from '../views/student/WeeklyQuiz.vue'
+import StudentQuizAttempt from '../views/student/QuizAttempt.vue'
+import StudentAssignments from '../views/student/Assignments.vue'
+import StudentHomework from '../views/student/Homework.vue'
+import StudentStudyResources from '../views/student/StudyResources.vue'
+import StudentStudyTips from '../views/student/StudyTips.vue'
+import StudentFAQ from '../views/student/FAQ.vue'
+import StudentProfile from '../views/student/Profile.vue'
 
 
 
@@ -144,6 +163,150 @@ const routes = [
         component:AdminProfile,
         meta:{
           title:'Admin Profile'
+        }
+      }
+
+
+    ]
+
+  },
+
+
+  // =====================
+  // Student Panel
+  // =====================
+
+
+  {
+    path:'/student',
+
+    component:StudentLayout,
+
+    children:[
+
+
+      {
+        path:'',
+        redirect:'/student/dashboard'
+      },
+
+
+      {
+        path:'dashboard',
+        name:'student-dashboard',
+        component:StudentDashboard,
+        meta:{
+          title:'Dashboard'
+        }
+      },
+
+
+      {
+        path:'sessions',
+        name:'student-my-sessions',
+        component:StudentMySessions,
+        meta:{
+          title:'My Sessions'
+        }
+      },
+
+
+      {
+        path:'booking',
+        name:'student-session-booking',
+        component:StudentSessionBooking,
+        meta:{
+          title:'Session Booking'
+        }
+      },
+
+
+      {
+        path:'timetable',
+        name:'student-timetable',
+        component:StudentTimetable,
+        meta:{
+          title:'Timetable'
+        }
+      },
+
+
+      {
+        path:'quiz',
+        name:'student-weekly-quiz',
+        component:StudentWeeklyQuiz,
+        meta:{
+          title:'Weekly Quiz'
+        }
+      },
+
+
+      {
+        path:'quiz/:id',
+        name:'student-quiz-attempt',
+        component:StudentQuizAttempt,
+        meta:{
+          title:'Take Quiz'
+        }
+      },
+
+
+      {
+        path:'assignments',
+        name:'student-assignments',
+        component:StudentAssignments,
+        meta:{
+          title:'Interactive Assignments'
+        }
+      },
+
+
+      {
+        path:'homework',
+        name:'student-homework',
+        component:StudentHomework,
+        meta:{
+          title:'Homework'
+        }
+      },
+
+
+      {
+        path:'resources',
+        name:'student-study-resources',
+        component:StudentStudyResources,
+        meta:{
+          title:'Study Resources'
+        }
+      },
+
+
+      {
+        path:'study-tips',
+        name:'student-study-tips',
+        component:StudentStudyTips,
+        meta:{
+          title:'Study Tips'
+        }
+      },
+
+
+      {
+        path:'faq',
+        name:'student-faq',
+        component:StudentFAQ,
+        meta:{
+          title:'FAQ'
+        }
+      },
+
+
+      {
+        path:'profile',
+        name:'student-profile',
+        component:StudentProfile,
+        meta:{
+          title:'Student Profile'
         }
       }
 

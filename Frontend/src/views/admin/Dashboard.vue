@@ -8,14 +8,14 @@ import {
   BookOpenIcon
 } from '@heroicons/vue/24/outline'
 
-import StatCard from '../components/ui/StatCard.vue'
+import StatCard from '../../components/ui/StatCard.vue'
 import {
   students,
   tutors,
   parents,
   pendingApprovals,
   subjects
-} from '../data/mockData'
+} from '../../data/mockData'
 
 const stats = [
   {

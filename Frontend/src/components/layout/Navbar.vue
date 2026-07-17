@@ -35,7 +35,7 @@ const searchEnabled = computed(() => searchablePages.includes(route.name))
           v-model="globalSearch"
           type="text"
           :disabled="!searchEnabled"
-          placeholder="Search by Student Name or Email ID"
+          placeholder="Search by Name or Email ID"
           class="input-field pl-10 disabled:opacity-50 disabled:cursor-not-allowed"
         />
       </div>
@@ -63,7 +63,7 @@ const searchEnabled = computed(() => searchablePages.includes(route.name))
         v-model="globalSearch"
         type="text"
         :disabled="!searchEnabled"
-        placeholder="Search students or email"
+        placeholder="Search by name or email"
         class="input-field pl-10 disabled:opacity-50"
       />
     </div>

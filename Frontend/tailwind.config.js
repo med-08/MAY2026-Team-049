@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+import colors from 'tailwindcss/colors'
+
 export default {
   darkMode: 'class',
   content: [
@@ -11,6 +13,10 @@ export default {
         display: ['Sora', 'sans-serif'],
         body: ['Inter', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace']
+      },
+      spacing: {
+        '4.5': '1.125rem',
+        '5.5': '1.375rem'
       },
       colors: {
         brand: {
@@ -26,7 +32,20 @@ export default {
           orange: {
             50: '#fff7ed', 100: '#ffedd5', 400: '#fb923c', 500: '#f59e0b', 600: '#d97706', 700: '#b45309'
           }
-        }
+        },
+        // Student Dashboard tokens (kept separate from the `brand.*` scale above to avoid collisions)
+        'brand-blue': '#2454ff',
+        'brand-blue-dark': '#1739c4',
+        'brand-green': '#14b877',
+        'brand-green-dark': '#0c8f5c',
+        ink: '#0f172a',
+        'ink-soft': '#475569',
+        surface: '#f6f8fc',
+        'surface-dark': '#0b1220',
+        'card-dark': '#121b2e',
+        'border-dark': '#22304a',
+        amber: { ...colors.amber, DEFAULT: '#f59e0b' },
+        danger: '#ef4444'
       },
       boxShadow: {
         soft: '0 2px 8px 0 rgb(15 23 42 / 0.06), 0 1px 2px 0 rgb(15 23 42 / 0.04)',

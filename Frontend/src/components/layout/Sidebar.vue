@@ -1,17 +1,20 @@
 <script setup>
 import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Squares2X2Icon, UserGroupIcon, AcademicCapIcon, UsersIcon,
   ClockIcon, ChartBarIcon, UserCircleIcon, ArrowLeftOnRectangleIcon,
   ChevronDownIcon, XMarkIcon
 } from '@heroicons/vue/24/outline'
+import ConfirmModal from '../ui/ConfirmModal.vue'
 
 defineProps({ mobileOpen: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
 
 const route = useRoute()
+const router = useRouter()
 const usersOpen = ref(true)
+const logoutOpen = ref(false)
 
 const isActive = (name) => route.name === name
 const usersGroupActive = ['students', 'tutors', 'parents'].includes(route.name)
@@ -21,6 +24,12 @@ const links = [
   { name: 'tutors', label: 'Tutors' },
   { name: 'parents', label: 'Parents' }
 ]
+
+function confirmLogout() {
+  logoutOpen.value = false
+  emit('close')
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -93,12 +102,24 @@ const links = [
     </nav>
 
     <div class="px-3 pb-5">
-      <button class="nav-link w-full !text-rose-600 dark:!text-rose-300 hover:!text-rose-700 dark:hover:!text-rose-200 hover:bg-rose-500/10">
+      <button
+        class="nav-link w-full !text-rose-600 dark:!text-rose-300 hover:!text-rose-700 dark:hover:!text-rose-200 hover:bg-rose-500/10"
+        @click="logoutOpen = true"
+      >
         <ArrowLeftOnRectangleIcon class="w-5 h-5" />
         <span>Logout</span>
       </button>
     </div>
   </aside>
+
+  <ConfirmModal
+    :open="logoutOpen"
+    title="Log out of LearnAtHome?"
+    message="You'll need to sign in again to access the admin dashboard."
+    confirm-label="Logout"
+    @cancel="logoutOpen = false"
+    @confirm="confirmLogout"
+  />
 </template>
 
 <style scoped>

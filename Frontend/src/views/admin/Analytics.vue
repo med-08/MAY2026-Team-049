@@ -16,7 +16,7 @@ import {
 import {
   studentsPerSubject,
   monthlyRegistrations
-} from '../data/mockData'
+} from '../../data/mockData'
 
 ChartJS.register(
   ArcElement,
