@@ -40,6 +40,20 @@ import StudentFAQ from '../views/student/FAQ.vue'
 import StudentProfile from '../views/student/Profile.vue'
 
 
+// Parent Layout
+import ParentLayout from '../components/layout/ParentLayout.vue'
+
+
+// Parent Pages
+import ParentDashboard from '../views/parent/Dashboard.vue'
+import ParentProgress from '../views/parent/Progress.vue'
+import ParentCurriculum from '../views/parent/Curriculum.vue'
+import ParentSchedule from '../views/parent/Schedule.vue'
+import ParentMessages from '../views/parent/Messages.vue'
+import ParentMeetings from '../views/parent/Meetings.vue'
+import ParentProfile from '../views/parent/Profile.vue'
+
+
 
 const routes = [
 
@@ -307,6 +321,95 @@ const routes = [
         component:StudentProfile,
         meta:{
           title:'Student Profile'
+        }
+      }
+
+
+    ]
+
+  },
+
+
+
+  // =====================
+  // Parent Panel
+  // =====================
+
+
+  {
+    path:'/parent',
+
+    component:ParentLayout,
+
+    children:[
+
+
+      {
+        path:'',
+        name:'parent-dashboard',
+        component:ParentDashboard,
+        meta:{
+          title:'Dashboard'
+        }
+      },
+
+
+      {
+        path:'progress',
+        name:'parent-progress',
+        component:ParentProgress,
+        meta:{
+          title:'Child Progress'
+        }
+      },
+
+
+      {
+        path:'curriculum',
+        name:'parent-curriculum',
+        component:ParentCurriculum,
+        meta:{
+          title:'Curriculum Plan'
+        }
+      },
+
+
+      {
+        path:'schedule',
+        name:'parent-schedule',
+        component:ParentSchedule,
+        meta:{
+          title:'Schedule'
+        }
+      },
+
+
+      {
+        path:'messages',
+        name:'parent-messages',
+        component:ParentMessages,
+        meta:{
+          title:'Messages'
+        }
+      },
+
+
+      {
+        path:'meetings',
+        name:'parent-meetings',
+        component:ParentMeetings,
+        meta:{
+          title:'Meeting Requests'
+        }
+      },
+
+
+      {
+        path:'profile',
+        name:'parent-profile',
+        component:ParentProfile,
+        meta:{
+          title:'Parent Profile'
         }
       }
 
