@@ -62,6 +62,9 @@ else if(selectedRole.value === "Student"){
 else if(selectedRole.value === "Parent"){
   router.push("/parent")
 }
+else if(selectedRole.value === "Tutor"){
+  router.push("/tutor")
+}
 else{
   authError.value = `${selectedRole.value} portal is coming soon.`
 }

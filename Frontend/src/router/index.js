@@ -54,6 +54,24 @@ import ParentMeetings from '../views/parent/Meetings.vue'
 import ParentProfile from '../views/parent/Profile.vue'
 
 
+// Tutor Layout
+import TutorLayout from '../components/layout/TutorLayout.vue'
+
+
+// Tutor Pages
+import TutorDashboard from '../views/tutor/Dashboard.vue'
+import TutorSchedule from '../views/tutor/Schedule.vue'
+import TutorStudents from '../views/tutor/Students.vue'
+import TutorAttendance from '../views/tutor/Attendance.vue'
+import TutorAssignments from '../views/tutor/Assignments.vue'
+import TutorMaterials from '../views/tutor/Materials.vue'
+import TutorQaBoard from '../views/tutor/QaBoard.vue'
+import TutorDoubts from '../views/tutor/Doubts.vue'
+import TutorMessages from '../views/tutor/Messages.vue'
+import TutorEarnings from '../views/tutor/Earnings.vue'
+import TutorProfile from '../views/tutor/Profile.vue'
+
+
 
 const routes = [
 
@@ -416,6 +434,89 @@ const routes = [
 
     ]
 
+  },
+
+
+  // =====================
+  // Tutor Panel
+  // =====================
+
+
+  {
+    path:'/tutor',
+    component:TutorLayout,
+    children:[
+      {
+        path:'',
+        redirect:'/tutor/dashboard'
+      },
+      {
+        path:'dashboard',
+        name:'tutor-dashboard',
+        component:TutorDashboard,
+        meta:{ title:'Tutor Dashboard', tutorView:'dashboard' }
+      },
+      {
+        path:'schedule',
+        name:'tutor-schedule',
+        component:TutorSchedule,
+        meta:{ title:'Tutor Schedule', tutorView:'schedule' }
+      },
+      {
+        path:'students',
+        name:'tutor-students',
+        component:TutorStudents,
+        meta:{ title:'Tutor Students', tutorView:'students' }
+      },
+      {
+        path:'attendance',
+        name:'tutor-attendance',
+        component:TutorAttendance,
+        meta:{ title:'Tutor Attendance', tutorView:'attendance' }
+      },
+      {
+        path:'assignments',
+        name:'tutor-assignments',
+        component:TutorAssignments,
+        meta:{ title:'Tutor Assignments', tutorView:'assignments' }
+      },
+      {
+        path:'materials',
+        name:'tutor-materials',
+        component:TutorMaterials,
+        meta:{ title:'Tutor Materials', tutorView:'materials' }
+      },
+      {
+        path:'qa',
+        name:'tutor-qa',
+        component:TutorQaBoard,
+        meta:{ title:'Tutor Q&A Board', tutorView:'qa' }
+      },
+      {
+        path:'doubts',
+        name:'tutor-doubts',
+        component:TutorDoubts,
+        meta:{ title:'Student Doubts', tutorView:'doubts' }
+      },
+      {
+        path:'messages',
+        name:'tutor-messages',
+        component:TutorMessages,
+        meta:{ title:'Tutor Messages', tutorView:'messages' }
+      },
+      {
+        path:'earnings',
+        name:'tutor-earnings',
+        component:TutorEarnings,
+        meta:{ title:'Tutor Earnings', tutorView:'earnings' }
+      },
+      {
+        path:'profile',
+        name:'tutor-profile',
+        component:TutorProfile,
+        meta:{ title:'Tutor Profile', tutorView:'profile' }
+      }
+    ]
   },
 
 
