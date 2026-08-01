@@ -58,6 +58,7 @@ const login = async () => {
   }
   try {
     const data = await adminApi.login(form.value.email, form.value.password)
+    localStorage.clear()
     const userRole = data.role || selectedRole.value
     if (data.token) {
       localStorage.setItem('token', data.token)

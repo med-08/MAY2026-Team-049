@@ -99,6 +99,7 @@ import TutorSidebar from '../tutor/TutorSidebar.vue'
 import TutorStudentDrawer from '../tutor/TutorStudentDrawer.vue'
 import TutorToastContainer from '../tutor/TutorToastContainer.vue'
 import TutorTopbar from '../tutor/TutorTopbar.vue'
+import { adminApi } from '../../services/adminApi'
 import '../../assets/tutorStyles.css'
 import {
   achievements,
@@ -307,8 +308,10 @@ function confirmAction() {
   addToast('Action confirmed')
 }
 
-function confirmLogout() {
+async function confirmLogout() {
+  await adminApi.logout()
   localStorage.removeItem('user')
+  localStorage.removeItem('token')
   logoutModalOpen.value = false
   router.push('/login')
 }

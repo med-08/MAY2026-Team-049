@@ -4,13 +4,16 @@ import { useRouter } from "vue-router"
 import Sidebar from "../student/StudentSidebar.vue"
 import Topbar from "../student/StudentTopbar.vue"
 import LogoutModal from "../student/LogoutModal.vue"
+import { adminApi } from "../../services/adminApi"
 
 const sidebarOpen = ref(false)
 const logoutOpen = ref(false)
 const router = useRouter()
 
-function confirmLogout() {
+async function confirmLogout() {
+  await adminApi.logout()
   localStorage.removeItem('user')
+  localStorage.removeItem('token')
   logoutOpen.value = false
   router.push("/login")
 }
