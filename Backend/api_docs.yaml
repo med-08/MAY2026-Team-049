@@ -648,3 +648,287 @@ paths:
         '400': { description: Missing fields, mismatch, or too short }
         '401': { description: Current password incorrect, or not logged in }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+# =========Student Dashboard and Progress APIs========= #
+  /dashboard:
+    get:
+      tags:
+        - Student
+      summary: Get student dashboard data
+      description: Returns summaries for the active student profile, recent activities, and metrics.
+      responses:
+        '200':
+          description: Successful retrieval
+        '401':
+          description: Unauthorized access token
+
+  /progress:
+    get:
+      tags:
+        - Student
+      summary: Get academic progress metrics
+      description: Returns performance statistics, completed modules, and charts data.
+      responses:
+        '200':
+          description: Successful retrieval
+
+  /faqs:
+    get:
+      tags:
+        - Common
+      summary: Get list of FAQ items
+      description: Returns help and support frequently asked questions.
+      responses:
+        '200':
+          description: List of FAQs retrieved
+
+  /quizzes:
+    get:
+      tags:
+        - Quizzes
+      summary: List all available quizzes
+      responses:
+        '200':
+          description: Array of available quiz objects
+
+  /quizzes/{quiz_id}:
+    get:
+      tags:
+        - Quizzes
+      summary: Fetch details of a specific quiz
+      parameters:
+        - name: quiz_id
+          in: path
+          required: true
+          description: Numeric ID of the targeted quiz
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Quiz detail payload
+        '404':
+          description: Quiz ID not found
+
+  /quizzes/{quiz_id}/submit:
+    post:
+      tags:
+        - Quizzes
+      summary: Submit answers for a specific quiz
+      parameters:
+        - name: quiz_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      question_id:
+                        type: integer
+                      selected_option:
+                        type: string
+      responses:
+        '200':
+          description: Quiz grading result returned
+
+  /booking-slots:
+    get:
+      tags:
+        - Booking
+      summary: Get open calendar slots
+      description: Returns unbooked slots for tutoring or office hours.
+      responses:
+        '200':
+          description: Array of available date-time objects
+
+  /book-session:
+    post:
+      tags:
+        - Booking
+      summary: Register a new session booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - slot_id
+              properties:
+                slot_id:
+                  type: integer
+      responses:
+        '201':
+          description: Session booked successfully
+
+  /reschedule-session:
+    post:
+      tags:
+        - Booking
+      summary: Change an existing session time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - session_id
+                - new_slot_id
+              properties:
+                session_id:
+                  type: integer
+                new_slot_id:
+                  type: integer
+      responses:
+        '200':
+          description: Schedule updated successfully
+
+  /sessions:
+    get:
+      tags:
+        - Booking
+      summary: Get all historic and future user sessions
+      responses:
+        '200':
+          description: Successful data return
+
+  /upcoming-sessions:
+    get:
+      tags:
+        - Booking
+      summary: Filter and get future sessions only
+      responses:
+        '200':
+          description: List of upcoming sessions
+
+  /next-session:
+    get:
+      tags:
+        - Booking
+      summary: Get the single chronologically closest session
+      responses:
+        '200':
+          description: Closest singular session object
+
+  /study-tips:
+    get:
+      tags:
+        - Common
+      summary: Retrieve standard educational resource tips
+      responses:
+        '200':
+          description: List of textual tips or articles
+
+  /assignments:
+    get:
+      tags:
+        - Assignments
+      summary: Get all assignments assigned to student
+      responses:
+        '200':
+          description: List of assignment metadata objects
+
+  /assignments/{assignment_id}/update-progress:
+    post:
+      tags:
+        - Assignments
+      summary: Set status milestone for an assignment
+      parameters:
+        - name: assignment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                progress_percentage:
+                  type: integer
+                  example: 50
+      responses:
+        '200':
+          description: Progress tracker state updated
+
+  /assignments/{assignment_id}/submit:
+    post:
+      tags:
+        - Assignments
+      summary: Submit working links or documents for grading
+      parameters:
+        - name: assignment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                submission_data:
+                  type: string
+                  example: "https://github.com"
+      responses:
+        '200':
+          description: Assignment submission recorded
+
+  /timetable:
+    get:
+      tags:
+        - Student
+      summary: Get the student weekly calendar structure
+      responses:
+        '200':
+          description: Returns days and time blocks data structure
+
+  /resources:
+    get:
+      tags:
+        - Common
+      summary: Get attached files, PDFs, or links
+      responses:
+        '200':
+          description: List of reference attachments
+
+  /profile:
+    get:
+      tags:
+        - Profile
+      summary: Fetch active student user profile data
+      responses:
+        '200':
+          description: Student configuration details
+    put:
+      tags:
+        - Profile
+      summary: Update configuration fields for the student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        '200':
+          description: Profile configurations updated successfully
