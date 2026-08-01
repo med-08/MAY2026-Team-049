@@ -1,19 +1,64 @@
 <script setup>
-import { ref, reactive } from "vue"
+import { ref, reactive, onMounted } from "vue"
 import {
   PencilSquareIcon,
   KeyIcon,
 } from "@heroicons/vue/24/outline"
 
-import { adminProfile } from "../../data/mockData"
+import { adminApi } from "../../services/adminApi"
 import { useToast } from "../../composables/useToast"
+import EmptyState from "../../components/ui/EmptyState.vue"
 
 const { showToast } = useToast()
 
+const loading = ref(true)
+const loadError = ref(null)
+
+// Kept as a plain reactive object (not the raw API response) so the
+// template's existing `adminProfile.name` / `.email` / `.role` /
+// `.lastLoggedIn` bindings continue to work unchanged.
+const adminProfile = reactive({
+  name: "",
+  email: "",
+  role: "",
+  lastLoggedIn: "",
+})
+
+function formatDateTime(iso) {
+  if (!iso) return "—"
+  return new Date(iso).toLocaleString("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+async function loadProfile() {
+  loading.value = true
+  loadError.value = null
+  try {
+    const { data } = await adminApi.getProfile()
+    adminProfile.name = data.admin_name
+    adminProfile.email = data.email || ""
+    adminProfile.role = data.role || "Admin"
+    adminProfile.lastLoggedIn = formatDateTime(data.last_login_at)
+  } catch (e) {
+    loadError.value = e.message || "Failed to load your profile."
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadProfile)
+
 const editing = ref(false)
+const savingProfile = ref(false)
 
 const draft = reactive({
-  ...adminProfile,
+  name: "",
+  email: "",
 })
 
 function startEdit() {
@@ -22,15 +67,26 @@ function startEdit() {
   editing.value = true
 }
 
-function saveEdit() {
-  adminProfile.name = draft.name
-  adminProfile.email = draft.email
-
-  editing.value = false
-  showToast("Profile updated successfully.", "success")
+async function saveEdit() {
+  savingProfile.value = true
+  try {
+    const { data } = await adminApi.updateProfile({
+      admin_name: draft.name,
+      email: draft.email,
+    })
+    adminProfile.name = data.admin_name
+    adminProfile.email = data.email || ""
+    editing.value = false
+    showToast("Profile updated successfully.", "success")
+  } catch (e) {
+    showToast(e.message || "Failed to update profile.", "error")
+  } finally {
+    savingProfile.value = false
+  }
 }
 
 const passwordModalOpen = ref(false)
+const savingPassword = ref(false)
 
 const pw = reactive({
   current: "",
@@ -48,7 +104,7 @@ function openPasswordModal() {
   passwordModalOpen.value = true
 }
 
-function savePassword() {
+async function savePassword() {
   if (!pw.current || !pw.next || !pw.confirm) {
     pwError.value = "Please fill in all fields."
     return
@@ -64,8 +120,23 @@ function savePassword() {
     return
   }
 
-  passwordModalOpen.value = false
-  showToast("Password changed successfully.", "success")
+  savingPassword.value = true
+  pwError.value = ""
+  try {
+    await adminApi.changePassword({
+      current_password: pw.current,
+      new_password: pw.next,
+      confirm_password: pw.confirm,
+    })
+    passwordModalOpen.value = false
+    showToast("Password changed successfully.", "success")
+  } catch (e) {
+    // Surfaces backend validation errors too, e.g. "Current password is
+    // incorrect." (401) instead of only client-side checks.
+    pwError.value = e.message || "Failed to change password."
+  } finally {
+    savingPassword.value = false
+  }
 }
 </script>
 
@@ -84,8 +155,26 @@ function savePassword() {
       </p>
     </div>
 
+    <div
+      v-if="loadError"
+      class="mx-auto max-w-3xl"
+    >
+      <EmptyState
+        title="Couldn't load your profile"
+        :message="loadError"
+      />
+    </div>
+
+    <div
+      v-else-if="loading"
+      class="card mx-auto max-w-3xl h-72 animate-pulse rounded-2xl"
+    ></div>
+
     <!-- Profile Card -->
-    <div class="card mx-auto max-w-3xl overflow-hidden rounded-2xl">
+    <div
+      v-else
+      class="card mx-auto max-w-3xl overflow-hidden rounded-2xl"
+    >
       <!-- Header -->
       <div
         class="h-36 bg-gradient-to-r
@@ -276,9 +365,10 @@ function savePassword() {
                 hover:via-yellow-200
                 hover:to-orange-200
                 hover:shadow-lg"
+                :disabled="savingProfile"
                 @click="saveEdit"
               >
-                Save Changes
+                {{ savingProfile ? 'Saving...' : 'Save Changes' }}
               </button>
 
               <button
@@ -399,9 +489,10 @@ function savePassword() {
           hover:via-fuchsia-200
           hover:to-purple-200
           hover:shadow-lg"
+          :disabled="savingPassword"
           @click="savePassword"
         >
-          Save
+          {{ savingPassword ? 'Saving...' : 'Save' }}
         </button>
       </div>
     </div>

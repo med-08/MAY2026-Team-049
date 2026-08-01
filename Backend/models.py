@@ -14,6 +14,14 @@ class Admin(db.Model):
     role_id = db.Column(db.Integer, db.ForeignKey('roles.role_id'), nullable=False)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    # --- ADDED for Admin Dashboard ---
+    # The original schema had no way to display an admin's display name or
+    # email, both of which the AdminProfile.vue frontend requires. Added as
+    # nullable/defaulted columns so this is a purely additive,
+    # backward-compatible change to the existing schema.
+    admin_name = db.Column(db.String(100), nullable=False, default='Admin User')
+    email = db.Column(db.String(100), unique=True, nullable=True)
+    # --- END ADDED ---
     registered_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login_at = db.Column(db.DateTime)
 

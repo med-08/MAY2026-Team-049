@@ -1,8 +1,7 @@
 <script setup>
-import { ref } from 'vue'
 import { CheckIcon, XMarkIcon } from '@heroicons/vue/24/outline'
-import { pendingApprovals } from '../../data/mockData'
-import { useTableControls } from '../../composables/useTableControls'
+import { adminApi } from '../../services/adminApi'
+import { useServerTable } from '../../composables/useServerTable'
 import { useToast } from '../../composables/useToast'
 import Pagination from '../../components/ui/Pagination.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
@@ -10,30 +9,67 @@ import LoadingRows from '../../components/ui/LoadingRows.vue'
 
 const { showToast } = useToast()
 
-const { page, perPage, total, pageItems } = useTableControls(pendingApprovals, {
-  searchFields: ['name', 'email'],
-  perPage: 8
-})
-
-const loading = ref(true)
-setTimeout(() => (loading.value = false), 400)
-
-function approve(item) {
-  item.status = 'Approved'
-  showToast(`${item.name}'s registration was approved.`, 'success')
+// The backend combines pending Students/Tutors/Parents into one list, with
+// field names (registration_date/type) slightly different from the mock's
+// (registrationDate/role). Map them here so the template stays unchanged.
+async function fetchApprovals() {
+  const res = await adminApi.listApprovals('Pending')
+  return {
+    meta: res.meta,
+    data: res.data.map((item) => ({
+      id: item.id,
+      entityType: item.type.toLowerCase(), // 'student' | 'tutor' | 'parent', for API calls
+      name: item.name,
+      email: item.email,
+      role: item.type,
+      registrationDate: item.registration_date,
+      status: item.status
+    }))
+  }
 }
 
-function reject(item) {
-  item.status = 'Rejected'
-  showToast(`${item.name}'s registration was rejected.`, 'error')
+const {
+  page,
+  perPage,
+  total,
+  items: pageItems,
+  loading,
+  error,
+  reload
+} = useServerTable(fetchApprovals, { perPage: 8, supportsStatusFilter: false })
+
+// NOTE (assumption/UX change from the mock): the backend's approvals list
+// only ever returns entries that are currently Pending, so once an item is
+// approved/rejected it simply disappears from this queue after reload()
+// rather than staying visible with a greyed-out "Approved"/"Rejected"
+// badge. This matches how a real "review queue" behaves.
+async function approve(item) {
+  try {
+    await adminApi.approveEntity(item.entityType, item.id)
+    showToast(`${item.name}'s registration was approved.`, 'success')
+    await reload()
+  } catch (e) {
+    showToast(e.message || 'Failed to approve registration.', 'error')
+  }
+}
+
+async function reject(item) {
+  try {
+    await adminApi.rejectEntity(item.entityType, item.id)
+    showToast(`${item.name}'s registration was rejected.`, 'error')
+    await reload()
+  } catch (e) {
+    showToast(e.message || 'Failed to reject registration.', 'error')
+  }
 }
 
 function formatDate(d) {
+  if (!d) return '—'
   return new Date(d).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 const statusStyle = (status) => {
-  if (status === 'Approved') return 'text-brand-green-700 dark:text-brand-green-400'
+  if (status === 'Active') return 'text-brand-green-700 dark:text-brand-green-400'
   if (status === 'Rejected') return 'text-rose-600 dark:text-rose-400'
   return 'text-brand-orange-700 dark:text-brand-orange-400'
 }
@@ -46,7 +82,16 @@ const statusStyle = (status) => {
       <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Review new sign-ups before they join the platform.</p>
     </div>
 
-    <div class="card overflow-hidden">
+    <EmptyState
+      v-if="error"
+      title="Couldn't load pending approvals"
+      :message="error"
+    />
+
+    <div
+      v-else
+      class="card overflow-hidden"
+    >
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead class="border-b border-slate-100 dark:border-slate-800">
@@ -61,7 +106,7 @@ const statusStyle = (status) => {
           </thead>
           <tbody class="divide-y divide-slate-50 dark:divide-slate-800/60">
             <LoadingRows v-if="loading" :rows="6" :cols="6" />
-            <tr v-else v-for="item in pageItems" :key="item.id" class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+            <tr v-else v-for="item in pageItems" :key="`${item.entityType}-${item.id}`" class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
               <td class="table-td font-medium text-slate-800 dark:text-slate-100">{{ item.name }}</td>
               <td class="table-td">{{ item.email }}</td>
               <td class="table-td">{{ item.role }}</td>

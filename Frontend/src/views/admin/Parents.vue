@@ -1,8 +1,8 @@
 <script setup>
 import { ref } from 'vue'
 import { LockClosedIcon, LockOpenIcon, TrashIcon } from '@heroicons/vue/24/outline'
-import { parents } from '../../data/mockData'
-import { useTableControls } from '../../composables/useTableControls'
+import { adminApi } from '../../services/adminApi'
+import { useServerTable } from '../../composables/useServerTable'
 import { useToast } from '../../composables/useToast'
 import Pagination from '../../components/ui/Pagination.vue'
 import ConfirmModal from '../../components/ui/ConfirmModal.vue'
@@ -11,23 +11,62 @@ import LoadingRows from '../../components/ui/LoadingRows.vue'
 
 const { showToast } = useToast()
 
-const { page, perPage, total, pageItems, statusFilter } = useTableControls(parents, {
-  searchFields: ['name', 'email'],
+// Transform the backend's Parent shape (parent_name/phone_no/children[])
+// into the field names this view's template already uses (name/phone/
+// studentName), so the template itself needs no changes.
+async function fetchParents(params) {
+  const res = await adminApi.listParents(params)
+  return {
+    meta: res.meta,
+    data: res.data.map((p) => ({
+      id: p.parent_id,
+      name: p.parent_name,
+      email: p.email,
+      phone: p.phone_no || '—',
+      // NOTE (assumption): the schema allows a parent to have multiple
+      // children (1:many), while this table has one "Student Name"
+      // column. We join every linked child's name with a comma.
+      studentName:
+        p.children && p.children.length
+          ? p.children.map((c) => c.student_name).join(', ')
+          : '—',
+      status: p.status
+    }))
+  }
+}
+
+const {
+  page,
+  perPage,
+  total,
+  items: pageItems,
+  loading,
+  error,
+  statusFilter,
+  reload
+} = useServerTable(fetchParents, {
   perPage: 8,
-  statusField: 'status'
+  sortFieldMap: {
+    name: 'parent_name',
+    email: 'email',
+    status: 'status'
+  }
 })
 
 const filters = ['All', 'Active', 'Blocked']
 
-const loading = ref(true)
-setTimeout(() => (loading.value = false), 400)
-
 const confirmOpen = ref(false)
 const target = ref(null)
 
-function toggleBlock(p) {
-  p.status = p.status === 'Active' ? 'Blocked' : 'Active'
-  showToast(`${p.name} has been ${p.status === 'Blocked' ? 'blocked' : 'unblocked'}.`, 'success')
+async function toggleBlock(p) {
+  const newStatus = p.status === 'Active' ? 'Blocked' : 'Active'
+  try {
+    await adminApi.updateParentStatus(p.id, newStatus)
+    showToast(`${p.name} has been ${newStatus === 'Blocked' ? 'blocked' : 'unblocked'}.`, 'success')
+    await reload()
+  } catch (e) {
+    showToast(e.message || 'Failed to update parent status.', 'error')
+  }
 }
 
 function askDelete(p) {
@@ -35,14 +74,20 @@ function askDelete(p) {
   confirmOpen.value = true
 }
 
-function confirmDelete() {
-  const idx = parents.findIndex((p) => p.id === target.value.id)
-  if (idx !== -1) parents.splice(idx, 1)
-
-  showToast(`${target.value.name} was deleted.`, 'success')
-
+async function confirmDelete() {
+  const parent = target.value
   confirmOpen.value = false
-  target.value = null
+  if (!parent) return
+
+  try {
+    await adminApi.deleteParent(parent.id)
+    showToast(`${parent.name} was deleted.`, 'success')
+    await reload()
+  } catch (e) {
+    showToast(e.message || 'Failed to delete parent.', 'error')
+  } finally {
+    target.value = null
+  }
 }
 </script>
 
@@ -84,7 +129,16 @@ function confirmDelete() {
       </div>
     </div>
 
-    <div class="card overflow-hidden">
+    <EmptyState
+      v-if="error"
+      title="Couldn't load parents"
+      :message="error"
+    />
+
+    <div
+      v-else
+      class="card overflow-hidden"
+    >
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead class="border-b border-slate-100 dark:border-slate-800">

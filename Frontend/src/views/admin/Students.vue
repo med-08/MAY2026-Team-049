@@ -9,8 +9,8 @@ import {
   ArrowDownIcon
 } from '@heroicons/vue/24/outline'
 
-import { students } from '../../data/mockData'
-import { useTableControls } from '../../composables/useTableControls'
+import { adminApi } from '../../services/adminApi'
+import { useServerTable } from '../../composables/useServerTable'
 import { useToast } from '../../composables/useToast'
 
 import Pagination from '../../components/ui/Pagination.vue'
@@ -20,37 +20,77 @@ import LoadingRows from '../../components/ui/LoadingRows.vue'
 
 const { showToast } = useToast()
 
+// Transform the backend's Student shape into the field names this view's
+// template already uses (id/name/subject/parentName instead of
+// student_id/student_name/subjects[]/parent_name). Keeping the template
+// untouched this way limits the blast radius of the mock->API migration.
+async function fetchStudents(params) {
+  const res = await adminApi.listStudents(params)
+  return {
+    meta: res.meta,
+    data: res.data.map((s) => ({
+      id: s.student_id,
+      name: s.student_name,
+      email: s.email,
+      school: s.school || '—',
+      // NOTE (assumption): the schema models subjects as a many-to-many
+      // relationship, while this table has one "Subject" column. We join
+      // every enrolled subject with a comma rather than dropping data.
+      subject: s.subjects && s.subjects.length ? s.subjects.join(', ') : '—',
+      parentName: s.parent_name || '—',
+      status: s.status
+    }))
+  }
+}
+
 const {
   page,
   perPage,
   total,
-  pageItems,
+  items: pageItems,
+  loading,
+  error,
   sortKey,
   sortAsc,
   toggleSort,
-  statusFilter
-} = useTableControls(students, {
-  searchFields: ['name', 'email'],
+  statusFilter,
+  reload
+} = useServerTable(fetchStudents, {
   perPage: 8,
-  statusField: 'status'
+  sortFieldMap: {
+    id: 'student_id',
+    name: 'student_name',
+    email: 'email',
+    school: 'school',
+    status: 'status',
+    // These have no single backend column (many-to-many / joined field);
+    // fall back to default ordering rather than sending an invalid sort_by.
+    subject: null,
+    parentName: null
+  }
 })
 
 const filters = ['All', 'Active', 'Blocked']
 
-const loading = ref(true)
-setTimeout(() => (loading.value = false), 400)
-
 const confirmOpen = ref(false)
 const targetStudent = ref(null)
+const actionInFlight = ref(false)
 
-function toggleBlock(student) {
-  student.status = student.status === 'Active' ? 'Blocked' : 'Active'
-  showToast(
-    `${student.name} has been ${
-      student.status === 'Blocked' ? 'blocked' : 'unblocked'
-    }.`,
-    'success'
-  )
+async function toggleBlock(student) {
+  const newStatus = student.status === 'Active' ? 'Blocked' : 'Active'
+  actionInFlight.value = true
+  try {
+    await adminApi.updateStudentStatus(student.id, newStatus)
+    showToast(
+      `${student.name} has been ${newStatus === 'Blocked' ? 'blocked' : 'unblocked'}.`,
+      'success'
+    )
+    await reload()
+  } catch (e) {
+    showToast(e.message || 'Failed to update student status.', 'error')
+  } finally {
+    actionInFlight.value = false
+  }
 }
 
 function askDelete(student) {
@@ -58,14 +98,20 @@ function askDelete(student) {
   confirmOpen.value = true
 }
 
-function confirmDelete() {
-  const idx = students.findIndex((s) => s.id === targetStudent.value.id)
-  if (idx !== -1) students.splice(idx, 1)
-
-  showToast(`${targetStudent.value.name} was deleted.`, 'success')
-
+async function confirmDelete() {
+  const student = targetStudent.value
   confirmOpen.value = false
-  targetStudent.value = null
+  if (!student) return
+
+  try {
+    await adminApi.deleteStudent(student.id)
+    showToast(`${student.name} was deleted.`, 'success')
+    await reload()
+  } catch (e) {
+    showToast(e.message || 'Failed to delete student.', 'error')
+  } finally {
+    targetStudent.value = null
+  }
 }
 
 const columns = [
@@ -126,7 +172,16 @@ const columns = [
       </div>
     </div>
 
-    <div class="card overflow-hidden">
+    <EmptyState
+      v-if="error"
+      title="Couldn't load students"
+      :message="error"
+    />
+
+    <div
+      v-else
+      class="card overflow-hidden"
+    >
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead class="border-b border-slate-100 dark:border-slate-800">

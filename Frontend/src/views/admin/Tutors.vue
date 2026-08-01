@@ -1,18 +1,42 @@
 <script setup>
-import { ref } from 'vue'
-import { tutors } from '../../data/mockData'
-import { useTableControls } from '../../composables/useTableControls'
+import { adminApi } from '../../services/adminApi'
+import { useServerTable } from '../../composables/useServerTable'
 import Pagination from '../../components/ui/Pagination.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import LoadingRows from '../../components/ui/LoadingRows.vue'
 
-const { page, perPage, total, pageItems } = useTableControls(tutors, {
-  searchFields: ['name', 'email'],
-  perPage: 8
-})
+// Transform the backend's Tutor shape (tutor_name/phone_no/experience_years)
+// into the field names this view's template already uses.
+async function fetchTutors(params) {
+  const res = await adminApi.listTutors(params)
+  return {
+    meta: res.meta,
+    data: res.data.map((t) => ({
+      id: t.tutor_id,
+      name: t.tutor_name,
+      email: t.email,
+      experience: t.experience_years != null ? `${t.experience_years} yrs` : '—',
+      phone: t.phone_no || '—',
+      subjects: t.subjects || []
+    }))
+  }
+}
 
-const loading = ref(true)
-setTimeout(() => (loading.value = false), 400)
+const {
+  page,
+  perPage,
+  total,
+  items: pageItems,
+  loading,
+  error
+} = useServerTable(fetchTutors, {
+  perPage: 8,
+  supportsStatusFilter: false,
+  sortFieldMap: {
+    name: 'tutor_name',
+    email: 'email'
+  }
+})
 </script>
 
 <template>
@@ -22,7 +46,16 @@ setTimeout(() => (loading.value = false), 400)
       <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5">The educators guiding students through every subject.</p>
     </div>
 
-    <div class="card overflow-hidden">
+    <EmptyState
+      v-if="error"
+      title="Couldn't load tutors"
+      :message="error"
+    />
+
+    <div
+      v-else
+      class="card overflow-hidden"
+    >
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead class="border-b border-slate-100 dark:border-slate-800">

@@ -21,7 +21,9 @@ with app.app_context():
         admin_user = Admin(
             role_id=admin_role.role_id,
             username='admin',
-            password_hash=generate_password_hash('admin123')
+            password_hash=generate_password_hash('admin123'),
+            admin_name='Admin User',
+            email='admin@learnathome.com'
         )
         db.session.add(admin_user)
 

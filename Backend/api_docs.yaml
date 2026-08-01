@@ -1,0 +1,650 @@
+openapi: 3.0.3
+info:
+  title: LearnAtHome - Admin Dashboard API
+  description: >
+    APIs powering the Admin Dashboard module of LearnAtHome. Covers
+    platform-wide overview stats, analytics, student/tutor/parent
+    management, pending-registration approvals, and the logged-in admin's
+    own profile. All /admin/* routes require an authenticated Admin
+    session (see the Auth section below and the securitySchemes block).
+  version: "2.0.0"
+
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Login/logout (shared across all roles, not admin-only)
+  - name: Dashboard
+    description: Overview stats and analytics
+  - name: Students
+    description: Student management
+  - name: Parents
+    description: Parent management
+  - name: Tutors
+    description: Tutor management
+  - name: Approvals
+    description: Pending registration approvals
+  - name: Profile
+    description: The logged-in admin's own profile
+
+security:
+  - sessionAuth: []
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: >
+        Flask session cookie set by a successful POST /login as an Admin
+        account. All /admin/* routes are gated by the @admin_required
+        decorator, which checks session['role'] == 'Admin'.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Student with id 9999 not found."
+        errors:
+          nullable: true
+
+    SuccessEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          nullable: true
+        data: {}
+        meta:
+          type: object
+          nullable: true
+
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        per_page: { type: integer, example: 8 }
+        total: { type: integer, example: 25 }
+        total_pages: { type: integer, example: 4 }
+
+    DashboardStats:
+      type: object
+      properties:
+        total_students: { type: integer }
+        total_tutors: { type: integer }
+        total_parents: { type: integer }
+        blocked_students: { type: integer }
+        pending_approvals: { type: integer }
+        total_subjects: { type: integer }
+
+    SubjectCount:
+      type: object
+      properties:
+        subject: { type: string }
+        count: { type: integer }
+
+    MonthlyRegistration:
+      type: object
+      properties:
+        month: { type: string, example: "Jul" }
+        year: { type: integer, example: 2026 }
+        count: { type: integer }
+
+    Student:
+      type: object
+      properties:
+        student_id: { type: integer }
+        student_name: { type: string }
+        email: { type: string }
+        phone_no: { type: string, nullable: true }
+        school: { type: string, nullable: true }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+        parent_id: { type: integer, nullable: true }
+        parent_name: { type: string, nullable: true }
+        subjects: { type: array, items: { type: string } }
+        registered_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+    Parent:
+      type: object
+      properties:
+        parent_id: { type: integer }
+        parent_name: { type: string }
+        email: { type: string }
+        phone_no: { type: string, nullable: true }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+        children:
+          type: array
+          items:
+            type: object
+            properties:
+              student_id: { type: integer }
+              student_name: { type: string }
+        registered_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+    Tutor:
+      type: object
+      properties:
+        tutor_id: { type: integer }
+        tutor_name: { type: string }
+        email: { type: string }
+        phone_no: { type: string, nullable: true }
+        experience_years: { type: integer, nullable: true }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+        subjects: { type: array, items: { type: string } }
+        registered_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+    ApprovalEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [Student, Tutor, Parent] }
+        name: { type: string }
+        email: { type: string }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+        registration_date: { type: string, format: date-time, nullable: true }
+
+    AdminProfile:
+      type: object
+      properties:
+        admin_id: { type: integer }
+        username: { type: string }
+        admin_name: { type: string }
+        email: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        registered_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+  parameters:
+    pageParam:
+      name: page
+      in: query
+      schema: { type: integer, default: 1, minimum: 1 }
+    perPageParam:
+      name: per_page
+      in: query
+      schema: { type: integer, default: 8, minimum: 1, maximum: 100 }
+    searchParam:
+      name: search
+      in: query
+      schema: { type: string }
+      description: Case-insensitive partial match across name and email fields
+    orderParam:
+      name: order
+      in: query
+      schema: { type: string, enum: [asc, desc], default: asc }
+
+  responses:
+    Unauthorized:
+      description: Not logged in (no valid session)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Logged in, but not as an Admin
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+paths:
+  # ==================== AUTH (not admin-only; included for context) ====================
+  /login:
+    post:
+      tags: [Auth]
+      summary: Log in (any role) and start a session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string, description: "username or email" }
+                password: { type: string }
+                remember: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Login successful; sets a session cookie and returns a JWT
+        '400':
+          description: Missing identifier/password
+        '401':
+          description: Invalid credentials
+        '403':
+          description: Account is Pending approval or Blocked
+
+  /logout:
+    post:
+      tags: [Auth]
+      summary: Clear the current session
+      responses:
+        '200':
+          description: Logged out
+
+  # ==================== DASHBOARD ====================
+  /admin/dashboard/stats:
+    get:
+      tags: [Dashboard]
+      summary: Get platform-wide overview statistics
+      description: >
+        User Story: snapshot of total students/tutors/parents, blocked
+        students, pending approvals, and subjects. Powers Dashboard.vue.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/DashboardStats' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard/analytics/students-per-subject:
+    get:
+      tags: [Dashboard]
+      summary: Student enrollment count grouped by subject
+      description: Powers the Analytics.vue doughnut chart.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/SubjectCount' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard/analytics/monthly-registrations:
+    get:
+      tags: [Dashboard]
+      summary: Monthly registration trend (students+tutors+parents combined)
+      description: Powers the Analytics.vue line chart.
+      parameters:
+        - name: months
+          in: query
+          schema: { type: integer, default: 7, minimum: 1, maximum: 24 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/MonthlyRegistration' } } }
+        '400': { description: Invalid 'months' parameter, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Legacy dashboard summary (kept for backward compatibility)
+      description: Predates /admin/dashboard/stats; returns a differently-shaped payload ({success, stats}).
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== STUDENTS ====================
+  /admin/students:
+    get:
+      tags: [Students]
+      summary: List/search/sort/filter students
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/orderParam'
+        - name: status
+          in: query
+          schema: { type: string, enum: [All, Active, Blocked, Pending], default: All }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [student_id, student_name, email, school, status, registered_at], default: student_id }
+      responses:
+        '200':
+          description: Paginated list of students
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Student' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '400': { description: Invalid query parameters, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/students/{student_id}:
+    get:
+      tags: [Students]
+      summary: Get a single student's detail
+      parameters: [{ name: student_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Students]
+      summary: Delete a student
+      parameters: [{ name: student_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Deleted }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/students/{student_id}/status:
+    patch:
+      tags: [Students]
+      summary: Block or unblock a student
+      parameters: [{ name: student_id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: { status: { type: string, enum: [Active, Blocked] } }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Missing/invalid status }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== PARENTS ====================
+  /admin/parents:
+    get:
+      tags: [Parents]
+      summary: List/search/sort/filter parents
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/orderParam'
+        - name: status
+          in: query
+          schema: { type: string, enum: [All, Active, Blocked, Pending], default: All }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [parent_id, parent_name, email, status, registered_at], default: parent_id }
+      responses:
+        '200':
+          description: Paginated list of parents
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Parent' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '400': { description: Invalid query parameters }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/parents/{parent_id}:
+    get:
+      tags: [Parents]
+      summary: Get a single parent's detail (including linked children)
+      parameters: [{ name: parent_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Parents]
+      summary: Delete a parent (nulls parent_id on linked students)
+      parameters: [{ name: parent_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Deleted }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/parents/{parent_id}/status:
+    patch:
+      tags: [Parents]
+      summary: Block or unblock a parent
+      parameters: [{ name: parent_id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: { status: { type: string, enum: [Active, Blocked] } }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Missing/invalid status }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== TUTORS ====================
+  /admin/tutors:
+    get:
+      tags: [Tutors]
+      summary: List/search/sort/filter tutors
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/orderParam'
+        - name: status
+          in: query
+          schema: { type: string, enum: [All, Active, Blocked, Pending], default: All }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [tutor_id, tutor_name, email, experience_years, status, registered_at], default: tutor_id }
+      responses:
+        '200':
+          description: Paginated list of tutors
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Tutor' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '400': { description: Invalid query parameters }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/tutors/{tutor_id}:
+    get:
+      tags: [Tutors]
+      summary: Get a single tutor's detail
+      parameters: [{ name: tutor_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Tutors]
+      summary: Delete a tutor (bonus endpoint - not yet wired into Tutors.vue's read-only UI)
+      parameters: [{ name: tutor_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Deleted }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/tutors/{tutor_id}/status:
+    patch:
+      tags: [Tutors]
+      summary: Block or unblock a tutor (bonus endpoint - schema parity)
+      parameters: [{ name: tutor_id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: { status: { type: string, enum: [Active, Blocked] } }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Missing/invalid status }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== APPROVALS ====================
+  /admin/approvals:
+    get:
+      tags: [Approvals]
+      summary: List pending (or other status) registrations across all roles
+      description: Powers PendingApprovals.vue.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [All, Pending, Active, Blocked, Rejected], default: Pending }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/ApprovalEntry' } } }
+        '400': { description: Invalid status filter }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/approvals/{entity_type}/{entity_id}/approve:
+    patch:
+      tags: [Approvals]
+      summary: Approve a pending registration (sets status to Active)
+      parameters:
+        - name: entity_type
+          in: path
+          required: true
+          schema: { type: string, enum: [student, tutor, parent] }
+        - name: entity_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Approved }
+        '400': { description: Invalid entity_type }
+        '404': { description: Not found }
+        '409': { description: Entity is not currently Pending }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/approvals/{entity_type}/{entity_id}/reject:
+    patch:
+      tags: [Approvals]
+      summary: Reject a pending registration (sets status to Rejected)
+      parameters:
+        - name: entity_type
+          in: path
+          required: true
+          schema: { type: string, enum: [student, tutor, parent] }
+        - name: entity_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Rejected }
+        '400': { description: Invalid entity_type }
+        '404': { description: Not found }
+        '409': { description: Entity is not currently Pending }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== PROFILE (self-service) ====================
+  /admin/profile/me:
+    get:
+      tags: [Profile]
+      summary: Get the logged-in admin's own profile
+      description: >
+        Uses the session's admin id, not a URL parameter -- avoids the
+        IDOR risk of a path like /admin/profile/{id} now that real auth
+        exists.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/AdminProfile' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Profile]
+      summary: Update the logged-in admin's display name and/or email
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                admin_name: { type: string }
+                email: { type: string }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Invalid body }
+        '409': { description: Email already in use }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/profile/me/password:
+    put:
+      tags: [Profile]
+      summary: Change the logged-in admin's own password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password, confirm_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 6 }
+                confirm_password: { type: string }
+      responses:
+        '200': { description: Password changed }
+        '400': { description: Missing fields, mismatch, or too short }
+        '401': { description: Current password incorrect, or not logged in }
+        '403': { $ref: '#/components/responses/Forbidden' }
