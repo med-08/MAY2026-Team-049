@@ -1,0 +1,20 @@
+# Python (Backend)
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+Backend/venv/
+Backend/*.db
+Backend/test_learnathome.db
+*.egg-info/
+
+# Node (Frontend)
+Frontend/node_modules/
+Frontend/dist/
+.DS_Store
+*.local
+
+# Env files
+.env
+.env.local
+Frontend/.env.local

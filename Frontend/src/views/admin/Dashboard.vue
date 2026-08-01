@@ -1,4 +1,5 @@
 <script setup>
+import { ref, onMounted } from 'vue'
 import {
   UserGroupIcon,
   AcademicCapIcon,
@@ -9,58 +10,70 @@ import {
 } from '@heroicons/vue/24/outline'
 
 import StatCard from '../../components/ui/StatCard.vue'
-import {
-  students,
-  tutors,
-  parents,
-  pendingApprovals,
-  subjects
-} from '../../data/mockData'
+import EmptyState from '../../components/ui/EmptyState.vue'
+import { adminApi } from '../../services/adminApi'
 
-const stats = [
-  {
-    title: 'Total Students',
-    value: students.length,
-    subtitle: 'Registered students',
-    color: 'emerald',
-    icon: UserGroupIcon
-  },
-  {
-    title: 'Total Tutors',
-    value: tutors.length,
-    subtitle: 'Active tutors',
-    color: 'blue',
-    icon: AcademicCapIcon
-  },
-  {
-    title: 'Total Parents',
-    value: parents.length,
-    subtitle: 'Registered parents',
-    color: 'purple',
-    icon: HomeIcon
-  },
-  {
-    title: 'Blocked Students',
-    value: students.filter((s) => s.status === 'Blocked').length,
-    subtitle: 'Currently blocked',
-    color: 'red',
-    icon: NoSymbolIcon
-  },
-  {
-    title: 'Pending Approvals',
-    value: pendingApprovals.filter((p) => p.status === 'Pending').length,
-    subtitle: 'Awaiting approval',
-    color: 'amber',
-    icon: ClipboardDocumentCheckIcon
-  },
-  {
-    title: 'Subjects',
-    value: subjects.length,
-    subtitle: 'Available subjects',
-    color: 'teal',
-    icon: BookOpenIcon
+const loading = ref(true)
+const error = ref(null)
+const stats = ref([])
+
+async function loadStats() {
+  loading.value = true
+  error.value = null
+  try {
+    const { data } = await adminApi.getStats()
+    stats.value = [
+      {
+        title: 'Total Students',
+        value: data.total_students,
+        subtitle: 'Registered students',
+        color: 'emerald',
+        icon: UserGroupIcon
+      },
+      {
+        title: 'Total Tutors',
+        value: data.total_tutors,
+        subtitle: 'Active tutors',
+        color: 'blue',
+        icon: AcademicCapIcon
+      },
+      {
+        title: 'Total Parents',
+        value: data.total_parents,
+        subtitle: 'Registered parents',
+        color: 'purple',
+        icon: HomeIcon
+      },
+      {
+        title: 'Blocked Students',
+        value: data.blocked_students,
+        subtitle: 'Currently blocked',
+        color: 'red',
+        icon: NoSymbolIcon
+      },
+      {
+        title: 'Pending Approvals',
+        value: data.pending_approvals,
+        subtitle: 'Awaiting approval',
+        color: 'amber',
+        icon: ClipboardDocumentCheckIcon
+      },
+      {
+        title: 'Subjects',
+        value: data.total_subjects,
+        subtitle: 'Available subjects',
+        color: 'teal',
+        icon: BookOpenIcon
+      }
+    ]
+  } catch (e) {
+    error.value = e.message || 'Failed to load dashboard statistics.'
+  } finally {
+    loading.value = false
   }
-]
+}
+
+onMounted(loadStats)
 </script>
 
 <template>
@@ -78,9 +91,27 @@ const stats = [
       </p>
     </div>
 
+    <EmptyState
+      v-if="error"
+      title="Couldn't load the dashboard"
+      :message="error"
+    />
+
     <!-- Dashboard Cards -->
-    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+    <div
+      v-else
+      class="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"
+    >
+      <template v-if="loading">
+        <div
+          v-for="n in 6"
+          :key="n"
+          class="card h-28 animate-pulse"
+        />
+      </template>
+
       <StatCard
+        v-else
         v-for="card in stats"
         :key="card.title"
         :title="card.title"
