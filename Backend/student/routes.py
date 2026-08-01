@@ -30,6 +30,7 @@ def get_current_student():
 # ==================== FEATURE 1 & 3: VISUAL DASHBOARD & PROGRESS ====================
 
 @student_bp.route('/dashboard', methods=['GET'])
+@student_required
 def get_dashboard():
     """
     Returns visual growth metrics, completed topics summary, 6-week quiz progress,
@@ -145,6 +146,7 @@ def get_dashboard():
 
 
 @student_bp.route('/progress', methods=['GET'])
+@student_required
 def get_progress():
     """Returns detailed student growth, completed topics, learning pace, and subject mastery."""
     student_obj = get_current_student()
@@ -196,6 +198,7 @@ def get_progress():
 # ==================== FEATURE 2: FAQ SECTION ====================
 
 @student_bp.route('/faqs', methods=['GET'])
+@student_required
 def get_faqs():
     """Retrieves Frequently Asked Questions with optional search query and category filtering."""
     query_str = request.args.get('q', '').strip().lower()
@@ -233,6 +236,7 @@ def get_faqs():
 # ==================== FEATURE 4: WEEKLY QUIZZES ====================
 
 @student_bp.route('/quizzes', methods=['GET'])
+@student_required
 def get_quizzes():
     """Lists weekly quizzes with score history and completion status."""
     student_obj = get_current_student()
@@ -266,6 +270,7 @@ def get_quizzes():
 
 
 @student_bp.route('/quizzes/<int:quiz_id>', methods=['GET'])
+@student_required
 def get_quiz_details(quiz_id):
     """Retrieves detailed quiz metadata and questions (at least 5 questions per quiz)."""
     quiz_obj = db.session.get(Quiz, quiz_id)
@@ -328,6 +333,7 @@ def get_quiz_details(quiz_id):
 
 
 @student_bp.route('/quizzes/<int:quiz_id>/submit', methods=['POST'])
+@student_required
 def submit_quiz(quiz_id):
     """
     Submits quiz attempt, calculates percentage score, records QuizAttempt,
@@ -392,6 +398,7 @@ def submit_quiz(quiz_id):
 # ==================== FEATURE 5 & 6: SESSION BOOKING & ONE-TO-ONE ====================
 
 @student_bp.route('/booking-slots', methods=['GET'])
+@student_required
 def get_booking_slots():
     """Returns available Regular and One-to-One slots from tutor calendar."""
     student_obj = get_current_student()
@@ -451,6 +458,7 @@ def get_booking_slots():
 
 
 @student_bp.route('/book-session', methods=['POST'])
+@student_required
 def book_session():
     """Books a session slot for the logged-in student."""
     student_obj = get_current_student()
@@ -487,6 +495,7 @@ def book_session():
 
 
 @student_bp.route('/reschedule-session', methods=['POST'])
+@student_required
 def reschedule_session():
     """Reschedules an existing session booking to a new available slot."""
     student_obj = get_current_student()
@@ -516,6 +525,7 @@ def reschedule_session():
 # ==================== FEATURE 7: UPCOMING SESSIONS (24H NOTICE) ====================
 
 @student_bp.route('/sessions', methods=['GET'])
+@student_required
 def get_sessions():
     """Lists upcoming and completed sessions for student."""
     student_obj = get_current_student()
@@ -568,6 +578,7 @@ def get_sessions():
 
 
 @student_bp.route('/upcoming-sessions', methods=['GET'])
+@student_required
 def get_upcoming_sessions_24h():
     """
     Returns upcoming session details available at least 24 hours prior to class,
