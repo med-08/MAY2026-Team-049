@@ -81,6 +81,7 @@ class Session(db.Model):
     end_time = db.Column(db.Time, nullable=False)
     session_type = db.Column(db.String(20), default='Regular')  # Regular, One-to-One
     status = db.Column(db.String(20), default='Scheduled')      # Scheduled, Completed, Cancelled, Rescheduled
+    # max_seats = db.Column(db.Integer, default=5)
 
 class SessionUpdate(db.Model):
     __tablename__ = 'session_update'
@@ -101,6 +102,8 @@ class Assignment(db.Model):
     title = db.Column(db.String(150), nullable=False)
     description = db.Column(db.Text)
     due_date = db.Column(db.Date)
+    # estimated_time = db.Column(db.String(50), default="20 mins")
+    # ai_enabled = db.Column(db.Boolean, default=True)
 
 class AssignmentSubmission(db.Model):
     __tablename__ = 'assignment_submission'
@@ -108,9 +111,28 @@ class AssignmentSubmission(db.Model):
     assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.assignment_id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('student.student_id'), nullable=False)
     submission_date = db.Column(db.DateTime, default=datetime.utcnow)
-    status = db.Column(db.String(20), default='Pending') # Pending, Submitted, Late
+    status = db.Column(db.String(20), default='Pending') # Pending, In Progress, Submitted, Completed, Late
+    # progress_percentage = db.Column(db.Integer, default=0)
+    # current_complexity = db.Column(db.String(20), default='Medium') # Easy, Medium, Hard, Advanced
+    # consecutive_correct = db.Column(db.Integer, default=0)
+    # total_correct = db.Column(db.Integer, default=0)
+    # total_attempted = db.Column(db.Integer, default=0)
     tutor_feedback = db.Column(db.Text)
     __table_args__ = (db.UniqueConstraint('assignment_id', 'student_id', name='_assignment_student_uc'),)
+
+# class AssignmentQuestion(db.Model):
+#     __tablename__ = 'assignment_question'
+#     question_id = db.Column(db.Integer, primary_key=True)
+#     assignment_id = db.Column(db.Integer, db.ForeignKey('assignment.assignment_id'), nullable=False)
+#     complexity_level = db.Column(db.String(20), default='Medium') # Easy, Medium, Hard, Advanced
+#     question_text = db.Column(db.Text, nullable=False)
+#     option_a = db.Column(db.String(255))
+#     option_b = db.Column(db.String(255))
+#     option_c = db.Column(db.String(255))
+#     option_d = db.Column(db.String(255))
+#     correct_option = db.Column(db.String(1), nullable=False) # A, B, C, D
+#     explanation = db.Column(db.Text)
+#     hint = db.Column(db.Text)
 
 class LearningProgress(db.Model):
     __tablename__ = 'learning_progress'
