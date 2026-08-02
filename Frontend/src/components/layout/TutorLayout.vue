@@ -100,34 +100,35 @@ import TutorStudentDrawer from '../tutor/TutorStudentDrawer.vue'
 import TutorToastContainer from '../tutor/TutorToastContainer.vue'
 import TutorTopbar from '../tutor/TutorTopbar.vue'
 import { adminApi } from '../../services/adminApi'
+import { tutorApi } from '../../services/tutorApi'
 import '../../assets/tutorStyles.css'
 import {
-  achievements,
-  aiSuggestions,
-  assignments,
-  attendanceAnalytics,
-  attendanceRecords,
-  calendarEvents,
+  achievements as achievementsMock,
+  aiSuggestions as aiSuggestionsMock,
+  assignments as assignmentsMock,
+  attendanceAnalytics as attendanceAnalyticsMock,
+  attendanceRecords as attendanceRecordsMock,
+  calendarEvents as calendarEventsMock,
   commandItems,
   conversationsSeed,
-  dashboardStats,
+  dashboardStats as dashboardStatsMock,
   doubtsSeed,
-  earningsHistory,
+  earningsHistory as earningsHistoryMock,
   faqEntriesSeed,
-  leaderboard,
+  leaderboard as leaderboardMock,
   navGroups,
-  notifications,
+  notifications as notificationsMock,
   quizScores,
-  recentActivities,
-  scheduleRows,
-  sessions,
+  recentActivities as recentActivitiesMock,
+  scheduleRows as scheduleRowsMock,
+  sessions as sessionsMock,
   sessionHistory,
-  students,
-  studyResources,
-  todayOverview,
-  tutorUser,
-  upcomingDeadlines,
-  upcomingMeetings,
+  students as studentsMock,
+  studyResources as studyResourcesMock,
+  todayOverview as todayOverviewMock,
+  tutorUser as tutorUserMock,
+  upcomingDeadlines as upcomingDeadlinesMock,
+  upcomingMeetings as upcomingMeetingsMock,
   viewTitles
 } from '../../data/tutorMockData'
 
@@ -145,11 +146,31 @@ const activeKey = ref('dashboard-0')
 const clockLabel = ref('')
 const toasts = ref([])
 const confirm = reactive({ open: false, message: '' })
-const notificationState = ref(structuredClone(notifications))
-const attendanceState = reactive(structuredClone(attendanceRecords))
+
+// Live state backed by API with fallback to mock data
+const tutorUserState = ref(structuredClone(tutorUserMock))
+const dashboardStatsState = ref(structuredClone(dashboardStatsMock))
+const sessionsState = ref(structuredClone(sessionsMock))
+const todayOverviewState = ref(structuredClone(todayOverviewMock))
+const recentActivitiesState = ref(structuredClone(recentActivitiesMock))
+const upcomingDeadlinesState = ref(structuredClone(upcomingDeadlinesMock))
+const aiSuggestionsState = ref(structuredClone(aiSuggestionsMock))
+const upcomingMeetingsState = ref(structuredClone(upcomingMeetingsMock))
+const leaderboardState = ref(structuredClone(leaderboardMock))
+const achievementsState = ref(structuredClone(achievementsMock))
+const scheduleRowsState = ref(structuredClone(scheduleRowsMock))
+const calendarEventsState = ref(structuredClone(calendarEventsMock))
+const studentsState = ref(structuredClone(studentsMock))
+const attendanceState = ref(structuredClone(attendanceRecordsMock))
+const attendanceAnalyticsState = ref(structuredClone(attendanceAnalyticsMock))
+const assignmentsState = ref(structuredClone(assignmentsMock))
+const studyResourcesState = ref(structuredClone(studyResourcesMock))
+const notificationState = ref(structuredClone(notificationsMock))
 const faqEntries = ref(structuredClone(faqEntriesSeed))
-const doubts = reactive(structuredClone(doubtsSeed))
-const conversations = reactive(structuredClone(conversationsSeed))
+const doubts = ref(structuredClone(doubtsSeed))
+const conversations = ref(structuredClone(conversationsSeed))
+const earningsHistoryState = ref(structuredClone(earningsHistoryMock))
+
 const mainRef = ref(null)
 const ringRef = ref(null)
 const dotRef = ref(null)
@@ -175,11 +196,11 @@ const greeting = computed(() => {
 })
 const activeTitle = computed(() => {
   if (activeView.value === 'dashboard') {
-    return { prefix: `${greeting.value}, `, highlight: tutorUser.displayName }
+    return { prefix: `${greeting.value}, `, highlight: tutorUserState.value.displayName || tutorUserState.value.name }
   }
   return viewTitles[activeView.value] || viewTitles.dashboard
 })
-const openDoubts = computed(() => doubts.filter((doubt) => doubt.status === 'Open').length)
+const openDoubts = computed(() => doubts.value.filter((doubt) => doubt.status === 'Open').length)
 const selectedStudentScores = computed(() => selectedStudent.value ? quizScores[selectedStudent.value.studentId] || [] : [])
 const selectedStudentSessions = computed(() => selectedStudent.value ? sessionHistory[selectedStudent.value.studentId] || [] : [])
 
@@ -187,30 +208,98 @@ const routeProps = computed(() => {
   const shared = { activeKey: activeKey.value, reduceMotion: reduceMotion.value }
   const propsByView = {
     dashboard: {
-      stats: dashboardStats,
-      sessions,
-      overview: todayOverview,
-      activities: recentActivities,
-      deadlines: upcomingDeadlines,
-      suggestions: aiSuggestions,
-      meetings: upcomingMeetings,
-      leaderboard,
-      achievements,
+      stats: dashboardStatsState.value,
+      sessions: sessionsState.value,
+      overview: todayOverviewState.value,
+      activities: recentActivitiesState.value,
+      deadlines: upcomingDeadlinesState.value,
+      suggestions: aiSuggestionsState.value,
+      meetings: upcomingMeetingsState.value,
+      leaderboard: leaderboardState.value,
+      achievements: achievementsState.value,
       ...shared
     },
-    schedule: { rows: scheduleRows, events: calendarEvents },
-    students: { students },
-    attendance: { records: attendanceState, students, analytics: attendanceAnalytics },
-    assignments: { assignments },
-    materials: { resources: studyResources },
+    schedule: { rows: scheduleRowsState.value, events: calendarEventsState.value },
+    students: { students: studentsState.value },
+    attendance: { records: attendanceState.value, students: studentsState.value, analytics: attendanceAnalyticsState.value },
+    assignments: { assignments: assignmentsState.value },
+    materials: { resources: studyResourcesState.value },
     qa: { entries: faqEntries.value },
-    doubts: { doubts, students },
-    messages: { conversations, activeConversationId: activeConversationId.value },
-    earnings: { history: earningsHistory, ...shared },
-    profile: { tutor: tutorUser }
+    doubts: { doubts: doubts.value, students: studentsState.value },
+    messages: { conversations: conversations.value, activeConversationId: activeConversationId.value },
+    earnings: { history: earningsHistoryState.value, ...shared },
+    profile: { tutor: tutorUserState.value }
   }
   return propsByView[activeView.value] || propsByView.dashboard
 })
+
+async function fetchBackendData() {
+  try {
+    const [dashRes, schedRes, stRes, attRes, asgRes, matRes, qaRes, doubtRes, convRes, earnRes, profRes, notifRes] = await Promise.allSettled([
+      tutorApi.getDashboard(),
+      tutorApi.getSchedule(),
+      tutorApi.getStudents(),
+      tutorApi.getAttendance(),
+      tutorApi.getAssignments(),
+      tutorApi.getMaterials(),
+      tutorApi.getQaEntries(),
+      tutorApi.getDoubts(),
+      tutorApi.getConversations(),
+      tutorApi.getEarnings(),
+      tutorApi.getProfile(),
+      tutorApi.getNotifications()
+    ])
+
+    if (dashRes.status === 'fulfilled' && dashRes.value.success) {
+      if (dashRes.value.stats) dashboardStatsState.value = dashRes.value.stats
+      if (dashRes.value.sessions) sessionsState.value = dashRes.value.sessions
+      if (dashRes.value.overview) todayOverviewState.value = dashRes.value.overview
+      if (dashRes.value.activities) recentActivitiesState.value = dashRes.value.activities
+      if (dashRes.value.deadlines) upcomingDeadlinesState.value = dashRes.value.deadlines
+      if (dashRes.value.suggestions) aiSuggestionsState.value = dashRes.value.suggestions
+      if (dashRes.value.meetings) upcomingMeetingsState.value = dashRes.value.meetings
+      if (dashRes.value.leaderboard) leaderboardState.value = dashRes.value.leaderboard
+      if (dashRes.value.achievements) achievementsState.value = dashRes.value.achievements
+    }
+    if (schedRes.status === 'fulfilled' && schedRes.value.success) {
+      if (schedRes.value.rows) scheduleRowsState.value = schedRes.value.rows
+      if (schedRes.value.events) calendarEventsState.value = schedRes.value.events
+    }
+    if (stRes.status === 'fulfilled' && stRes.value.success && stRes.value.students?.length) {
+      studentsState.value = stRes.value.students
+    }
+    if (attRes.status === 'fulfilled' && attRes.value.success) {
+      if (attRes.value.records) attendanceState.value = attRes.value.records
+      if (attRes.value.analytics) attendanceAnalyticsState.value = attRes.value.analytics
+    }
+    if (asgRes.status === 'fulfilled' && asgRes.value.success && asgRes.value.assignments?.length) {
+      assignmentsState.value = asgRes.value.assignments
+    }
+    if (matRes.status === 'fulfilled' && matRes.value.success && matRes.value.resources?.length) {
+      studyResourcesState.value = matRes.value.resources
+    }
+    if (qaRes.status === 'fulfilled' && qaRes.value.success && qaRes.value.entries?.length) {
+      faqEntries.value = qaRes.value.entries
+    }
+    if (doubtRes.status === 'fulfilled' && doubtRes.value.success && doubtRes.value.doubts?.length) {
+      doubts.value = doubtRes.value.doubts
+    }
+    if (convRes.status === 'fulfilled' && convRes.value.success && convRes.value.conversations) {
+      conversations.value = convRes.value.conversations
+    }
+    if (earnRes.status === 'fulfilled' && earnRes.value.success && earnRes.value.history) {
+      earningsHistoryState.value = earnRes.value.history
+    }
+    if (profRes.status === 'fulfilled' && profRes.value.success && profRes.value.tutor) {
+      tutorUserState.value = profRes.value.tutor
+    }
+    if (notifRes.status === 'fulfilled' && notifRes.value.success && notifRes.value.notifications) {
+      notificationState.value = notifRes.value.notifications
+    }
+  } catch (err) {
+    console.warn('Backend loading warning:', err)
+  }
+}
 
 function navigate(view) {
   mobileMenuOpen.value = false
@@ -228,57 +317,83 @@ function addToast(message) {
   chatTimers.add(timer)
 }
 
-function selectNotification(notification) {
+async function selectNotification(notification) {
   notification.isRead = true
   notificationsOpen.value = false
-  navigate(notification.go)
+  if (notification.id) {
+    try { await tutorApi.markNotificationRead(notification.id) } catch (e) {}
+  }
+  navigate(notification.go || 'dashboard')
 }
 
-function publishFaq(payload) {
-  faqEntries.value.unshift({
-    faqId: `faq-${Date.now()}`,
-    question: payload.question,
-    answer: payload.answer,
-    createdBy: tutorUser.userId,
-    meta: 'Just published · all students notified'
-  })
+async function publishFaq(payload) {
+  try {
+    const res = await tutorApi.publishQaEntry(payload)
+    if (res.success && res.entry) {
+      faqEntries.value.unshift(res.entry)
+    } else {
+      faqEntries.value.unshift({
+        faqId: `faq-${Date.now()}`,
+        question: payload.question,
+        answer: payload.answer,
+        createdBy: tutorUserState.value.userId,
+        meta: 'Just published · all students notified'
+      })
+    }
+  } catch (e) {
+    faqEntries.value.unshift({
+      faqId: `faq-${Date.now()}`,
+      question: payload.question,
+      answer: payload.answer,
+      createdBy: tutorUserState.value.userId,
+      meta: 'Just published · all students notified'
+    })
+  }
   addToast('Published to board · students notified')
 }
 
-function replyToDoubt(doubtId) {
-  const doubt = doubts.find((item) => item.doubtId === doubtId)
-  if (!doubt) return
-  doubt.status = 'Answered'
-  const student = students.find((item) => item.studentId === doubt.studentId)
+async function replyToDoubt(doubtId, replyText) {
+  const doubt = doubts.value.find((item) => item.doubtId === doubtId || item.id === doubtId)
+  if (doubt) doubt.status = 'Answered'
+  try {
+    const numericId = typeof doubtId === 'number' ? doubtId : parseInt(String(doubtId).replace('doubt-', ''))
+    if (!isNaN(numericId)) {
+      await tutorApi.replyDoubt(numericId, replyText)
+    }
+  } catch (e) {}
+  const student = studentsState.value.find((item) => item.studentId === doubt?.studentId)
   addToast(`Reply sent to ${student?.name || 'student'}`)
 }
 
-function sendMessage(conversationId, message) {
-  const conversation = conversations[conversationId]
+async function sendMessage(conversationId, message) {
+  const conversation = conversations.value[conversationId]
   if (!conversation) return
   conversation.messages.push({
     messageId: `msg-${Date.now()}`,
-    senderId: tutorUser.userId,
+    senderId: tutorUserState.value.userId,
     receiverId: conversationId,
     message,
     timestamp: new Date().toISOString(),
     status: 'sent',
     w: 'me'
   })
+  try { await tutorApi.sendMessage({ conversationId, message }) } catch (e) {}
   addToast(`Sent to ${conversation.participantName}`)
   if (reduceMotion.value) return
   const timer = window.setTimeout(() => {
-    const target = conversations[conversationId]
-    target.messages.push({
-      messageId: `msg-${Date.now()}-reply`,
-      senderId: conversationId,
-      receiverId: tutorUser.userId,
-      message: 'Got it, thank you!',
-      timestamp: new Date().toISOString(),
-      status: 'read',
-      w: 'them'
-    })
-    addToast(`New reply from ${target.participantName}`)
+    const target = conversations.value[conversationId]
+    if (target) {
+      target.messages.push({
+        messageId: `msg-${Date.now()}-reply`,
+        senderId: conversationId,
+        receiverId: tutorUserState.value.userId,
+        message: 'Got it, thank you!',
+        timestamp: new Date().toISOString(),
+        status: 'read',
+        w: 'them'
+      })
+      addToast(`New reply from ${target.participantName}`)
+    }
     chatTimers.delete(timer)
   }, 1600)
   chatTimers.add(timer)
@@ -309,7 +424,7 @@ function confirmAction() {
 }
 
 async function confirmLogout() {
-  await adminApi.logout()
+  try { await tutorApi.logout() } catch (e) {}
   localStorage.removeItem('user')
   localStorage.removeItem('token')
   logoutModalOpen.value = false
@@ -414,6 +529,7 @@ watch(activeView, (view) => {
 })
 
 onMounted(() => {
+  fetchBackendData()
   reduceMotion.value = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   hoverPointer.value = window.matchMedia('(hover: hover)').matches
   updateClock()
