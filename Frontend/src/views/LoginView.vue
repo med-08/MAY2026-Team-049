@@ -77,7 +77,7 @@ const login = async () => {
 
 <template>
 
-<div class="min-h-screen bg-gradient-to-br from-emerald-100 via-white to-blue-100">
+<div class="min-h-screen bg-gradient-to-br from-emerald-100 via-white to-blue-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-colors duration-300">
 
 
   <!-- Authentication Navbar -->
@@ -89,11 +89,11 @@ const login = async () => {
 
 
 
-    <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 animate-card">
+    <div class="w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl dark:shadow-slate-900/50 p-8 animate-card">
 
 
 
-      <h1 class="text-3xl font-bold text-center text-slate-800">
+      <h1 class="text-3xl font-bold text-center text-slate-800 dark:text-white">
 
         Welcome Back 👋
 
@@ -101,7 +101,7 @@ const login = async () => {
 
 
 
-      <p class="text-center text-slate-500 mt-2">
+      <p class="text-center text-slate-500 dark:text-slate-400 mt-2">
 
         Login to LearnAtHome
 
@@ -129,7 +129,7 @@ const login = async () => {
           :class="
           selectedRole===r.value
           ? 'bg-emerald-500 text-white'
-          : 'bg-slate-100 text-slate-700'
+          : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
           "
 
           class="
@@ -182,7 +182,7 @@ const login = async () => {
         <div>
 
 
-          <label class="font-medium text-slate-700">
+          <label class="font-medium text-slate-700 dark:text-slate-300">
 
             Email Address
 
@@ -201,15 +201,16 @@ const login = async () => {
             class="
             w-full mt-2
             rounded-xl
-            border border-slate-300
-            bg-white
-            text-slate-800
-            placeholder:text-slate-400
+            border border-slate-300 dark:border-slate-600
+            bg-white dark:bg-slate-700
+            text-slate-800 dark:text-white
+            placeholder:text-slate-400 dark:placeholder:text-slate-500
             p-3
             focus:outline-none
-            focus:border-emerald-500
+            focus:border-emerald-500 dark:focus:border-emerald-400
             focus:ring-4
-            focus:ring-emerald-100
+            focus:ring-emerald-100 dark:focus:ring-emerald-900
+            transition-colors duration-300
             "
 
           />
@@ -228,7 +229,7 @@ const login = async () => {
         <div>
 
 
-          <label class="font-medium text-slate-700">
+          <label class="font-medium text-slate-700 dark:text-slate-300">
 
             Password
 
@@ -247,15 +248,16 @@ const login = async () => {
             class="
             w-full mt-2
             rounded-xl
-            border border-slate-300
-            bg-white
-            text-slate-800
-            placeholder:text-slate-400
+            border border-slate-300 dark:border-slate-600
+            bg-white dark:bg-slate-700
+            text-slate-800 dark:text-white
+            placeholder:text-slate-400 dark:placeholder:text-slate-500
             p-3
             focus:outline-none
-            focus:border-emerald-500
+            focus:border-emerald-500 dark:focus:border-emerald-400
             focus:ring-4
-            focus:ring-emerald-100
+            focus:ring-emerald-100 dark:focus:ring-emerald-900
+            transition-colors duration-300
             "
 
           />
@@ -275,7 +277,7 @@ const login = async () => {
         <div class="flex justify-between items-center text-sm">
 
 
-          <label class="flex items-center text-slate-600">
+          <label class="flex items-center text-slate-600 dark:text-slate-400">
 
 
             <input
@@ -293,7 +295,7 @@ const login = async () => {
 
           <a
             href="#"
-            class="text-emerald-600 hover:text-emerald-700 font-medium"
+            class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium transition-colors duration-300"
           >
 
             Forgot Password?
@@ -322,6 +324,8 @@ const login = async () => {
           bg-gradient-to-r 
           from-emerald-500 
           to-blue-500
+          dark:from-emerald-600
+          dark:to-blue-600
           text-white
           font-semibold
           hover:scale-105
@@ -337,7 +341,7 @@ const login = async () => {
 
         <p
           v-if="authError"
-          class="text-center text-sm text-amber-600 font-medium"
+          class="text-center text-sm text-amber-600 dark:text-amber-400 font-medium"
         >
           {{ authError }}
         </p>
@@ -354,7 +358,7 @@ const login = async () => {
 
 
 
-      <p class="text-center mt-6 text-slate-700">
+      <p class="text-center mt-6 text-slate-700 dark:text-slate-300">
 
 
         Don't have an account?
@@ -367,8 +371,11 @@ const login = async () => {
 
           class="
           text-emerald-600 
+          dark:text-emerald-400
           font-semibold
           hover:text-emerald-700
+          dark:hover:text-emerald-300
+          transition-colors duration-300
           "
 
         >
@@ -423,6 +430,11 @@ color:#94a3b8;
 
 }
 
+
+
+input.dark\:text-white {
+  color-scheme: dark;
+}
 
 
 button{
