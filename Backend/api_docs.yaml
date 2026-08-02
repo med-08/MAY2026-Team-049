@@ -28,6 +28,8 @@ tags:
     description: Pending registration approvals
   - name: Profile
     description: The logged-in admin's own profile
+  - name: Parent Dashboard
+    description: Parent Portal endpoints (Health, Profile, Overview, Meetings, Child Progress, Curriculum)
 
 security:
   - sessionAuth: []
@@ -1318,4 +1320,152 @@ paths:
       responses:
         '200':
           description: Notification marked as read
+
+  # ==================== PARENT DASHBOARD ====================
+  /api/parent/health:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Health check
+      description: Verifies Parent API blueprint status.
+      responses:
+        '200':
+          description: Blueprint is functional.
+
+  /api/parent/profile/{parent_id}:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Get parent profile
+      description: Retrieves details of a parent and their linked children.
+      parameters:
+        - name: parent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Profile retrieved successfully.
+        '404':
+          description: Parent not found.
+    put:
+      tags:
+        - Parent Dashboard
+      summary: Update parent profile
+      description: Updates parent's full name or phone number.
+      parameters:
+        - name: parent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_name:
+                  type: string
+                phone_no:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated successfully.
+        '404':
+          description: Parent not found.
+
+  /api/parent/overview/{parent_id}:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Get parent dashboard overview
+      description: Returns total linked children, summary stats, and recent academic updates.
+      parameters:
+        - name: parent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Overview data retrieved successfully.
+
+  /api/parent/meeting-request:
+    post:
+      tags:
+        - Parent Dashboard
+      summary: Request tutor meeting
+      description: Submits a virtual/in-person meeting request with a tutor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - parent_id
+                - tutor_id
+                - student_id
+                - preferred_date
+                - preferred_time
+              properties:
+                parent_id:
+                  type: integer
+                tutor_id:
+                  type: integer
+                student_id:
+                  type: integer
+                preferred_date:
+                  type: string
+                  format: date
+                preferred_time:
+                  type: string
+                meeting_type:
+                  type: string
+                  enum: [Virtual, In-Person]
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Meeting request created successfully.
+
+  /api/parent/child-progress/{parent_id}/{student_id}:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Get child academic progress
+      description: Fetches attendance rates, quiz scores, and tutor remarks for a specific child.
+      parameters:
+        - name: parent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: student_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Child progress retrieved successfully.
+
+  /api/parent/curriculum/{student_id}:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Get child curriculum plan
+      description: Fetches monthly planned syllabus topics set by tutors.
+      parameters:
+        - name: student_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Curriculum plan retrieved successfully.
 
