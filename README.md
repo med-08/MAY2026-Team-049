@@ -156,7 +156,6 @@ cd Frontend
 
 npm install
 
-cp .env.example .env.local
 ```
 
 Update
