@@ -9,17 +9,9 @@ from utils import validate_registration, find_user_by_identifier, get_role_id, g
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    # If already logged in, return JSON status
-    if session.get('user_id') and session.get('role'):
-        role = session.get('role')
-        jwt_token = generate_jwt_token(session.get('user_id'), session.get('username'), role)
-        return jsonify({
-            'success': True,
-            'message': 'Already logged in',
-            'token': jwt_token,
-            'role': role,
-            'redirect_url': f'/{role.lower()}'
-        })
+    # Clear any previous session so a fresh login always validates
+    # the credentials just submitted, instead of re-using a stale session.
+    session.clear()
 
     data = request.get_json() or request.form or {}
     identifier = (data.get('identifier') or data.get('email') or '').strip()

@@ -3,6 +3,7 @@
 import { ref } from "vue"
 import { useRouter } from "vue-router"
 import AuthNavbar from "../components/layout/AuthNavbar.vue"
+import { adminApi } from "../services/adminApi"
 
 
 const router = useRouter()
@@ -56,33 +57,17 @@ const login = async () => {
     return
   }
   try {
-    const res = await fetch("http://127.0.0.1:5000/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        identifier: form.value.email,
-        password: form.value.password
-      })
-    })
-    const data = await res.json()
-    if (res.ok && data.success) {
-      const userRole = data.role || selectedRole.value
-      if (data.token) {
-        localStorage.setItem('token', data.token)
-      }
-      localStorage.setItem('user', JSON.stringify({ role: userRole, username: data.username, token: data.token }))
-      const roleTarget = userRole.toLowerCase()
-      router.push(`/${roleTarget}`)
-    } else {
-      authError.value = data.message || "Wrong Password or Email/Username."
+    const data = await adminApi.login(form.value.email, form.value.password)
+    localStorage.clear()
+    const userRole = data.role || selectedRole.value
+    if (data.token) {
+      localStorage.setItem('token', data.token)
     }
+    localStorage.setItem('user', JSON.stringify({ role: userRole, username: data.username, token: data.token }))
+    const roleTarget = userRole.toLowerCase()
+    router.push(`/${roleTarget}`)
   } catch (err) {
-    // Fallback navigation
-    if(selectedRole.value === "Admin") router.push("/admin")
-    else if(selectedRole.value === "Student") router.push("/student")
-    else if(selectedRole.value === "Parent") router.push("/parent")
-    else if(selectedRole.value === "Tutor") router.push("/tutor")
+    authError.value = err.message || "Wrong Password or Email/Username."
   }
 }
 

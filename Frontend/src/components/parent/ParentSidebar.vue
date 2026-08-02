@@ -13,6 +13,7 @@ import {
   XMarkIcon
 } from '@heroicons/vue/24/outline'
 import ConfirmModal from '../ui/ConfirmModal.vue'
+import { adminApi } from '../../services/adminApi'
 
 defineProps({ mobileOpen: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
@@ -32,8 +33,10 @@ const navItems = [
   { name: 'parent-meetings', to: '/parent/meetings', label: 'Meeting Requests', icon: VideoCameraIcon }
 ]
 
-function confirmLogout() {
+async function confirmLogout() {
+  await adminApi.logout()
   localStorage.removeItem('user')
+  localStorage.removeItem('token')
   logoutOpen.value = false
   emit('close')
   router.push('/login')

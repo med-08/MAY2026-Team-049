@@ -14,6 +14,14 @@ class Admin(db.Model):
     role_id = db.Column(db.Integer, db.ForeignKey('roles.role_id'), nullable=False)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    # --- ADDED for Admin Dashboard ---
+    # The original schema had no way to display an admin's display name or
+    # email, both of which the AdminProfile.vue frontend requires. Added as
+    # nullable/defaulted columns so this is a purely additive,
+    # backward-compatible change to the existing schema.
+    admin_name = db.Column(db.String(100), nullable=False, default='Admin User')
+    email = db.Column(db.String(100), unique=True, nullable=True)
+    # --- END ADDED ---
     registered_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login_at = db.Column(db.DateTime)
 
@@ -25,6 +33,13 @@ class Tutor(db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False)
     phone_no = db.Column(db.String(15))
     experience_years = db.Column(db.Integer)
+    bio = db.Column(db.Text, nullable=True)
+    subjects_json = db.Column(db.Text, nullable=True)
+    education = db.Column(db.String(150), nullable=True)
+    hourly_rate = db.Column(db.String(50), nullable=True)
+    availability = db.Column(db.String(100), nullable=True)
+    languages_json = db.Column(db.Text, nullable=True)
+    certificates_json = db.Column(db.Text, nullable=True)
     password_hash = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(20), default='Pending', nullable=False)
     registered_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -112,7 +127,7 @@ class AssignmentSubmission(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('student.student_id'), nullable=False)
     submission_date = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(20), default='Pending') # Pending, In Progress, Submitted, Completed, Late
-    # progress_percentage = db.Column(db.Integer, default=0)
+    progress_percentage = db.Column(db.Integer, default=0)
     # current_complexity = db.Column(db.String(20), default='Medium') # Easy, Medium, Hard, Advanced
     # consecutive_correct = db.Column(db.Integer, default=0)
     # total_correct = db.Column(db.Integer, default=0)
@@ -261,10 +276,32 @@ class FAQ(db.Model):
 class Notification(db.Model):
     __tablename__ = 'notification'
     notification_id = db.Column(db.Integer, primary_key=True)
-    recipient_type = db.Column(db.String(20), nullable=False) # Parent, Student
+    recipient_type = db.Column(db.String(20), nullable=False) # Parent, Student, Tutor
     recipient_id = db.Column(db.Integer, nullable=False)
     title = db.Column(db.String(150), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    notification_type = db.Column(db.String(30)) # Session Update, Reminder, Weekly Summary
+    notification_type = db.Column(db.String(30)) # Session Update, Reminder, Weekly Summary, Doubt
     is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Doubt(db.Model):
+    __tablename__ = 'doubt'
+    doubt_id = db.Column(db.Integer, primary_key=True)
+    tutor_id = db.Column(db.Integer, db.ForeignKey('tutor.tutor_id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.student_id'), nullable=False)
+    subject = db.Column(db.String(50))
+    question = db.Column(db.Text, nullable=False)
+    answer = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), default='Open', nullable=False) # Open, Answered
+    asked_at = db.Column(db.DateTime, default=datetime.utcnow)
+    replied_at = db.Column(db.DateTime, nullable=True)
+
+class AttendanceRecord(db.Model):
+    __tablename__ = 'attendance_record'
+    attendance_id = db.Column(db.Integer, primary_key=True)
+    tutor_id = db.Column(db.Integer, db.ForeignKey('tutor.tutor_id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('session.session_id'), nullable=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.student_id'), nullable=False)
+    status = db.Column(db.String(20), default='Present', nullable=False) # Present, Absent, Late
+    date = db.Column(db.Date, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

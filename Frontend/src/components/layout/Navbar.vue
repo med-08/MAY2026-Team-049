@@ -1,17 +1,33 @@
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { Bars3Icon, MagnifyingGlassIcon, SunIcon, MoonIcon } from '@heroicons/vue/24/outline'
+import { useRoute, useRouter } from 'vue-router'
+import { Bars3Icon, MagnifyingGlassIcon, SunIcon, MoonIcon, ArrowRightOnRectangleIcon } from '@heroicons/vue/24/outline'
 import { useTheme } from '../../composables/useTheme'
 import { globalSearch } from '../../composables/useSearch'
+import { adminApi } from '../../services/adminApi'
 
 const emit = defineEmits(['open-sidebar'])
 const route = useRoute()
+const router = useRouter()
 const { isDark, toggleTheme } = useTheme()
 
 const pageTitle = computed(() => route.meta?.title || 'Dashboard')
 const searchablePages = ['students', 'tutors', 'parents', 'pending-approvals']
 const searchEnabled = computed(() => searchablePages.includes(route.name))
+
+async function logout() {
+  try {
+    await adminApi.logout()
+  } catch {
+    // Even if the network call fails, still clear local state and
+    // redirect -- the user's intent to log out should always succeed
+    // from their point of view.
+  } finally {
+    localStorage.removeItem('user')
+    localStorage.removeItem('token')
+    router.push('/login')
+  }
+}
 </script>
 
 <template>
@@ -48,6 +64,14 @@ const searchEnabled = computed(() => searchablePages.includes(route.name))
         >
           <SunIcon v-if="isDark" class="w-5 h-5" />
           <MoonIcon v-else class="w-5 h-5" />
+        </button>
+        <button
+          class="w-9 h-9 rounded-lg flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 hover:bg-rose-100 hover:text-rose-600 dark:hover:bg-rose-900/30 dark:hover:text-rose-400 transition-colors"
+          @click="logout"
+          aria-label="Log out"
+          title="Log out"
+        >
+          <ArrowRightOnRectangleIcon class="w-5 h-5" />
         </button>
         <router-link to="/admin/profile" class="flex items-center gap-2.5">
           <div class="w-9 h-9 rounded-full bg-gradient-to-br from-brand-green-500 via-brand-blue-500 to-brand-purple-500 flex items-center justify-center text-white text-sm font-semibold shadow-soft">
