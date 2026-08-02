@@ -97,13 +97,14 @@ cd MAY2026-Team-049
 
 ## Backend Setup
 
-### Create Virtual Environment
+### Create Virtual Environment and Enter inside backend folder
 
 ### Windows
 
 ```bash
 python -m venv venv
 venv\Scripts\activate
+cd Backend
 ```
 
 ### macOS / Linux
@@ -111,6 +112,7 @@ venv\Scripts\activate
 ```bash
 python3 -m venv venv
 source venv/bin/activate
+cd Backend
 ```
 
 ### Install Dependencies
@@ -154,7 +156,6 @@ cd Frontend
 
 npm install
 
-cp .env.example .env.local
 ```
 
 Update
@@ -183,7 +184,7 @@ http://localhost:5173
 
 | Role | Username | Password |
 |------|----------|----------|
-| Admin | admin | admin123 |
+| Admin | admin@Learnathome.com | admin123 |
 | Tutor | tutor@example.com | tutor123 |
 | Student | student@example.com | student123 |
 | Parent | parent@example.com | parent123 |
