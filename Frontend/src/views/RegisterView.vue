@@ -86,7 +86,7 @@ const register = async () => {
 
 <template>
 
-<div class="min-h-screen bg-gradient-to-br from-emerald-100 via-white to-blue-100">
+<div class="min-h-screen bg-gradient-to-br from-emerald-100 via-white to-blue-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-colors duration-300">
 
 
   <AuthNavbar />
@@ -95,7 +95,7 @@ const register = async () => {
   <div class="flex items-center justify-center p-6">
 
 
-    <div class="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-8 animate-card">
+    <div class="w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl shadow-2xl dark:shadow-slate-900/50 p-8 animate-card">
 
 
       <div class="text-center">
@@ -105,12 +105,12 @@ const register = async () => {
         </div>
 
 
-        <h1 class="text-3xl font-bold text-slate-800">
+        <h1 class="text-3xl font-bold text-slate-800 dark:text-white">
           Create Account
         </h1>
 
 
-        <p class="text-slate-500 mt-2">
+        <p class="text-slate-500 dark:text-slate-400 mt-2">
           Join LearnAtHome and begin your learning journey.
         </p>
 
@@ -124,7 +124,7 @@ const register = async () => {
       <div class="mt-8">
 
 
-        <label class="font-semibold text-slate-700">
+        <label class="font-semibold text-slate-700 dark:text-slate-300">
           Register As
         </label>
 
@@ -140,7 +140,7 @@ const register = async () => {
             :class="
             selectedRole === r.value
             ? 'bg-emerald-500 text-white'
-            : 'bg-slate-100 text-slate-700'
+            : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
             "
             class="rounded-xl p-4 transition duration-300 hover:scale-105"
           >
@@ -175,7 +175,7 @@ const register = async () => {
 
         <div>
 
-          <label class="font-medium text-slate-700">
+          <label class="font-medium text-slate-700 dark:text-slate-300">
             Full Name
           </label>
 
@@ -184,7 +184,20 @@ const register = async () => {
             v-model="form.fullName"
             type="text"
             placeholder="Enter your full name"
-            class="w-full mt-2 rounded-xl border border-slate-300 p-3"
+            class="
+            w-full mt-2
+            rounded-xl
+            border border-slate-300 dark:border-slate-600
+            bg-white dark:bg-slate-700
+            text-slate-800 dark:text-white
+            placeholder:text-slate-400 dark:placeholder:text-slate-500
+            p-3
+            focus:outline-none
+            focus:border-emerald-500 dark:focus:border-emerald-400
+            focus:ring-4
+            focus:ring-emerald-100 dark:focus:ring-emerald-900
+            transition-colors duration-300
+            "
           />
 
         </div>
@@ -193,7 +206,7 @@ const register = async () => {
 
         <div>
 
-          <label class="font-medium text-slate-700">
+          <label class="font-medium text-slate-700 dark:text-slate-300">
             Email Address
           </label>
 
@@ -202,7 +215,20 @@ const register = async () => {
             v-model="form.email"
             type="email"
             placeholder="Enter your email"
-            class="w-full mt-2 rounded-xl border border-slate-300 p-3"
+            class="
+            w-full mt-2
+            rounded-xl
+            border border-slate-300 dark:border-slate-600
+            bg-white dark:bg-slate-700
+            text-slate-800 dark:text-white
+            placeholder:text-slate-400 dark:placeholder:text-slate-500
+            p-3
+            focus:outline-none
+            focus:border-emerald-500 dark:focus:border-emerald-400
+            focus:ring-4
+            focus:ring-emerald-100 dark:focus:ring-emerald-900
+            transition-colors duration-300
+            "
           />
 
         </div>
@@ -212,7 +238,7 @@ const register = async () => {
 
         <div>
 
-          <label class="font-medium text-slate-700">
+          <label class="font-medium text-slate-700 dark:text-slate-300">
             Password
           </label>
 
@@ -221,7 +247,20 @@ const register = async () => {
             v-model="form.password"
             type="password"
             placeholder="Create password"
-            class="w-full mt-2 rounded-xl border border-slate-300 p-3"
+            class="
+            w-full mt-2
+            rounded-xl
+            border border-slate-300 dark:border-slate-600
+            bg-white dark:bg-slate-700
+            text-slate-800 dark:text-white
+            placeholder:text-slate-400 dark:placeholder:text-slate-500
+            p-3
+            focus:outline-none
+            focus:border-emerald-500 dark:focus:border-emerald-400
+            focus:ring-4
+            focus:ring-emerald-100 dark:focus:ring-emerald-900
+            transition-colors duration-300
+            "
           />
 
         </div>
@@ -231,7 +270,7 @@ const register = async () => {
 
         <div>
 
-          <label class="font-medium text-slate-700">
+          <label class="font-medium text-slate-700 dark:text-slate-300">
             Confirm Password
           </label>
 
@@ -240,7 +279,20 @@ const register = async () => {
             v-model="form.confirmPassword"
             type="password"
             placeholder="Confirm password"
-            class="w-full mt-2 rounded-xl border border-slate-300 p-3"
+            class="
+            w-full mt-2
+            rounded-xl
+            border border-slate-300 dark:border-slate-600
+            bg-white dark:bg-slate-700
+            text-slate-800 dark:text-white
+            placeholder:text-slate-400 dark:placeholder:text-slate-500
+            p-3
+            focus:outline-none
+            focus:border-emerald-500 dark:focus:border-emerald-400
+            focus:ring-4
+            focus:ring-emerald-100 dark:focus:ring-emerald-900
+            transition-colors duration-300
+            "
           />
 
         </div>
@@ -250,7 +302,20 @@ const register = async () => {
 
         <button
           type="submit"
-          class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-blue-500 text-white font-semibold hover:scale-105 transition"
+          class="
+          w-full 
+          py-3 
+          rounded-xl
+          bg-gradient-to-r 
+          from-emerald-500 
+          to-blue-500
+          dark:from-emerald-600
+          dark:to-blue-600
+          text-white
+          font-semibold
+          hover:scale-105
+          transition
+          "
         >
 
           Create Account
@@ -264,14 +329,21 @@ const register = async () => {
 
 
 
-      <p class="text-center mt-6 text-slate-700">
+      <p class="text-center mt-6 text-slate-700 dark:text-slate-300">
 
         Already have an account?
 
 
         <router-link
           to="/login"
-          class="text-emerald-600 font-semibold hover:text-emerald-700"
+          class="
+          text-emerald-600 
+          dark:text-emerald-400
+          font-semibold
+          hover:text-emerald-700
+          dark:hover:text-emerald-300
+          transition-colors duration-300
+          "
         >
 
           Login
@@ -312,6 +384,9 @@ box-shadow:0 0 0 4px rgba(16,185,129,.15);
 
 }
 
+input.dark\:text-white {
+  color-scheme: dark;
+}
 
 button{
 

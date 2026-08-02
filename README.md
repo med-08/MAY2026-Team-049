@@ -1,271 +1,324 @@
 # 📚 LearnAtHome
 
-## Application Overview
+<div align="center">
 
-**LearnAtHome** is a modern home tuition management system designed to connect **Administrators, Tutors, Students, and Parents** through a single, user-friendly platform. The application provides dedicated dashboards for each user role, enabling efficient management of educational activities, communication, and learning progress.
+# A Modern Home Tuition Management Platform
 
-The frontend is built using **Vue.js** and is fully responsive, offering a clean interface with support for both **Light** and **Dark** themes.
+LearnAtHome is a full-stack web application that simplifies home tuition management by bringing **Students, Tutors, Parents, and Administrators** together on a single platform. It streamlines scheduling, progress tracking, communication, assessments, and resource management through dedicated role-based dashboards.
+
+![Vue](https://img.shields.io/badge/Vue.js-3-42b883?logo=vue.js)
+![Flask](https://img.shields.io/badge/Flask-Backend-black?logo=flask)
+![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
+![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?logo=sqlite)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-Styled-38BDF8?logo=tailwindcss)
+
+</div>
 
 ---
 
-# 👥 User Roles & Dashboards
-
-The application provides **four dedicated dashboards**, each designed to meet the requirements of a specific user role.
+# ✨ Features
 
 ## 👨‍💼 Admin Dashboard
-
-The Admin Dashboard enables administrators to manage the entire platform efficiently.
-
-### Features
-
-* Dashboard overview
-* Student management
-* Tutor management
-* Parent management
-* User search
-* User filtering
-* Block/Unblock users
-* Delete users
-* Analytics dashboard
-* Responsive sidebar
-* Light/Dark mode support
-* Admin profile
+- Dashboard analytics
+- Student, Tutor & Parent management
+- User search and filtering
+- Block / Unblock users
+- Delete users
+- Approve new registrations
+- Profile management
+- Responsive UI
+- Light & Dark mode
 
 ---
 
 ## 👨‍🏫 Tutor Dashboard
-
-The Tutor Dashboard helps tutors manage their teaching activities and student interactions.
-
-### Features
-
-* Dashboard overview
-* View assigned students
-* Manage upcoming sessions
-* Track student progress
-* Upload Study materials
-* Notifications
-* Profile management
-* Responsive design
-* Light/Dark mode support
+- Manage assigned students
+- Schedule sessions
+- Upload study materials
+- Track student progress
+- Notifications
+- Profile management
+- Responsive UI
+- Light & Dark mode
 
 ---
 
 ## 🎓 Student Dashboard
-
-The Student Dashboard provides students with all the tools required for their learning journey.
-
-### Features
-
-* Dashboard overview
-* View upcoming classes
-* View today's tasks
-* Weekly quizzes
-* Quiz results
-* Learning progress
-* Study materials
-* Personalized study tips
-* Session booking
-* Notifications
-* FAQ section
-* Profile management
-* Responsive design
-* Light/Dark mode support
+- Upcoming classes
+- Weekly quizzes
+- Quiz results
+- Learning progress
+- Study materials
+- Session booking
+- Personalized study tips
+- Notifications
+- FAQ section
+- Responsive UI
+- Light & Dark mode
 
 ---
 
 ## 👨‍👩‍👧 Parent Dashboard
-
-The Parent Dashboard allows parents to monitor their child's academic activities and tuition progress.
-
-### Features
-
-* Dashboard overview
-* View child's progress
-* Monitor upcoming sessions
-* View attendance
-* Track quiz performance
-* Notifications
-* Profile management
-* Responsive design
-* Light/Dark mode support
+- Child progress tracking
+- Attendance monitoring
+- Upcoming sessions
+- Quiz performance
+- Weekly summaries
+- Notifications
+- Profile management
+- Responsive UI
+- Light & Dark mode
 
 ---
 
-# 🛠️ Technologies Used
+# 🛠 Tech Stack
 
-* Vue.js
-* Vue Router
-* Tailwind CSS
-* Chart.js
-* Heroicons
-* Vite
+| Category | Technologies |
+|-----------|--------------|
+| Frontend | Vue.js 3, Vue Router, Tailwind CSS, Vite |
+| Backend | Flask, Python |
+| Database | SQLite |
+| Charts | Chart.js |
+| Icons | Heroicons |
+| Testing | Pytest |
 
 ---
 
-# 🚀 Installation & Run Instructions
+# 🚀 Quick Start
 
-## Step 1: Download the Project
+## Clone Repository
 
-Download and extract the project ZIP file.
+```bash
+git clone https://github.com/med-08/MAY2026-Team-049.git
+cd MAY2026-Team-049
+```
 
-## Step 2: Open the Frontend Folder
+---
 
-Navigate into the extracted project directory and open the **Frontend** folder.
+## Backend Setup
+
+### Create Virtual Environment and Enter inside backend folder
+
+### Windows
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+cd Backend
+```
+
+### macOS / Linux
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+cd Backend
+```
+
+### Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### Seed Database
+
+```bash
+python seed.py
+```
+
+This creates:
+
+- `learnathome.db`
+- Demo users
+- Roles
+- Subjects
+- FAQs
+
+### Run Backend
+
+```bash
+python app.py
+```
+
+Backend runs at
+
+```
+http://localhost:5000
+```
+
+---
+
+## Frontend Setup
 
 ```bash
 cd Frontend
-```
 
-## Step 3: Install Dependencies
-
-```bash
 npm install
+
 ```
 
-## Step 4: Start the Development Server
+Update
+
+```
+VITE_API_BASE_URL
+```
+
+if required.
+
+Run
 
 ```bash
 npm run dev
 ```
 
-The application will start on the local development server. Open the URL displayed in the terminal (typically `http://localhost:5173`) in your browser.
+Frontend runs at
 
----
-
-# 📦 Build for Production
-
-To create a production build:
-
-```bash
-npm run build
+```
+http://localhost:5173
 ```
 
 ---
 
-# 📌 Notes
+# 🔐 Demo Accounts
 
-* This repository contains the **frontend implementation** of the LearnAtHome application.
-* The application includes four separate dashboards for **Admin**, **Tutor**, **Student**, and **Parent** users.
-* Each dashboard is designed with role-specific functionality and a responsive user interface.
+| Role | Username | Password |
+|------|----------|----------|
+| Admin | admin@Learnathome.com | admin123 |
+| Tutor | tutor@example.com | tutor123 |
+| Student | student@example.com | student123 |
+| Parent | parent@example.com | parent123 |
+
+> Select the appropriate role on the login page after entering the credentials.
 
 ---
 
-# 🔧 Admin Dashboard: Backend Integration Notes
+# 🧪 Running Tests
 
-This section documents the Admin Dashboard's backend implementation and
-its integration with the project's real login/session system.
-
-## Run the backend
+Run the backend test suite:
 
 ```bash
 cd Backend
-pip install -r requirements.txt
-python seed.py     # creates learnathome.db and seeds roles/subjects/FAQs/demo users
-python app.py       # starts the API on http://localhost:5000
-```
 
-Seeded demo accounts (from `seed.py`):
-
-| Role   | Identifier                | Password    |
-|--------|----------------------------|-------------|
-| Admin  | `admin`                    | `admin123`  |
-| Tutor  | `tutor@example.com`         | `tutor123`  |
-| Parent | `parent@example.com`        | `parent123` |
-| Student| `student@example.com`        | `student123`|
-
-Run the backend test suite (64 tests, in-memory DB, never touches the
-real `learnathome.db`):
-```bash
-cd Backend
 python -m pytest tests/ test_db.py -v
 ```
 
-## Run the frontend
+✔ 64 automated tests
 
-```bash
-cd Frontend
-npm install
-cp .env.example .env.local   # adjust VITE_API_BASE_URL if the backend runs elsewhere
-npm run dev
+✔ Uses an in-memory database
+
+✔ Never modifies `learnathome.db`
+
+---
+
+# 📖 API Documentation
+
+OpenAPI Specification:
+
+```
+Backend/api_docs.yaml
 ```
 
-Log in at `/login` with the seeded Admin account above (select the
-"Admin" role tile). You'll land on `/admin` with the real dashboard.
+---
 
-## What's in the Admin Dashboard API
+# 📂 Project Structure
 
-`Backend/admin/routes.py`, mounted at `/admin/*`, gated by the existing
-`@admin_required` session decorator (`Backend/decorators.py`):
+```
+LearnAtHome
+│
+├── Backend
+│   ├── admin
+│   ├── auth
+│   ├── models
+│   ├── routes
+│   ├── tests
+│   ├── app.py
+│   ├── seed.py
+│   ├── api_docs.yaml
+│   └── requirements.txt
+│
+├── Frontend
+│   ├── src
+│   │   ├── components
+│   │   ├── views
+│   │   ├── services
+│   │   ├── router
+│   │   └── assets
+│   ├── public
+│   └── package.json
+│
+└── README.md
+```
 
-- `GET /admin/dashboard/stats`, `/admin/dashboard/analytics/*` — overview + charts
-- `GET/PATCH/DELETE /admin/students*` — list/search/sort/filter, block/unblock, delete
-- `GET/PATCH/DELETE /admin/parents*` — same, plus linked children
-- `GET/PATCH/DELETE /admin/tutors*` — list (+ bonus block/delete, schema parity)
-- `GET/PATCH /admin/approvals*` — review, approve, reject pending sign-ups
-- `GET/PUT /admin/profile/me`, `PUT /admin/profile/me/password` — the logged-in admin's own profile
+---
 
-Full request/response spec: `Backend/api_docs.yaml` (OpenAPI 3.0).
-Test suite: `Backend/tests/` (pytest; includes `test_auth_gate.py` proving
-every route is actually protected).
+# 🔒 Authentication
 
-On the frontend, every view under `Frontend/src/views/admin/*.vue` fetches
-real data via `Frontend/src/services/adminApi.js` instead of the old
-`Frontend/src/data/mockData.js` (no longer imported anywhere).
+- Session-based authentication
+- Role-based access control
+- Protected Admin APIs
+- Secure login & logout
+- Credentials automatically included with API requests
 
-## Auth integration
+---
 
-The Admin Dashboard is plugged into the project's real login/session
-system:
+# 🌟 Highlights
 
-- All `/admin/*` routes require an authenticated session with
-  `role == 'Admin'`. Unauthenticated calls get `401`; a logged-in
-  non-admin gets `403`.
-- Admin Profile endpoints use `/admin/profile/me` (reads identity from the
-  session) rather than a client-supplied `/admin/profile/<id>`, avoiding
-  an IDOR risk.
-- `Frontend/src/services/apiClient.js` sends `credentials: 'include'` on
-  every request so the Flask session cookie set by `POST /login` is
-  attached automatically; CORS in `Backend/app.py` already allows
-  credentialed requests from `http://localhost:5173`.
-- `Frontend/src/views/LoginView.vue` now calls the shared
-  `adminApi.login()` helper (configurable base URL) instead of a
-  hardcoded `http://127.0.0.1:5000` fetch, and no longer silently
-  navigates to a dashboard on a network error (that fallback bypassed
-  auth entirely).
-- Added a working logout button to the admin `Navbar.vue`, wired to the
-  real `POST /logout`.
+- Four dedicated dashboards
+- Role-based authorization
+- Responsive design
+- Light & Dark theme
+- RESTful API architecture
+- Real backend integration
+- Search & filtering
+- Analytics dashboard
+- Comprehensive test suite
+- OpenAPI documentation
 
-## Schema changes (flagged, additive only)
+---
 
-- `Admin` model gained `admin_name` and `email` columns — the original
-  schema had no way to display an admin's name/email, which
-  `AdminProfile.vue` needs. Nullable/defaulted, fully backward
-  compatible; `seed.py` sets them for the default admin.
-- `requirements.txt` now lists `Flask-Cors` and `PyJWT`, already used by
-  `app.py`/`utils.py` but previously missing from the file.
+# ⚠ Known Limitations
 
-## Known limitations / assumptions
+- Tutor management UI is currently read-only.
+- Subjects taught are derived from scheduled sessions.
+- No cascade deletion for dependent records.
+- New student/parent registrations are auto-approved.
 
-- Tutor block/delete endpoints exist on the backend (schema parity) but
-  aren't wired into `Tutors.vue`, which stays a read-only list per the
-  original UI design.
-- No `ON DELETE CASCADE` in the schema: deleting a parent nulls out
-  linked students' `parent_id` defensively, but other dependent rows
-  (e.g. `StudentSubject`, `AssignmentSubmission`) aren't cleaned up
-  automatically. Flagged as a follow-up for a future migration.
-- "Subjects taught" for a tutor is derived from their scheduled `Session`
-  rows (no direct Tutor↔Subject table exists in the schema).
-- `auth/routes.py::register` currently sets new Student/Parent accounts
-  to `status='Active'` immediately, even though the model default is
-  `'Pending'` and the Admin Dashboard has a full approve/reject flow.
-  This is pre-existing behavior, not introduced by this merge — worth
-  revisiting if new sign-ups should require admin approval.
+---
 
-## A bug found & fixed along the way
+# 🤝 Contributing
 
-Searching for a literal `_` or `%` in the Students/Parents/Tutors tables
-originally matched **every row** (a SQL `LIKE` wildcard bug), instead of
-the expected 0 results — fixed by escaping wildcards in
-`admin/helpers.py::apply_search()`. Regression tests live in
-`Backend/tests/test_students.py`.
+1. Fork the repository
+
+2. Create a feature branch
+
+```bash
+git checkout -b feature/your-feature
+```
+
+3. Commit your changes
+
+```bash
+git commit -m "Add your feature"
+```
+
+4. Push the branch
+
+```bash
+git push origin feature/your-feature
+```
+
+5. Open a Pull Request
+
+---
+
+# 💙 Built By
+
+**Team Synergy (Team-049)**
+
+Indian Institute of Technology Madras  
+BS Degree Program
+
+---
+
+## ⭐ If you found this project useful, don't forget to star the repository!

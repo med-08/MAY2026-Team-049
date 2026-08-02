@@ -7,15 +7,15 @@
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
 
       <div
-        class="absolute -top-32 -left-24 w-[420px] h-[420px] rounded-full bg-emerald-400/20 blur-[140px] animate-blob">
+        class="absolute -top-32 -left-24 w-[420px] h-[420px] rounded-full bg-emerald-400/20 dark:bg-emerald-400/10 blur-[140px] animate-blob">
       </div>
 
       <div
-        class="absolute top-32 right-0 w-[500px] h-[500px] rounded-full bg-blue-400/20 blur-[160px] animate-blob animation-delay-2">
+        class="absolute top-32 right-0 w-[500px] h-[500px] rounded-full bg-blue-400/20 dark:bg-blue-400/10 blur-[160px] animate-blob animation-delay-2">
       </div>
 
       <div
-        class="absolute bottom-0 left-1/3 w-[400px] h-[400px] rounded-full bg-purple-400/20 blur-[150px] animate-blob animation-delay-4">
+        class="absolute bottom-0 left-1/3 w-[400px] h-[400px] rounded-full bg-purple-400/20 dark:bg-purple-400/10 blur-[150px] animate-blob animation-delay-4">
       </div>
 
     </div>
@@ -56,7 +56,7 @@
             </h1>
 
             <p
-              class="text-xs text-slate-500">
+              class="text-xs text-slate-500 dark:text-slate-400">
 
               Coaching Management Platform
 
@@ -71,19 +71,19 @@
         <div
           class="hidden lg:flex items-center gap-8 text-slate-700 dark:text-slate-200 font-medium">
 
-          <a href="#about" class="hover:text-emerald-500 transition">
+          <a href="#about" class="hover:text-emerald-500 dark:hover:text-emerald-400 transition">
             About
           </a>
 
-          <a href="#features" class="hover:text-emerald-500 transition">
+          <a href="#features" class="hover:text-emerald-500 dark:hover:text-emerald-400 transition">
             Features
           </a>
 
-          <a href="#roles" class="hover:text-emerald-500 transition">
+          <a href="#roles" class="hover:text-emerald-500 dark:hover:text-emerald-400 transition">
             Roles
           </a>
 
-          <a href="#workflow" class="hover:text-emerald-500 transition">
+          <a href="#workflow" class="hover:text-emerald-500 dark:hover:text-emerald-400 transition">
             How It Works
           </a>
 
@@ -93,9 +93,19 @@
 
         <div class="flex items-center gap-4">
 
+          <!-- Dark Mode Toggle Button -->
+          <button
+            @click="toggleDarkMode"
+            class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-yellow-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors duration-300"
+            :title="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'"
+          >
+            <span v-if="!isDarkMode" class="text-xl">🌙</span>
+            <span v-else class="text-xl">☀️</span>
+          </button>
+
           <router-link
             to="/login"
-            class="hidden sm:block px-5 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800 transition">
+            class="hidden sm:block px-5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
 
             Login
 
@@ -129,7 +139,7 @@
           data-aos="fade-right">
 
           <div
-            class="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white dark:bg-slate-900 shadow-lg mb-8">
+            class="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white dark:bg-slate-900 shadow-lg mb-8 border border-slate-200 dark:border-slate-700">
 
             <span class="text-emerald-500">
               ✨
@@ -186,7 +196,7 @@
 
             <router-link
               to="/login"
-              class="px-8 py-4 rounded-2xl border bg-white dark:bg-slate-900 hover:shadow-xl transition">
+              class="px-8 py-4 rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white hover:shadow-xl dark:hover:bg-slate-800 transition">
 
               Login
 
@@ -362,7 +372,7 @@
             <!-- Card -->
 
             <div
-              class="relative h-full rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/30 p-8 shadow-xl hover:-translate-y-4 transition-all duration-500">
+              class="relative h-full rounded-3xl bg-white dark:bg-slate-900 backdrop-blur-xl border border-white/30 dark:border-slate-700/50 p-8 shadow-xl hover:-translate-y-4 transition-all duration-500">
 
               <div
                 class="w-16 h-16 rounded-2xl bg-gradient-to-r from-emerald-500 to-blue-500 flex items-center justify-center text-white shadow-lg">
@@ -443,7 +453,7 @@
             <!-- Background Circle -->
 
             <div
-              class="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-gradient-to-r opacity-10 group-hover:scale-125 transition duration-700"
+              class="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-gradient-to-r opacity-10 dark:opacity-10 group-hover:scale-125 transition duration-700"
               :class="role.color">
             </div>
 
@@ -472,9 +482,9 @@
             </p>
 
             <button
-              class="mt-8 text-emerald-600 font-semibold group-hover:translate-x-2 transition">
+              class="mt-8 text-emerald-600 dark:text-emerald-400 font-semibold group-hover:translate-x-2 transition">
 
-              Learn More →
+
 
             </button>
 
@@ -519,7 +529,7 @@
           data-aos="fade-up">
 
           <span
-            class="inline-block px-5 py-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 font-semibold">
+            class="inline-block px-5 py-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 font-semibold">
 
             How It Works
 
@@ -574,7 +584,7 @@
               </div>
 
               <h3
-                class="mt-6 text-2xl font-bold dark:text-white">
+                class="mt-6 text-2xl font-bold text-slate-900 dark:text-white">
 
                 {{ role.title }}
 
@@ -675,7 +685,7 @@
     <!-- ================= FOOTER ================= -->
 
     <footer
-      class="bg-slate-900 text-white pt-20 pb-10">
+      class="bg-slate-900 dark:bg-slate-950 text-white pt-20 pb-10">
 
       <div
         class="max-w-7xl mx-auto px-6">
@@ -716,11 +726,11 @@
 
             <ul class="space-y-4 mt-6 text-slate-400">
 
-              <li><a href="#about" class="hover:text-white">About</a></li>
+              <li><a href="#about" class="hover:text-white transition">About</a></li>
 
-              <li><a href="#features" class="hover:text-white">Features</a></li>
+              <li><a href="#features" class="hover:text-white transition">Features</a></li>
 
-              <li><a href="#workflow" class="hover:text-white">Workflow</a></li>
+              <li><a href="#workflow" class="hover:text-white transition">Workflow</a></li>
 
             </ul>
 
@@ -769,7 +779,7 @@
 
             <router-link
               to="/register"
-              class="inline-block mt-8 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-blue-500">
+              class="inline-block mt-8 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-blue-500 hover:scale-105 transition">
 
               Join Now
 
@@ -805,6 +815,8 @@ import {
 } from "@heroicons/vue/24/outline"
 
 import { ref, onMounted, onUnmounted } from "vue"
+
+const isDarkMode = ref(false)
 
 const features = [
   {
@@ -868,11 +880,20 @@ const roles = [
 
 const navbarShadow = ref(false)
 
+const toggleDarkMode = () => {
+  isDarkMode.value = !isDarkMode.value
+  document.documentElement.classList.toggle('dark', isDarkMode.value)
+  localStorage.setItem('darkMode', isDarkMode.value)
+}
+
 const onScroll = () => {
   navbarShadow.value = window.scrollY > 40
 }
 
 onMounted(() => {
+  const savedDarkMode = localStorage.getItem('darkMode') === 'true'
+  isDarkMode.value = savedDarkMode
+  document.documentElement.classList.toggle('dark', savedDarkMode)
   window.addEventListener("scroll", onScroll)
 })
 
@@ -942,6 +963,10 @@ html{
 
   box-shadow:0 8px 25px rgba(0,0,0,.08);
 
+  border:1px solid rgba(255,255,255,.5);
+
+  color:#1e293b;
+
 }
 
 .dark .glass-chip{
@@ -949,6 +974,8 @@ html{
   background:rgba(15,23,42,.75);
 
   color:white;
+
+  border:1px solid rgba(255,255,255,.1);
 
 }
 
@@ -1192,6 +1219,12 @@ background:#0f172a;
 
 }
 
+.dark ::-webkit-scrollbar-thumb{
+
+background:linear-gradient(#10b981,#3b82f6);
+
+}
+
 /* -------------------------------
    Mobile
 -------------------------------- */
@@ -1278,7 +1311,7 @@ box-shadow:0 0 0 rgba(59,130,246,.25);
 
 }
 
-section:last-of-type .rounded-\[40px\]{
+section:last-of-type .rounded-$$40px$${
 
 animation:pulseGlow 5s infinite;
 
