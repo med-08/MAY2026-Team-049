@@ -184,7 +184,7 @@ http://localhost:5173
 
 | Role | Username | Password |
 |------|----------|----------|
-| Admin | admin@example.com | admin123 |
+| Admin | admin@Learnathome.com | admin123 |
 | Tutor | tutor@example.com | tutor123 |
 | Student | student@example.com | student123 |
 | Parent | parent@example.com | parent123 |
