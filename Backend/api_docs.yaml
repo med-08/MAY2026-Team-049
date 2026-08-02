@@ -1,12 +1,10 @@
 openapi: 3.0.3
 info:
-  title: LearnAtHome - Admin Dashboard API
+  title: LearnAtHome - Platform REST API (Admin, Student, Parent, Tutor)
   description: >
-    APIs powering the Admin Dashboard module of LearnAtHome. Covers
-    platform-wide overview stats, analytics, student/tutor/parent
-    management, pending-registration approvals, and the logged-in admin's
-    own profile. All /admin/* routes require an authenticated Admin
-    session (see the Auth section below and the securitySchemes block).
+    APIs powering the LearnAtHome platform including Admin, Student, Parent,
+    and Tutor Dashboards. Covers platform overview, scheduling, attendance,
+    assignments, study materials, Q&A, doubts, earnings, and profile.
   version: "2.0.0"
 
 servers:
@@ -24,6 +22,8 @@ tags:
     description: Parent management
   - name: Tutors
     description: Tutor management
+  - name: Tutor Dashboard
+    description: Tutor Portal endpoints (Schedule, Students, Attendance, Assignments, Materials, Q&A, Doubts, Messages, Earnings, Profile)
   - name: Approvals
     description: Pending registration approvals
   - name: Profile
@@ -932,3 +932,390 @@ paths:
       responses:
         '200':
           description: Profile configurations updated successfully
+
+  /tutor/dashboard:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch overview statistics, today's schedule, activities, and leaderboard for tutor
+      responses:
+        '200':
+          description: Tutor dashboard overview data
+
+  /tutor/schedule:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch tutor schedule matrix and calendar events
+      responses:
+        '200':
+          description: Weekly schedule and calendar events
+
+  /tutor/schedule/class:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Schedule a new live class
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                subject:
+                  type: string
+                date:
+                  type: string
+                time:
+                  type: string
+                duration:
+                  type: string
+      responses:
+        '201':
+          description: Class scheduled successfully
+
+  /tutor/students:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: List all assigned students and parent contact information
+      responses:
+        '200':
+          description: List of assigned students
+
+  /tutor/students/{student_id}:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch detailed student progress drawer data
+      parameters:
+        - name: student_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Student profile and learning progress analytics
+
+  /tutor/attendance:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch attendance records and attendance analytics
+      responses:
+        '200':
+          description: Attendance records and analytics
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Submit or update student attendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                student_id:
+                  type: integer
+                session_id:
+                  type: integer
+                status:
+                  type: string
+      responses:
+        '200':
+          description: Attendance updated successfully
+
+  /tutor/session-update:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Log session update (topics covered, homework, remarks)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: integer
+                student_id:
+                  type: integer
+                topics_covered:
+                  type: string
+                homework_assigned:
+                  type: string
+      responses:
+        '201':
+          description: Session update recorded successfully
+
+  /tutor/assignments:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch list of assignments created by tutor
+      responses:
+        '200':
+          description: List of assignments
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Create a new assignment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                subject:
+                  type: string
+                due_date:
+                  type: string
+                total_marks:
+                  type: integer
+      responses:
+        '201':
+          description: Assignment created successfully
+
+  /tutor/assignments/ai-generate:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Generate AI Quiz / practice test questions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject:
+                  type: string
+                topic:
+                  type: string
+                difficulty:
+                  type: string
+                question_count:
+                  type: integer
+      responses:
+        '201':
+          description: AI Quiz generated successfully
+
+  /tutor/materials:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch study resources uploaded by tutor
+      responses:
+        '200':
+          description: List of study resources
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Upload a new study material resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                subject:
+                  type: string
+                type:
+                  type: string
+                file_url:
+                  type: string
+      responses:
+        '201':
+          description: Study resource uploaded successfully
+
+  /tutor/qa:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch shared Q&A board entries
+      responses:
+        '200':
+          description: List of Q&A board items
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Publish new Q&A entry to board
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                answer:
+                  type: string
+                subject:
+                  type: string
+      responses:
+        '201':
+          description: Q&A entry published successfully
+
+  /tutor/doubts:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch student doubts list
+      responses:
+        '200':
+          description: List of student doubts
+
+  /tutor/doubts/{doubt_id}/reply:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Reply to a student doubt
+      parameters:
+        - name: doubt_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answer:
+                  type: string
+      responses:
+        '200':
+          description: Reply recorded successfully
+
+  /tutor/messages/conversations:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch message threads and chat conversations
+      responses:
+        '200':
+          description: Conversation threads and message list
+
+  /tutor/messages/send:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Send a message to student or parent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                receiver_id:
+                  type: integer
+                content:
+                  type: string
+      responses:
+        '201':
+          description: Message sent successfully
+
+  /tutor/meetings/request:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Request a virtual 1-on-1 meeting with parent/student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                student_id:
+                  type: integer
+                requested_time:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        '201':
+          description: Meeting requested successfully
+
+  /tutor/earnings:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch tutor payout history and monthly earnings summary
+      responses:
+        '200':
+          description: Earnings summary and payout table
+
+  /tutor/profile:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch logged-in tutor profile information
+      responses:
+        '200':
+          description: Tutor profile data
+    put:
+      tags:
+        - Tutor Dashboard
+      summary: Update tutor profile information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bio:
+                  type: string
+                subjects:
+                  type: array
+                  items:
+                    type: string
+                experience_years:
+                  type: integer
+                education:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated successfully
+
+  /tutor/notifications:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch tutor notifications list
+      responses:
+        '200':
+          description: List of notifications
+
+  /tutor/notifications/{notification_id}/read:
+    patch:
+      tags:
+        - Tutor Dashboard
+      summary: Mark a notification as read
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification marked as read
+
