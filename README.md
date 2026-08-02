@@ -97,13 +97,14 @@ cd MAY2026-Team-049
 
 ## Backend Setup
 
-### Create Virtual Environment
+### Create Virtual Environment and Enter inside backend folder
 
 ### Windows
 
 ```bash
 python -m venv venv
 venv\Scripts\activate
+cd Backend
 ```
 
 ### macOS / Linux
@@ -111,6 +112,7 @@ venv\Scripts\activate
 ```bash
 python3 -m venv venv
 source venv/bin/activate
+cd Backend
 ```
 
 ### Install Dependencies
