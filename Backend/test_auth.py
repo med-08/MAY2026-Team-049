@@ -244,7 +244,7 @@ def test_register_invalid_role(client, seed_roles):
 
 def test_register_duplicate_email(client, seed_roles, seed_students):
     resp = client.post('/register', json=_valid_student_payload(email='aarav.mehta@learnmail.com'))
-    assert resp.status_code == 200 
+    assert resp.status_code == 400 
     assert 'already exists' in resp.get_json()['message'].lower()
 
 
