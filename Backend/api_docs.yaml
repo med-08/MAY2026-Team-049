@@ -207,6 +207,12 @@ paths:
     post:
       tags: [Auth]
       summary: Log in (any role) and start a session
+      description: >
+        Validates identifier + password against Admin, Tutor, Student, and
+        Parent tables (in that order). On success, clears any stale
+        session, stores user_id/username/role in the Flask session cookie,
+        updates last_login_at, and returns a signed JWT for API clients
+        that prefer bearer-token auth over the cookie.
       security: []
       requestBody:
         required: true
@@ -218,16 +224,109 @@ paths:
               properties:
                 identifier: { type: string, description: "username or email" }
                 password: { type: string }
-                remember: { type: boolean, default: false }
+                remember:
+                  type: boolean
+                  default: false
+                  description: If true, session cookie persists beyond the browser session
+            example:
+              identifier: "aarav.mehta@learnmail.com"
+              password: "Student@123"
+              remember: false
       responses:
         '200':
           description: Login successful; sets a session cookie and returns a JWT
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: "Login Successful!" }
+                  token: { type: string, description: "Signed JWT (HS256), 24h expiry" }
+                  role: { type: string, enum: [Admin, Tutor, Student, Parent] }
+                  username: { type: string, description: "Display name of the logged-in user" }
+                  redirect_url: { type: string, example: "/student" }
         '400':
           description: Missing identifier/password
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '401':
           description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Account is Pending approval or Blocked
+          description: Account is Pending approval or Blocked/Inactive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /register:
+    post:
+      tags: [Auth]
+      summary: Register a new Student or Parent account
+      description: >
+        Self-service sign-up, restricted to the Student and Parent roles
+        (Admin/Tutor accounts are provisioned separately). Validates name,
+        email format, password length/match, and email uniqueness across
+        Admin/Tutor/Student/Parent before creating the row with
+        status="Active". If the caller already has an active session, the
+        request short-circuits and returns a redirect for their existing
+        role instead of creating a new account.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, confirm_password, role]
+              properties:
+                name: { type: string, minLength: 2, description: "Full name" }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+                confirm_password: { type: string, minLength: 6 }
+                role:
+                  type: string
+                  enum: [Student, Parent]
+                  default: Student
+            example:
+              name: "New Student"
+              email: "new.student@learnmail.com"
+              password: "Passw0rd!"
+              confirm_password: "Passw0rd!"
+              role: "Student"
+      responses:
+        '200':
+          description: >
+            Registration successful, OR caller was already logged in (in
+            which case no new account is created and a redirect_url for
+            their existing role is returned instead).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: "Registration Successful! Please log in." }
+                  redirect_url:
+                    type: string
+                    nullable: true
+                    description: Only present when short-circuited by an existing session
+        '400':
+          description: >
+            Validation failed - name too short, invalid email, password
+            too short, password/confirm_password mismatch, role not in
+            [Student, Parent], or email already registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          description: Unexpected error while creating the account (rolled back)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /logout:
     post:
