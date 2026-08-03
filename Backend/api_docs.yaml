@@ -1034,6 +1034,7 @@ paths:
         '200':
           description: Profile configurations updated successfully
 
+# =========Tutor Dashboard APIs========= #
   /tutor/dashboard:
     get:
       tags:
@@ -1420,7 +1421,7 @@ paths:
         '200':
           description: Notification marked as read
 
-  # ==================== PARENT DASHBOARD ====================
+# ==================== PARENT DASHBOARD ====================
   /api/parent/health:
     get:
       tags:

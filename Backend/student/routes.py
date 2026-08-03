@@ -3,11 +3,30 @@ from datetime import datetime, timedelta, date, time
 from student import student_bp
 from database import db
 from models import (
-    Student, Tutor, Subject, StudentSubject, Session, SessionUpdate, SessionBooking,
+    Student, Parent, Tutor, Subject, StudentSubject, Session, SessionUpdate, SessionBooking,
     Quiz, QuizQuestion, QuizAttempt, Assignment, AssignmentSubmission,
     StudyTip, StudyResource, FAQ, LearningProgress, WeeklySummary
 )
 from decorators import student_required
+
+
+def student_response(data=None, message=None, status_code=200, meta=None):
+    payload = {"success": True}
+    if message is not None:
+        payload["message"] = message
+    if data is not None:
+        payload["data"] = data
+    if meta is not None:
+        payload["meta"] = meta
+    return jsonify(payload), status_code
+
+
+def student_error(message, status_code=400, errors=None):
+    payload = {"success": False, "message": message}
+    if errors is not None:
+        payload["errors"] = errors
+    return jsonify(payload), status_code
+
 
 def get_current_student():
     """First active student for API testing."""
@@ -38,7 +57,7 @@ def get_dashboard():
     """
     student_obj = get_current_student()
     if not student_obj:
-        return jsonify({"success": False, "message": "Student not found"}), 404
+        return student_error("Student not found", 404)
         
     student_id = student_obj.student_id
 
@@ -94,34 +113,23 @@ def get_dashboard():
         tutor_obj = db.session.get(Tutor, sess.tutor_id) if sess else None
         subj_obj = db.session.get(Subject, sess.subject_id) if sess else None
         update_obj = SessionUpdate.query.filter_by(session_id=sess.session_id).first() if sess else None
-        
-        topics_list = [t.strip() for t in update_obj.topics_covered.split(',')] if update_obj and update_obj.topics_covered else ["Quadratic Equations", "Factorisation Methods"]
-        
+
+        topics_list = [t.strip() for t in update_obj.topics_covered.split(',')] if update_obj and update_obj.topics_covered else []
+
         next_session_data = {
-            "session_id": sess.session_id if sess else 1,
-            "subject": subj_obj.subject_name if subj_obj else "Mathematics",
-            "tutor": tutor_obj.tutor_name if tutor_obj else "Mrs. Kavitha Iyer",
-            "type": sess.session_type if sess else "One-to-One",
-            "date": sess.session_date.strftime("%d %b %Y") if sess else "Tomorrow",
-            "time": sess.start_time.strftime("%I:%M %p") if sess else "5:00 PM",
+            "session_id": sess.session_id if sess else None,
+            "subject": subj_obj.subject_name if subj_obj else None,
+            "tutor": tutor_obj.tutor_name if tutor_obj else None,
+            "type": sess.session_type if sess else None,
+            "date": sess.session_date.strftime("%d %b %Y") if sess else None,
+            "time": sess.start_time.strftime("%I:%M %p") if sess else None,
             "duration": "60 minutes",
             "topics": topics_list,
             "status": "Upcoming",
             "preparation_guidance": "Review previous session notes and completed topic assignments at least 24 hours prior."
         }
     else:
-        next_session_data = {
-            "session_id": 1,
-            "subject": "Mathematics",
-            "tutor": "Mrs. Kavitha Iyer",
-            "type": "One-to-One",
-            "date": "Tomorrow at 5:00 PM",
-            "time": "5:00 PM",
-            "duration": "60 minutes",
-            "topics": ["Quadratic Equations", "Factorisation Methods"],
-            "status": "Upcoming",
-            "preparation_guidance": "Please review factoring quadratic equations 24 hours prior to session."
-        }
+        next_session_data = {}
 
     # 5. Today's Tasks
     todays_tasks = [
@@ -130,19 +138,21 @@ def get_dashboard():
         {"id": "tt3", "subject": "Mathematics", "task": "One-to-One Tuition Session", "time": "Today at 5:00 PM", "status": "Upcoming"}
     ]
 
-    return jsonify({
-        "success": True,
-        "student": {
-            "name": student_obj.student_name,
-            "email": student_obj.email,
-            "school": student_obj.school or "Greenfield Public School"
+    return student_response(
+        data={
+            "student": {
+                "name": student_obj.student_name,
+                "email": student_obj.email,
+                "school": student_obj.school or "Greenfield Public School"
+            },
+            "summaryStats": summary_stats,
+            "weeklyQuizProgress": weekly_quiz_progress,
+            "subjectQuizScores": subject_quiz_scores,
+            "nextSession": next_session_data,
+            "todaysTasks": todays_tasks
         },
-        "summaryStats": summary_stats,
-        "weeklyQuizProgress": weekly_quiz_progress,
-        "subjectQuizScores": subject_quiz_scores,
-        "nextSession": next_session_data,
-        "todaysTasks": todays_tasks
-    })
+        meta={"total": len(todays_tasks)}
+    )
 
 
 @student_bp.route('/progress', methods=['GET'])
@@ -176,23 +186,18 @@ def get_progress():
             "remarks": prog.tutor_remarks if prog else "Good performance."
         })
 
-    if not completed_topics:
-        completed_topics = [
-            {"session_id": 5, "subject": "Mathematics", "date": "11 Jul 2026", "topics": "Linear Equations, Word Problems", "status": "Completed", "pace": "Average", "remarks": "Strong problem-solving skills shown."},
-            {"session_id": 6, "subject": "Science", "date": "10 Jul 2026", "topics": "Newton's Laws of Motion", "status": "Completed", "pace": "Fast", "remarks": "Excellent conceptual clarity."},
-            {"session_id": 7, "subject": "English", "date": "09 Jul 2026", "topics": "Active & Passive Voice", "status": "Completed", "pace": "Average", "remarks": "Improve sentence structure."}
-        ]
-
-    return jsonify({
-        "success": True,
-        "growthMetrics": {
-            "total_topics_mastered": len(completed_topics) + 12,
-            "overall_accuracy": "84%",
-            "learning_pace": "Fast",
-            "improvement_rate": "+15% over last month"
+    return student_response(
+        data={
+            "growthMetrics": {
+                "total_topics_mastered": len(completed_topics) + 12,
+                "overall_accuracy": "84%",
+                "learning_pace": "Fast",
+                "improvement_rate": "+15% over last month"
+            },
+            "completedTopics": completed_topics
         },
-        "completedTopics": completed_topics
-    })
+        meta={"total": len(completed_topics)}
+    )
 
 
 # ==================== FEATURE 2: FAQ SECTION ====================
@@ -223,14 +228,7 @@ def get_faqs():
             "category": f.category or "General"
         })
 
-    # Default fallback list if database table has minimal entries
-    if not faq_list and not query_str:
-        faq_list = [
-            {"id": "f1", "q": "How do I book a tuition session?", "a": "Go to Session Booking, choose Regular or One-to-One, and tap Book Slot on any available slot.", "category": "Booking"},
-            {"id": "f2", "q": "How do I reschedule a booked session?", "a": "On Session Booking, open your booked slot and tap Reschedule — this is available when another slot is open.", "category": "Booking"}
-        ]
-
-    return jsonify({"success": True, "faqs": faq_list})
+    return student_response(data={"faqs": faq_list}, meta={"total": len(faq_list)})
 
 
 # ==================== FEATURE 4: WEEKLY QUIZZES ====================
@@ -258,15 +256,7 @@ def get_quizzes():
             "score": round(attempt.score) if attempt and attempt.score is not None else None
         })
 
-    # Default quizzes if DB is empty
-    if not result:
-        result = [
-            {"quiz_id": 1, "subject": "Mathematics", "title": "Algebra and Linear Equations", "weekNumber": 5, "lastAttempt": "12 Jul 2026", "score": 88},
-            {"quiz_id": 2, "subject": "Science", "title": "Human Digestive System & Forces", "weekNumber": 5, "lastAttempt": "10 Jul 2026", "score": 81},
-            {"quiz_id": 3, "subject": "English", "title": "Grammar and Reading Comprehension", "weekNumber": 5, "lastAttempt": None, "score": None}
-        ]
-
-    return jsonify({"success": True, "quizzes": result})
+    return student_response(data={"quizzes": result}, meta={"total": len(result)})
 
 
 @student_bp.route('/quizzes/<int:quiz_id>', methods=['GET'])
@@ -320,16 +310,18 @@ def get_quiz_details(quiz_id):
     subj_obj = db.session.get(Subject, quiz_obj.subject_id) if quiz_obj and quiz_obj.subject_id else None
     subject_name = subj_obj.subject_name if subj_obj else "Mathematics"
 
-    return jsonify({
-        "success": True,
-        "quiz": {
-            "quiz_id": quiz_id,
-            "title": quiz_title,
-            "subject": subject_name,
-            "weekNumber": quiz_obj.week_number if quiz_obj else 5
+    return student_response(
+        data={
+            "quiz": {
+                "quiz_id": quiz_id,
+                "title": quiz_title,
+                "subject": subject_name,
+                "weekNumber": quiz_obj.week_number if quiz_obj else 5
+            },
+            "questions": formatted_questions
         },
-        "questions": formatted_questions
-    })
+        meta={"total": len(formatted_questions)}
+    )
 
 
 @student_bp.route('/quizzes/<int:quiz_id>/submit', methods=['POST'])
@@ -384,15 +376,17 @@ def submit_quiz(quiz_id):
 
     db.session.commit()
 
-    return jsonify({
-        "success": True,
-        "quiz_id": quiz_id,
-        "score": score_pct,
-        "correctCount": correct_count,
-        "totalQuestions": total_questions,
-        "message": f"Quiz submitted successfully! You scored {score_pct}%.",
-        "weakAreasIdentified": weak_topics if weak_topics else ["None! Excellent performance."]
-    })
+    return student_response(
+        data={
+            "quiz_id": quiz_id,
+            "score": score_pct,
+            "correctCount": correct_count,
+            "totalQuestions": total_questions,
+            "weakAreasIdentified": weak_topics if weak_topics else ["None! Excellent performance."]
+        },
+        message=f"Quiz submitted successfully! You scored {score_pct}%.",
+        meta={"total": total_questions}
+    )
 
 
 # ==================== FEATURE 5 & 6: SESSION BOOKING & ONE-TO-ONE ====================
@@ -436,25 +430,15 @@ def get_booking_slots():
         else:
             regular_slots.append(slot_item)
 
-    if not regular_slots and not one_to_one_slots:
-        regular_slots = [
-            {"id": "b1", "session_id": 101, "date": "17 Jul 2026", "time": "4:00 PM", "tutor": "Mrs. Kavitha Iyer", "subject": "Science", "seats": 3, "booked": False, "type": "Regular"},
-            {"id": "b2", "session_id": 102, "date": "17 Jul 2026", "time": "5:30 PM", "tutor": "Mrs. Kavitha Iyer", "subject": "English", "seats": 0, "booked": True, "type": "Regular"},
-            {"id": "b4", "session_id": 104, "date": "20 Jul 2026", "time": "6:00 PM", "tutor": "Mrs. Kavitha Iyer", "subject": "Mathematics", "seats": 2, "booked": False, "type": "Regular"}
-        ]
-        one_to_one_slots = [
-            {"id": "b5", "session_id": 105, "date": "18 Jul 2026", "time": "5:00 PM", "tutor": "Mrs. Kavitha Iyer", "subject": "Mathematics", "seats": 1, "booked": False, "type": "One-to-One"},
-            {"id": "b6", "session_id": 106, "date": "19 Jul 2026", "time": "6:00 PM", "tutor": "Mrs. Kavitha Iyer", "subject": "Science", "seats": 0, "booked": True, "type": "One-to-One"},
-            {"id": "b7", "session_id": 107, "date": "21 Jul 2026", "time": "5:00 PM", "tutor": "Mrs. Kavitha Iyer", "subject": "English", "seats": 1, "booked": False, "type": "One-to-One"}
-        ]
-
-    return jsonify({
-        "success": True,
-        "bookingSlots": {
-            "regular": regular_slots,
-            "oneToOne": one_to_one_slots
-        }
-    })
+    return student_response(
+        data={
+            "bookingSlots": {
+                "regular": regular_slots,
+                "oneToOne": one_to_one_slots
+            }
+        },
+        meta={"total": len(regular_slots) + len(one_to_one_slots)}
+    )
 
 
 @student_bp.route('/book-session', methods=['POST'])
@@ -463,7 +447,7 @@ def book_session():
     """Books a session slot for the logged-in student."""
     student_obj = get_current_student()
     if not student_obj:
-        return jsonify({"success": False, "message": "Student session is invalid. Please log in again."}), 401
+        return student_error("Student session is invalid. Please log in again.", 401)
 
     student_id = student_obj.student_id
 
@@ -478,30 +462,29 @@ def book_session():
             session_id = None
 
     if session_id is None:
-        return jsonify({"success": False, "message": "A valid session_id is required to book a session."}), 400
+        return student_error("A valid session_id is required to book a session.", 400)
 
     if isinstance(session_id, str) and not session_id.strip().isdigit():
-        return jsonify({"success": False, "message": "A valid session_id is required to book a session."}), 400
+        return student_error("A valid session_id is required to book a session.", 400)
 
     session_id = int(session_id)
 
     sess = db.session.get(Session, session_id)
     if not sess:
-        return jsonify({"success": False, "message": f"Session {session_id} not found."}), 404
+        return student_error(f"Session {session_id} not found.", 404)
 
     existing = SessionBooking.query.filter_by(session_id=session_id, student_id=student_id).first()
     if existing:
-        return jsonify({"success": True, "message": "Session is already booked by you."})
+        return student_response(message="Session is already booked by you.", data={"booked_session_id": session_id})
 
     booking = SessionBooking(session_id=session_id, student_id=student_id, booking_status='Confirmed')
     db.session.add(booking)
     db.session.commit()
 
-    return jsonify({
-        "success": True,
-        "message": "Tuition session booked successfully!",
-        "booked_session_id": session_id
-    })
+    return student_response(
+        message="Tuition session booked successfully!",
+        data={"booked_session_id": session_id}
+    )
 
 
 @student_bp.route('/reschedule-session', methods=['POST'])
@@ -526,10 +509,7 @@ def reschedule_session():
 
     db.session.commit()
 
-    return jsonify({
-        "success": True,
-        "message": "Session rescheduled successfully!"
-    })
+    return student_response(message="Session rescheduled successfully!")
 
 
 # ==================== FEATURE 7: UPCOMING SESSIONS (24H NOTICE) ====================
@@ -572,19 +552,10 @@ def get_sessions():
         else:
             upcoming.append(item)
 
-    if not upcoming and not completed:
-        upcoming = [
-            {"id": "s1", "subject": "Mathematics", "tutor": "Mrs. Kavitha Iyer", "type": "One-to-One", "date": "14 Jul 2026", "time": "5:00 PM", "duration": "60 min", "status": "Upcoming"},
-            {"id": "s2", "subject": "Science", "tutor": "Mrs. Kavitha Iyer", "type": "Regular", "date": "15 Jul 2026", "time": "4:00 PM", "duration": "45 min", "status": "Upcoming"},
-            {"id": "s3", "subject": "English", "tutor": "Mrs. Kavitha Iyer", "type": "Regular", "date": "16 Jul 2026", "time": "5:30 PM", "duration": "45 min", "status": "Upcoming"}
-        ]
-        completed = [
-            {"id": "s5", "subject": "Mathematics", "tutor": "Mrs. Kavitha Iyer", "type": "One-to-One", "date": "11 Jul 2026", "time": "5:00 PM", "duration": "60 min", "topics": "Linear Equations, Word Problems", "status": "Completed"},
-            {"id": "s6", "subject": "Science", "tutor": "Mrs. Kavitha Iyer", "type": "Regular", "date": "10 Jul 2026", "time": "4:00 PM", "duration": "45 min", "topics": "Newton's Laws of Motion", "status": "Completed"},
-            {"id": "s7", "subject": "English", "tutor": "Mrs. Kavitha Iyer", "type": "Regular", "date": "09 Jul 2026", "time": "5:30 PM", "duration": "45 min", "topics": "Active & Passive Voice", "status": "Completed"}
-        ]
-
-    return jsonify({"success": True, "sessions": {"upcoming": upcoming, "completed": completed}})
+    return student_response(
+        data={"sessions": {"upcoming": upcoming, "completed": completed}},
+        meta={"total": len(upcoming) + len(completed)}
+    )
 
 
 @student_bp.route('/upcoming-sessions', methods=['GET'])
@@ -624,21 +595,7 @@ def get_upcoming_sessions_24h():
             "prep_advice": "Ensure all prerequisite worksheets are completed 24 hours in advance."
         })
 
-    if not upcoming_list:
-        upcoming_list = [{
-            "session_id": 1,
-            "subject": "Mathematics",
-            "tutor": "Mrs. Kavitha Iyer",
-            "type": "One-to-One",
-            "date": "Today, 14 Jul 2026",
-            "time": "5:00 PM",
-            "duration": "60 min",
-            "preparation_topics": "Quadratic Equations, Factorisation Methods",
-            "available_24h_notice": True,
-            "prep_advice": "Ensure all prerequisite worksheets are completed 24 hours in advance."
-        }]
-
-    return jsonify({"success": True, "upcoming_sessions": upcoming_list})
+    return student_response(data={"upcoming_sessions": upcoming_list}, meta={"total": len(upcoming_list)})
 
 
 @student_bp.route('/next-session', methods=['GET'])
@@ -648,7 +605,7 @@ def get_next_session():
     data = res.get_json()
     items = data.get('upcoming_sessions', [])
     first_item = items[0] if items else {}
-    return jsonify({"success": True, "nextSession": first_item})
+    return student_response(data={"nextSession": first_item}, meta={"total": 1 if first_item else 0})
 
 
 # ==================== FEATURE 8: STUDY TIPS & SHORTCUTS ====================
@@ -678,15 +635,7 @@ def get_study_tips():
             "created_at": t.created_at.strftime("%d %b %Y, %I:%M %p") if t.created_at else "Post-Session"
         })
 
-    if not tips_list:
-        tips_list = [
-            {"id": "st1", "subject": "Mathematics", "tip": "Shortcut Technique: Use the quadratic formula discriminant (b²-4ac) to instantly verify roots in under 30 seconds.", "posted_within_2h": True},
-            {"id": "st2", "subject": "Science", "tip": "Revision Technique: Create mind maps for Newton's 3 laws right after class to lock concepts in long-term memory.", "posted_within_2h": True},
-            {"id": "st3", "subject": "English", "tip": "Grammar Tip: Remember active voice highlights the subject performing action (Subject + Verb + Object).", "posted_within_2h": True},
-            {"id": "st4", "subject": "Mathematics", "tip": "Practice Routine: Solve 5 extra algebraic expansion problems daily to double calculation speed.", "posted_within_2h": True}
-        ]
-
-    return jsonify({"success": True, "studyTips": tips_list})
+    return student_response(data={"studyTips": tips_list}, meta={"total": len(tips_list)})
 
 
 # ==================== FEATURE 9: INTERACTIVE ASSIGNMENTS ====================
@@ -724,17 +673,7 @@ def get_assignments():
             "available_same_day": True
         })
 
-    if not assignment_list:
-        assignment_list = [
-            {"id": 1, "assignment_id": 1, "title": "Fractions & Decimals Interactive Practice", "subject": "Mathematics", "description": "Practice fractions, decimals, and word problems through interactive adaptive exercises.", "status": "In Progress", "dueDate": "22 Jul 2026", "estimatedTime": "20 mins", "progress": 55, "aiEnabled": True, "available_same_day": True},
-            {"id": 2, "assignment_id": 2, "title": "Geometry Basics & Angles", "subject": "Mathematics", "description": "Identify shapes, angle relationships, and solve interactive geometry proofs.", "status": "Not Started", "dueDate": "25 Jul 2026", "estimatedTime": "25 mins", "progress": 0, "aiEnabled": True, "available_same_day": True},
-            {"id": 3, "assignment_id": 3, "title": "Forces & Motion Simulation", "subject": "Science", "description": "Engage with real-world force & motion physics scenarios and interactive questions.", "status": "In Progress", "dueDate": "24 Jul 2026", "estimatedTime": "20 mins", "progress": 40, "aiEnabled": True, "available_same_day": True},
-            {"id": 4, "assignment_id": 4, "title": "Living Organisms Classification", "subject": "Science", "description": "Explore biological classification systems and key cellular structures.", "status": "Completed", "dueDate": "18 Jul 2026", "estimatedTime": "15 mins", "progress": 100, "aiEnabled": False, "available_same_day": True},
-            {"id": 5, "assignment_id": 5, "title": "Reading Comprehension & Context Analysis", "subject": "English", "description": "Read adaptive prose passages and answer interactive comprehension questions.", "status": "Not Started", "dueDate": "26 Jul 2026", "estimatedTime": "20 mins", "progress": 0, "aiEnabled": True, "available_same_day": True},
-            {"id": 6, "assignment_id": 6, "title": "Grammar Mastery Workshop", "subject": "English", "description": "Identify and correct complex sentence structure, tense, and grammar errors.", "status": "Completed", "dueDate": "19 Jul 2026", "estimatedTime": "15 mins", "progress": 100, "aiEnabled": False, "available_same_day": True}
-        ]
-
-    return jsonify({"success": True, "assignments": assignment_list})
+    return student_response(data={"assignments": assignment_list}, meta={"total": len(assignment_list)})
 
 
 @student_bp.route('/assignments/<int:assignment_id>/update-progress', methods=['POST'])
@@ -764,13 +703,15 @@ def update_assignment_progress(assignment_id):
 
     db.session.commit()
 
-    return jsonify({
-        "success": True,
-        "message": f"Assignment progress updated to {new_progress}%.",
-        "assignment_id": assignment_id,
-        "progress": new_progress,
-        "status": sub.status
-    })
+    return student_response(
+        message=f"Assignment progress updated to {new_progress}%.",
+        data={
+            "assignment_id": assignment_id,
+            "progress": new_progress,
+            "status": sub.status
+        },
+        meta={"total": 1}
+    )
 
 
 @student_bp.route('/assignments/<int:assignment_id>/submit', methods=['POST'])
@@ -796,7 +737,7 @@ def get_timetable():
             "Sunday": []
         }
     }
-    return jsonify({"success": True, "timetable": timetable_data})
+    return student_response(data={"timetable": timetable_data}, meta={"total": len(timetable_data["days"])})
 
 
 @student_bp.route('/resources', methods=['GET'])
@@ -822,7 +763,7 @@ def get_resources():
             {"resource_id": 4, "session_id": 2, "resource_title": "Geometry Formula Sheet", "resource_type": "PDF", "resource_link": "#"}
         ]
 
-    return jsonify({"success": True, "studyResources": res_list})
+    return student_response(data={"studyResources": res_list}, meta={"total": len(res_list)})
 
 
 @student_bp.route('/profile', methods=['GET', 'PUT'])
@@ -830,7 +771,7 @@ def handle_profile():
     """Gets or updates student profile."""
     student_obj = get_current_student()
     if not student_obj:
-        return jsonify({"success": False, "message": "Student profile not found"}), 404
+        return student_error("Student profile not found", 404)
 
     if request.method == 'PUT':
         data = request.get_json() or {}
@@ -841,17 +782,31 @@ def handle_profile():
         if 'school' in data:
             student_obj.school = data.get('school')
         db.session.commit()
-        return jsonify({"success": True, "message": "Profile updated successfully!"})
+        return student_response(message="Profile updated successfully!")
 
-    return jsonify({
-        "success": True,
-        "student": {
-            "student_id": student_obj.student_id,
-            "name": student_obj.student_name,
-            "email": student_obj.email,
-            "phone": student_obj.phone_no or "5555555555",
-            "school": student_obj.school or "Greenfield Public School",
-            "subjects": ["Mathematics", "Science", "English"],
-            "parentName": "Sunil Rao"
-        }
-    })
+    student_subjects = []
+    subject_links = StudentSubject.query.filter_by(student_id=student_obj.student_id).all()
+    for link in subject_links:
+        subj = db.session.get(Subject, link.subject_id)
+        if subj:
+            student_subjects.append(subj.subject_name)
+
+    parent_name = None
+    if student_obj.parent_id:
+        parent = db.session.get(Parent, student_obj.parent_id)
+        parent_name = parent.parent_name if parent else None
+
+    return student_response(
+        data={
+            "student": {
+                "student_id": student_obj.student_id,
+                "name": student_obj.student_name,
+                "email": student_obj.email,
+                "phone": student_obj.phone_no or None,
+                "school": student_obj.school or None,
+                "subjects": student_subjects,
+                "parentName": parent_name
+            }
+        },
+        meta={"total": len(student_subjects)}
+    )
