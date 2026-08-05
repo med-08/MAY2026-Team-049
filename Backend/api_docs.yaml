@@ -103,6 +103,29 @@ components:
         year: { type: integer, example: 2026 }
         count: { type: integer }
 
+    StatusBreakdown:
+      type: object
+      properties:
+        type: { type: string, example: "Students" }
+        active: { type: integer }
+        blocked: { type: integer }
+        pending: { type: integer }
+
+    SearchResultItem:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+
+    SearchResults:
+      type: object
+      properties:
+        students: { type: array, items: { $ref: '#/components/schemas/SearchResultItem' } }
+        tutors: { type: array, items: { $ref: '#/components/schemas/SearchResultItem' } }
+        parents: { type: array, items: { $ref: '#/components/schemas/SearchResultItem' } }
+
     Student:
       type: object
       properties:
@@ -398,6 +421,47 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/dashboard/analytics/tutors-per-subject:
+    get:
+      tags: [Dashboard]
+      summary: Tutor supply count grouped by subject
+      description: >
+        Powers the Analytics.vue "Tutors Per Subject" bar chart. Meant to
+        be read alongside students-per-subject to spot subjects that are
+        short on tutors relative to enrolled students. Subjects taught are
+        derived from distinct subjects across a tutor's scheduled Sessions
+        (there is no direct Tutor<->Subject table).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/SubjectCount' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard/analytics/status-breakdown:
+    get:
+      tags: [Dashboard]
+      summary: Active/Blocked/Pending counts per entity type
+      description: Powers the Analytics.vue stacked "Account Status Breakdown" bar chart.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/StatusBreakdown' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/dashboard:
     get:
       tags: [Dashboard]
@@ -405,6 +469,41 @@ paths:
       description: Predates /admin/dashboard/stats; returns a differently-shaped payload ({success, stats}).
       responses:
         '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/search:
+    get:
+      tags: [Dashboard]
+      summary: Dashboard-wide quick search across students, tutors & parents
+      description: >
+        Powers the navbar's Quick Search (Ctrl/Cmd+K) command palette so an
+        admin can jump to any user record from anywhere in the dashboard,
+        not just from within that entity's own list page. Matches name or
+        email, any status, and returns up to 6 results per entity type.
+        Queries under 2 characters return an empty result set rather than
+        an error.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SearchResults' }
+                      meta:
+                        type: object
+                        properties:
+                          query: { type: string }
+                          total: { type: integer }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 

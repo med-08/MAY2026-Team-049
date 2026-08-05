@@ -14,6 +14,11 @@ export const adminApi = {
   getStudentsPerSubject: () => apiRequest(`${BASE}/dashboard/analytics/students-per-subject`),
   getMonthlyRegistrations: (months = 7) =>
     apiRequest(`${BASE}/dashboard/analytics/monthly-registrations`, { params: { months } }),
+  getTutorsPerSubject: () => apiRequest(`${BASE}/dashboard/analytics/tutors-per-subject`),
+  getStatusBreakdown: () => apiRequest(`${BASE}/dashboard/analytics/status-breakdown`),
+
+  // ---- Global Search ----
+  globalSearch: (q) => apiRequest(`${BASE}/search`, { params: { q } }),
 
   // ---- Students ----
   listStudents: (params) => apiRequest(`${BASE}/students`, { params }),

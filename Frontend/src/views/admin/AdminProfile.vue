@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted } from "vue"
+import { ref, reactive, computed, onMounted } from "vue"
 import {
   PencilSquareIcon,
   KeyIcon,
@@ -21,6 +21,8 @@ const adminProfile = reactive({
   name: "",
   email: "",
   role: "",
+  username: "",
+  memberSince: "",
   lastLoggedIn: "",
 })
 
@@ -35,6 +37,15 @@ function formatDateTime(iso) {
   })
 }
 
+function formatDate(iso) {
+  if (!iso) return "—"
+  return new Date(iso).toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })
+}
+
 async function loadProfile() {
   loading.value = true
   loadError.value = null
@@ -43,6 +54,8 @@ async function loadProfile() {
     adminProfile.name = data.admin_name
     adminProfile.email = data.email || ""
     adminProfile.role = data.role || "Admin"
+    adminProfile.username = data.username || ""
+    adminProfile.memberSince = formatDate(data.registered_at)
     adminProfile.lastLoggedIn = formatDateTime(data.last_login_at)
   } catch (e) {
     loadError.value = e.message || "Failed to load your profile."
@@ -61,18 +74,48 @@ const draft = reactive({
   email: "",
 })
 
+// Requested by admins in feedback: surface validation problems inline,
+// next to the field, instead of only finding out after clicking Save.
+const draftErrors = reactive({
+  name: "",
+  email: "",
+})
+
+function validateDraft() {
+  draftErrors.name = draft.name.trim() ? "" : "Name cannot be empty."
+  draftErrors.email =
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())
+      ? ""
+      : "Enter a valid email address."
+  return !draftErrors.name && !draftErrors.email
+}
+
+// Another piece of feedback: don't let admins accidentally "Save" with no
+// actual changes, and make it obvious when there's nothing new to submit.
+const draftIsDirty = computed(
+  () => draft.name.trim() !== adminProfile.name || draft.email.trim() !== adminProfile.email
+)
+
 function startEdit() {
   draft.name = adminProfile.name
   draft.email = adminProfile.email
+  draftErrors.name = ""
+  draftErrors.email = ""
   editing.value = true
 }
 
 async function saveEdit() {
+  if (!validateDraft()) return
+  if (!draftIsDirty.value) {
+    editing.value = false
+    return
+  }
+
   savingProfile.value = true
   try {
     const { data } = await adminApi.updateProfile({
-      admin_name: draft.name,
-      email: draft.email,
+      admin_name: draft.name.trim(),
+      email: draft.email.trim(),
     })
     adminProfile.name = data.admin_name
     adminProfile.email = data.email || ""
@@ -212,7 +255,7 @@ async function savePassword() {
 
         <template v-if="!editing">
           <!-- Info Cards -->
-          <div class="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+          <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3">
             <!-- Email -->
             <div
               class="rounded-2xl border border-sky-100 bg-sky-50 p-5 dark:border-sky-800 dark:bg-sky-900/20"
@@ -257,6 +300,36 @@ async function savePassword() {
 
               <p class="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
                 {{ adminProfile.lastLoggedIn }}
+              </p>
+            </div>
+
+            <!-- Username -->
+            <div
+              class="rounded-2xl border border-amber-100 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-900/20"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-wider text-slate-500"
+              >
+                Username
+              </p>
+
+              <p class="mt-2 break-all text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {{ adminProfile.username || "—" }}
+              </p>
+            </div>
+
+            <!-- Member Since -->
+            <div
+              class="rounded-2xl border border-cyan-100 bg-cyan-50 p-5 dark:border-cyan-800 dark:bg-cyan-900/20"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-wider text-slate-500"
+              >
+                Member Since
+              </p>
+
+              <p class="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {{ adminProfile.memberSince }}
               </p>
             </div>
           </div>
@@ -324,8 +397,13 @@ async function savePassword() {
                   v-model="draft.name"
                   type="text"
                   class="input-field"
+                  :class="draftErrors.name && 'ring-1 ring-rose-400'"
                   placeholder="Enter your name"
+                  @blur="validateDraft"
                 />
+                <p v-if="draftErrors.name" class="mt-1 text-xs text-rose-500">
+                  {{ draftErrors.name }}
+                </p>
               </div>
 
               <!-- Email -->
@@ -341,42 +419,61 @@ async function savePassword() {
                   v-model="draft.email"
                   type="email"
                   class="input-field"
+                  :class="draftErrors.email && 'ring-1 ring-rose-400'"
                   placeholder="Enter your email"
+                  @blur="validateDraft"
                 />
+                <p v-if="draftErrors.email" class="mt-1 text-xs text-rose-500">
+                  {{ draftErrors.email }}
+                </p>
               </div>
             </div>
 
             <!-- Buttons -->
-            <div class="mt-8 flex justify-center gap-3">
-              <button
-                class="inline-flex items-center justify-center
-                rounded-xl
-                bg-gradient-to-r
-                from-amber-100
-                via-yellow-100
-                to-orange-100
-                px-5 py-2.5
-                font-medium
-                text-amber-900
-                shadow-md
-                transition-all
-                duration-300
-                hover:from-amber-200
-                hover:via-yellow-200
-                hover:to-orange-200
-                hover:shadow-lg"
-                :disabled="savingProfile"
-                @click="saveEdit"
-              >
-                {{ savingProfile ? 'Saving...' : 'Save Changes' }}
-              </button>
+            <div class="mt-8 flex flex-col items-center gap-2">
+              <div class="flex justify-center gap-3">
+                <button
+                  class="inline-flex items-center justify-center
+                  rounded-xl
+                  bg-gradient-to-r
+                  from-amber-100
+                  via-yellow-100
+                  to-orange-100
+                  px-5 py-2.5
+                  font-medium
+                  text-amber-900
+                  shadow-md
+                  transition-all
+                  duration-300
+                  hover:from-amber-200
+                  hover:via-yellow-200
+                  hover:to-orange-200
+                  hover:shadow-lg
+                  disabled:opacity-50
+                  disabled:cursor-not-allowed
+                  disabled:hover:from-amber-100
+                  disabled:hover:via-yellow-100
+                  disabled:hover:to-orange-100"
+                  :disabled="savingProfile || !!draftErrors.name || !!draftErrors.email"
+                  @click="saveEdit"
+                >
+                  {{ savingProfile ? 'Saving...' : draftIsDirty ? 'Save Changes' : 'No Changes' }}
+                </button>
 
-              <button
-                class="btn-secondary"
-                @click="editing = false"
+                <button
+                  class="btn-secondary"
+                  @click="editing = false"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <p
+                v-if="!draftIsDirty && !draftErrors.name && !draftErrors.email"
+                class="text-xs text-slate-400"
               >
-                Cancel
-              </button>
+                Make a change above to enable saving.
+              </p>
             </div>
           </div>
         </template>

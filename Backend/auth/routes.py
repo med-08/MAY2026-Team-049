@@ -4,8 +4,22 @@ from datetime import datetime
 
 from auth import auth_bp
 from database import db
-from models import Student, Parent
+from models import Student, Parent, Subject, StudentSubject
 from utils import validate_registration, find_user_by_identifier, get_role_id, generate_jwt_token
+
+
+@auth_bp.route('/subjects', methods=['GET'])
+def list_subjects():
+    """GET /subjects -> every subject a student can enroll in.
+
+    Public (no auth required) so the registration form can populate its
+    subject picker before the user has an account.
+    """
+    subjects = Subject.query.order_by(Subject.subject_name).all()
+    return jsonify({
+        'success': True,
+        'data': [{'subject_id': s.subject_id, 'subject_name': s.subject_name} for s in subjects]
+    })
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -74,6 +88,9 @@ def register():
     password = data.get('password', '')
     confirm_password = data.get('confirm_password') or data.get('confirmPassword') or ''
     role_name = data.get('role', 'Student')
+    # List of subject_id values from the registration form's subject picker
+    # (Student registrations only -- Parents have no subjects of their own).
+    subject_ids = data.get('subject_ids') or data.get('subjects') or []
 
     errors = validate_registration(name, email, password, confirm_password, role_name)
 
@@ -103,6 +120,18 @@ def register():
         
         db.session.add(new_user)
         db.session.commit()
+
+        if role_name == 'Student' and subject_ids:
+            # Only link subject_ids that actually exist, and de-dupe, so a
+            # tampered/garbage payload can't create orphan rows.
+            valid_ids = {
+                sid for (sid,) in db.session.query(Subject.subject_id)
+                    .filter(Subject.subject_id.in_(subject_ids))
+                    .all()
+            }
+            for sid in valid_ids:
+                db.session.add(StudentSubject(student_id=new_user.student_id, subject_id=sid))
+            db.session.commit()
 
         return jsonify({'success': True, 'message': 'Registration Successful! Please log in.'})
     except Exception as e:

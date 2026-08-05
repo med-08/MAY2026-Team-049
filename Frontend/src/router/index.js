@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { globalSearch } from '../composables/useSearch'
 
 
 // Public Pages
@@ -589,6 +590,14 @@ router.beforeEach((to, from, next) => {
       return next('/login')
     }
   }
+
+  // Single source of truth for the per-page search box: reset it on every
+  // navigation, unless the destination carries a `?q=` param (this is how
+  // the dashboard-wide Quick Search jumps into Students/Tutors/Parents
+  // pre-filtered to a specific result). Handling this here, before the
+  // destination page even mounts, avoids a race with AppLayout's own
+  // route-change watcher.
+  globalSearch.value = typeof to.query.q === 'string' ? to.query.q : ''
 
   next()
 })

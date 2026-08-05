@@ -1,10 +1,36 @@
 <script setup>
 
-import { ref } from "vue"
+import { ref, onMounted } from "vue"
 import AuthNavbar from "../components/layout/AuthNavbar.vue"
+import { apiRequest } from "../services/apiClient"
 
 
 const selectedRole = ref("Student")
+
+// Subjects a student can enroll in, loaded from the backend so the list
+// always matches whatever subjects actually exist in the database.
+const subjects = ref([])
+const subjectsLoading = ref(true)
+const selectedSubjectIds = ref([])
+
+function toggleSubject(id) {
+  const idx = selectedSubjectIds.value.indexOf(id)
+  if (idx === -1) selectedSubjectIds.value.push(id)
+  else selectedSubjectIds.value.splice(idx, 1)
+}
+
+onMounted(async () => {
+  try {
+    const res = await apiRequest("/subjects")
+    subjects.value = res.data || []
+  } catch {
+    // If this fails the form still works -- subjects just can't be
+    // pre-selected at registration and can be added later.
+    subjects.value = []
+  } finally {
+    subjectsLoading.value = false
+  }
+})
 
 
 const roles = [
@@ -65,7 +91,8 @@ const register = async () => {
         email: form.value.email,
         role: selectedRole.value,
         password: form.value.password,
-        confirm_password: form.value.confirmPassword
+        confirm_password: form.value.confirmPassword,
+        subject_ids: selectedRole.value === "Student" ? selectedSubjectIds.value : []
       })
     })
     const data = await res.json()
@@ -165,6 +192,43 @@ const register = async () => {
       </div>
 
 
+      <!-- Subject Picker (Students only) -->
+      <div v-if="selectedRole === 'Student'" class="mt-6">
+
+        <label class="font-semibold text-slate-700 dark:text-slate-300">
+          Subjects You're Interested In
+        </label>
+
+        <p class="text-xs text-slate-400 mt-1 mb-3">
+          Optional — pick a few so tutors and admins know what to set you up with.
+        </p>
+
+        <div v-if="subjectsLoading" class="text-sm text-slate-400">
+          Loading subjects…
+        </div>
+
+        <div v-else-if="subjects.length" class="flex flex-wrap gap-2">
+          <button
+            v-for="s in subjects"
+            :key="s.subject_id"
+            type="button"
+            @click="toggleSubject(s.subject_id)"
+            :class="
+            selectedSubjectIds.includes(s.subject_id)
+            ? 'bg-emerald-500 text-white border-emerald-500'
+            : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
+            "
+            class="rounded-full px-4 py-1.5 text-sm font-medium border transition duration-200"
+          >
+            {{ s.subject_name }}
+          </button>
+        </div>
+
+        <p v-else class="text-sm text-slate-400">
+          No subjects available right now — you can add these later from your profile.
+        </p>
+
+      </div>
 
 
       <form 

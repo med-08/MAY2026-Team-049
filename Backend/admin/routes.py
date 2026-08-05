@@ -162,6 +162,54 @@ def monthly_registrations():
     return success_response(data=data)
 
 
+@admin_bp.route('/dashboard/analytics/tutors-per-subject', methods=['GET'])
+@admin_required
+def tutors_per_subject():
+    """GET /admin/dashboard/analytics/tutors-per-subject -> bar chart data
+    showing tutor *supply* per subject, meant to be read alongside
+    students-per-subject (demand) so admins can spot subjects that are
+    short on tutors.
+
+    NOTE (assumption): mirrors _tutor_subjects()'s existing assumption --
+    there is no direct Tutor<->Subject table, so "teaches this subject" is
+    derived from distinct subjects across a tutor's scheduled Sessions.
+    """
+    try:
+        rows = (
+            db.session.query(Subject.subject_name, func.count(func.distinct(Session.tutor_id)))
+            .outerjoin(Session, Session.subject_id == Subject.subject_id)
+            .group_by(Subject.subject_id)
+            .all()
+        )
+    except Exception as e:
+        return error_response("Failed to compute tutors-per-subject analytics.", 500, errors=str(e))
+
+    return success_response(data=[{"subject": name, "count": count} for name, count in rows])
+
+
+@admin_bp.route('/dashboard/analytics/status-breakdown', methods=['GET'])
+@admin_required
+def status_breakdown():
+    """GET /admin/dashboard/analytics/status-breakdown -> stacked bar chart
+    data: Active/Blocked/Pending counts for each of Students/Tutors/Parents.
+    Gives a fuller picture than the single "blocked_students" KPI card on
+    the Overview page.
+    """
+    try:
+        data = []
+        for label, Model in (('Students', Student), ('Tutors', Tutor), ('Parents', Parent)):
+            data.append({
+                "type": label,
+                "active": Model.query.filter_by(status='Active').count(),
+                "blocked": Model.query.filter_by(status='Blocked').count(),
+                "pending": Model.query.filter_by(status='Pending').count(),
+            })
+    except Exception as e:
+        return error_response("Failed to compute status breakdown analytics.", 500, errors=str(e))
+
+    return success_response(data=data)
+
+
 # ==================== STUDENTS ====================
 
 STUDENT_SORT_FIELDS = {'student_id', 'student_name', 'email', 'school', 'status', 'registered_at'}
@@ -556,6 +604,64 @@ def delete_tutor(tutor_id):
         return error_response("Failed to delete tutor.", 500, errors=str(e))
 
     return success_response(message=f"Tutor '{name}' (id {tutor_id}) deleted successfully.")
+
+
+# ==================== GLOBAL SEARCH ====================
+
+SEARCH_RESULT_LIMIT = 6
+
+
+@admin_bp.route('/search', methods=['GET'])
+@admin_required
+def global_search():
+    """GET /admin/search?q=<term> -> dashboard-wide quick search.
+
+    Powers the command-palette style search in the navbar so an admin can
+    jump straight to a student/tutor/parent from *any* page, not just from
+    within that entity's own list view. Searches name + email across all
+    three entity types (any status, since Pending/Blocked records are
+    often exactly what an admin is hunting for) and returns a handful of
+    the closest matches per type.
+    """
+    q = request.args.get('q', '').strip()
+    if len(q) < 2:
+        return success_response(
+            data={"students": [], "tutors": [], "parents": []},
+            meta={"query": q, "total": 0},
+        )
+
+    try:
+        student_rows = (
+            apply_search(Student.query, Student, ['student_name', 'email'], q)
+            .limit(SEARCH_RESULT_LIMIT).all()
+        )
+        tutor_rows = (
+            apply_search(Tutor.query, Tutor, ['tutor_name', 'email'], q)
+            .limit(SEARCH_RESULT_LIMIT).all()
+        )
+        parent_rows = (
+            apply_search(Parent.query, Parent, ['parent_name', 'email'], q)
+            .limit(SEARCH_RESULT_LIMIT).all()
+        )
+    except Exception as e:
+        return error_response("Search failed.", 500, errors=str(e))
+
+    data = {
+        "students": [
+            {"id": s.student_id, "name": s.student_name, "email": s.email, "status": s.status}
+            for s in student_rows
+        ],
+        "tutors": [
+            {"id": t.tutor_id, "name": t.tutor_name, "email": t.email, "status": t.status}
+            for t in tutor_rows
+        ],
+        "parents": [
+            {"id": p.parent_id, "name": p.parent_name, "email": p.email, "status": p.status}
+            for p in parent_rows
+        ],
+    }
+    total = len(data["students"]) + len(data["tutors"]) + len(data["parents"])
+    return success_response(data=data, meta={"query": q, "total": total})
 
 
 # ==================== PENDING APPROVALS ====================
