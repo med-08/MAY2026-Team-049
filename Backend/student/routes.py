@@ -1,11 +1,11 @@
 from flask import jsonify, request, session
-from datetime import datetime, timedelta, date, time
+from datetime import datetime, date
 from student import student_bp
 from database import db
 from models import (
     Student, Parent, Tutor, Subject, StudentSubject, Session, SessionUpdate, SessionBooking,
     Quiz, QuizQuestion, QuizAttempt, Assignment, AssignmentSubmission,
-    StudyTip, StudyResource, FAQ, LearningProgress, WeeklySummary
+    StudyTip, StudyResource, FAQ, LearningProgress
 )
 from decorators import student_required
 
@@ -29,39 +29,34 @@ def student_error(message, status_code=400, errors=None):
 
 
 def get_current_student():
-    """First active student for API testing."""
-    student_id = session.get('user_id')
-    if hasattr(request, 'jwt_user') and request.jwt_user:
-        student_id = request.jwt_user.get('user_id')
-    
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        from utils import decode_jwt_token
+        payload = decode_jwt_token(token)
+        if payload and payload.get("role") == "Student":
+            st = db.session.get(Student, payload.get("user_id"))
+            if st:
+                return st
+
+    student_id = session.get("user_id")
     if student_id:
         st = db.session.get(Student, student_id)
         if st:
             return st
-            
-    # use Demo student if session is absent during testing
-    st = Student.query.filter_by(status='Active').first()
-    if not st:
-        st = Student.query.first()
-    return st
 
+    return None
 
-# ==================== FEATURE 1 & 3: VISUAL DASHBOARD & PROGRESS ====================
 
 @student_bp.route('/dashboard', methods=['GET'])
 @student_required
 def get_dashboard():
-    """
-    Returns visual growth metrics, completed topics summary, 6-week quiz progress,
-    subject-wise quiz scores, next session info, and today's tasks.
-    """
     student_obj = get_current_student()
     if not student_obj:
-        return student_error("Student not found", 404)
-        
+        return student_error("Student not found or not logged in", 404)
+
     student_id = student_obj.student_id
 
-    # 1. Summary Stats
     upcoming_count = SessionBooking.query.filter_by(student_id=student_id).join(Session).filter(
         Session.status == 'Scheduled',
         Session.session_date >= date.today()
@@ -72,11 +67,12 @@ def get_dashboard():
     ).count()
 
     attempts = QuizAttempt.query.filter_by(student_id=student_id).all()
-    if attempts:
-        quiz_avg_val = round(sum(a.score for a in attempts if a.score is not None) / len(attempts), 1)
+    scored_attempts = [a.score for a in attempts if a.score is not None]
+    if scored_attempts:
+        quiz_avg_val = round(sum(scored_attempts) / len(scored_attempts), 1)
         quiz_avg_str = f"{int(quiz_avg_val)}%"
     else:
-        quiz_avg_str = "82%"
+        quiz_avg_str = "0%"
 
     homework_pending = AssignmentSubmission.query.filter(
         AssignmentSubmission.student_id == student_id,
@@ -84,66 +80,94 @@ def get_dashboard():
     ).count()
 
     summary_stats = [
-        {"key": "upcoming", "label": "Upcoming Sessions", "value": upcoming_count or 4, "subtitle": "Next 7 days", "icon": "CalendarDaysIcon", "tone": "blue"},
-        {"key": "completed", "label": "Completed Sessions", "value": completed_count or 28, "subtitle": "This term", "icon": "CheckCircleIcon", "tone": "green"},
+        {"key": "upcoming", "label": "Upcoming Sessions", "value": upcoming_count, "subtitle": "Next 7 days", "icon": "CalendarDaysIcon", "tone": "blue"},
+        {"key": "completed", "label": "Completed Sessions", "value": completed_count, "subtitle": "This term", "icon": "CheckCircleIcon", "tone": "green"},
         {"key": "quizAvg", "label": "Quiz Average", "value": quiz_avg_str, "subtitle": "Last 6 weeks", "icon": "ChartBarIcon", "tone": "green"},
-        {"key": "homework", "label": "Homework Pending", "value": homework_pending or 2, "subtitle": "Interactive activities", "icon": "ClipboardDocumentListIcon", "tone": "amber"}
+        {"key": "homework", "label": "Homework Pending", "value": homework_pending, "subtitle": "Interactive activities", "icon": "ClipboardDocumentListIcon", "tone": "amber"}
     ]
 
-    # 2. Weekly Quiz Progress Over Time (Last 6 weeks)
+    recent_attempts = QuizAttempt.query.filter_by(student_id=student_id).order_by(
+        QuizAttempt.attempted_at.desc()
+    ).limit(6).all()
+
     weekly_quiz_progress = {
-        "labels": ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"],
-        "data": [62, 68, 71, 75, 79, 82]
+        "labels": [f"Week {i+1}" for i in range(len(recent_attempts))][::-1],
+        "data": [round(a.score) for a in recent_attempts if a.score is not None][::-1]
     }
 
-    # 3. Subject-wise Quiz Scores
-    subject_quiz_scores = {
-        "labels": ["Mathematics", "Science", "English"],
-        "data": [78, 85, 88]
-    }
+    subject_quiz_scores = {"labels": [], "data": []}
+    subject_score_map = {}
+    for attempt in attempts:
+        quiz = db.session.get(Quiz, attempt.quiz_id)
+        if not quiz or attempt.score is None:
+            continue
+        subject = db.session.get(Subject, quiz.subject_id)
+        subject_name = subject.subject_name if subject else "General"
+        subject_score_map.setdefault(subject_name, []).append(attempt.score)
 
-    # 4. Next Session (24h preparation advance details)
+    if subject_score_map:
+        subject_quiz_scores = {
+            "labels": list(subject_score_map.keys()),
+            "data": [round(sum(scores) / len(scores)) for scores in subject_score_map.values()]
+        }
+
     next_booking = SessionBooking.query.filter_by(student_id=student_id).join(Session).filter(
         Session.status == 'Scheduled',
         Session.session_date >= date.today()
     ).order_by(Session.session_date.asc(), Session.start_time.asc()).first()
 
-    if next_booking:
+    next_session_data = {}
+    if next_booking and next_booking.session_id:
         sess = db.session.get(Session, next_booking.session_id)
-        tutor_obj = db.session.get(Tutor, sess.tutor_id) if sess else None
-        subj_obj = db.session.get(Subject, sess.subject_id) if sess else None
-        update_obj = SessionUpdate.query.filter_by(session_id=sess.session_id).first() if sess else None
+        if sess:
+            tutor_obj = db.session.get(Tutor, sess.tutor_id)
+            subj_obj = db.session.get(Subject, sess.subject_id)
+            update_obj = SessionUpdate.query.filter_by(session_id=sess.session_id).first()
+            topics_list = []
+            if update_obj and update_obj.topics_covered:
+                topics_list = [t.strip() for t in update_obj.topics_covered.split(',') if t.strip()]
 
-        topics_list = [t.strip() for t in update_obj.topics_covered.split(',')] if update_obj and update_obj.topics_covered else []
+            next_session_data = {
+                "session_id": sess.session_id,
+                "subject": subj_obj.subject_name if subj_obj else None,
+                "tutor": tutor_obj.tutor_name if tutor_obj else None,
+                "type": sess.session_type,
+                "date": sess.session_date.strftime("%d %b %Y"),
+                "time": sess.start_time.strftime("%I:%M %p"),
+                "duration": "60 minutes",
+                "topics": topics_list,
+                "status": "Upcoming",
+                "preparation_guidance": "Review previous session notes before the class."
+            }
 
-        next_session_data = {
-            "session_id": sess.session_id if sess else None,
-            "subject": subj_obj.subject_name if subj_obj else None,
-            "tutor": tutor_obj.tutor_name if tutor_obj else None,
-            "type": sess.session_type if sess else None,
-            "date": sess.session_date.strftime("%d %b %Y") if sess else None,
-            "time": sess.start_time.strftime("%I:%M %p") if sess else None,
-            "duration": "60 minutes",
-            "topics": topics_list,
-            "status": "Upcoming",
-            "preparation_guidance": "Review previous session notes and completed topic assignments at least 24 hours prior."
-        }
-    else:
-        next_session_data = {}
+    todays_tasks = []
+    pending_submissions = AssignmentSubmission.query.filter(
+        AssignmentSubmission.student_id == student_id,
+        AssignmentSubmission.status.in_(["Pending", "In Progress"])
+    ).all()
 
-    # 5. Today's Tasks
-    todays_tasks = [
-        {"id": "tt1", "subject": "Mathematics", "task": "Assignment: Quadratic Equations Practice Set", "time": "Due Today, 8:00 PM", "status": "Pending"},
-        {"id": "tt2", "subject": "Science", "task": "Homework: Chapter 4 — Force & Motion Questions", "time": "Due Today, 6:00 PM", "status": "Pending"},
-        {"id": "tt3", "subject": "Mathematics", "task": "One-to-One Tuition Session", "time": "Today at 5:00 PM", "status": "Upcoming"}
-    ]
+    for sub in pending_submissions:
+        assignment = db.session.get(Assignment, sub.assignment_id)
+        if not assignment:
+            continue
+        sess = db.session.get(Session, assignment.session_id)
+        subject = db.session.get(Subject, sess.subject_id) if sess else None
+        due_text = assignment.due_date.strftime("%d %b %Y") if assignment.due_date else "No due date"
+
+        todays_tasks.append({
+            "id": f"task-{assignment.assignment_id}",
+            "subject": subject.subject_name if subject else "General",
+            "task": assignment.title,
+            "time": due_text,
+            "status": sub.status
+        })
 
     return student_response(
         data={
             "student": {
                 "name": student_obj.student_name,
                 "email": student_obj.email,
-                "school": student_obj.school or "Greenfield Public School"
+                "school": student_obj.school
             },
             "summaryStats": summary_stats,
             "weeklyQuizProgress": weekly_quiz_progress,
@@ -155,637 +179,9 @@ def get_dashboard():
     )
 
 
-@student_bp.route('/progress', methods=['GET'])
-@student_required
-def get_progress():
-    """Returns detailed student growth, completed topics, learning pace, and subject mastery."""
-    student_obj = get_current_student()
-    if not student_obj:
-        return student_error("Student not found", 404)
-
-    student_id = student_obj.student_id
-
-    # Prefer completed bookings when present, but fall back to the student's actual booking records
-    # so the student progress endpoint remains populated during API testing.
-    completed_bookings = SessionBooking.query.filter_by(student_id=student_id).join(Session).filter(
-        Session.status == 'Completed'
-    ).all()
-    if not completed_bookings:
-        completed_bookings = SessionBooking.query.filter_by(student_id=student_id).all()
-
-    completed_topics = []
-    for b in completed_bookings:
-        sess = db.session.get(Session, b.session_id)
-        if not sess:
-            continue
-        subj = db.session.get(Subject, sess.subject_id)
-        upd = SessionUpdate.query.filter_by(session_id=sess.session_id).first()
-        prog = LearningProgress.query.filter_by(session_id=sess.session_id, student_id=student_id).first()
-
-        completed_topics.append({
-            "session_id": sess.session_id,
-            "subject": subj.subject_name if subj else "General",
-            "date": sess.session_date.strftime("%d %b %Y"),
-            "topics": upd.topics_covered if upd and upd.topics_covered else "General Concepts Covered",
-            "status": prog.session_completion_status if prog else "Completed",
-            "pace": prog.learning_pace if prog else "Average",
-            "remarks": prog.tutor_remarks if prog else "Good performance."
-        })
-
-    if not completed_topics:
-        completed_topics.append({
-            "session_id": None,
-            "subject": "Mathematics",
-            "date": date.today().strftime("%d %b %Y"),
-            "topics": "General Concepts Covered",
-            "status": "Completed",
-            "pace": "Average",
-            "remarks": "Good performance."
-        })
-
-    return student_response(
-        data={
-            "growthMetrics": {
-                "total_topics_mastered": len(completed_topics) + 12,
-                "overall_accuracy": "84%",
-                "learning_pace": "Fast",
-                "improvement_rate": "+15% over last month"
-            },
-            "completedTopics": completed_topics
-        },
-        meta={"total": len(completed_topics)}
-    )
-
-
-# ==================== FEATURE 2: FAQ SECTION ====================
-
-@student_bp.route('/faqs', methods=['GET'])
-@student_required
-def get_faqs():
-    """Retrieves Frequently Asked Questions with optional search query and category filtering."""
-    query_str = request.args.get('q', '').strip().lower()
-    category = request.args.get('category', '').strip()
-
-    faq_query = FAQ.query
-    if category:
-        faq_query = faq_query.filter(db.func.lower(FAQ.category) == category.lower())
-
-    faqs_db = faq_query.all()
-    
-    faq_list = []
-    for f in faqs_db:
-        if query_str:
-            if query_str not in f.question.lower() and query_str not in f.answer.lower():
-                continue
-        faq_list.append({
-            "id": f"f{f.faq_id}",
-            "faq_id": f.faq_id,
-            "q": f.question,
-            "a": f.answer,
-            "category": f.category or "General"
-        })
-
-    return student_response(data={"faqs": faq_list}, meta={"total": len(faq_list)})
-
-
-# ==================== FEATURE 4: WEEKLY QUIZZES ====================
-
-@student_bp.route('/quizzes', methods=['GET'])
-@student_required
-def get_quizzes():
-    """Lists weekly quizzes with score history and completion status."""
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    quizzes_db = Quiz.query.all()
-    result = []
-
-    for q in quizzes_db:
-        subj = db.session.get(Subject, q.subject_id)
-        attempt = QuizAttempt.query.filter_by(quiz_id=q.quiz_id, student_id=student_id).first()
-        
-        result.append({
-            "quiz_id": q.quiz_id,
-            "subject": subj.subject_name if subj else "General",
-            "title": q.title,
-            "weekNumber": q.week_number or 5,
-            "lastAttempt": attempt.attempted_at.strftime("%d %b %Y") if attempt else None,
-            "score": round(attempt.score) if attempt and attempt.score is not None else None
-        })
-
-    return student_response(data={"quizzes": result}, meta={"total": len(result)})
-
-
-@student_bp.route('/quizzes/<int:quiz_id>', methods=['GET'])
-@student_required
-def get_quiz_details(quiz_id):
-    """Retrieves detailed quiz metadata and questions (at least 5 questions per quiz)."""
-    quiz_obj = db.session.get(Quiz, quiz_id)
-    questions_db = QuizQuestion.query.filter_by(quiz_id=quiz_id).all()
-
-    formatted_questions = []
-    for q in questions_db:
-        corr_char = (q.correct_option or 'A').upper()
-        corr_idx = {'A': 0, 'B': 1, 'C': 2, 'D': 3}.get(corr_char, 0)
-        
-        formatted_questions.append({
-            "id": q.question_id,
-            "question": q.question,
-            "options": [q.option_a, q.option_b, q.option_c, q.option_d],
-            "correctIndex": corr_idx,
-            "correctOption": corr_char
-        })
-
-    # Mock questions to guarantee at least 5 questions per quiz
-    if len(formatted_questions) < 5:
-        if quiz_id == 1:
-            formatted_questions = [
-                {"id": 101, "question": "Solve for x: 2x + 6 = 14", "options": ["x = 3", "x = 4", "x = 8", "x = 10"], "correctIndex": 1},
-                {"id": 102, "question": "Which of the following is a linear equation?", "options": ["y = x^2 + 1", "y = 3x - 5", "y = 1/x", "y = sqrt(x)"], "correctIndex": 1},
-                {"id": 103, "question": "What is the slope of the line y = 4x + 7?", "options": ["7", "4", "-4", "1/4"], "correctIndex": 1},
-                {"id": 104, "question": "If 3(x - 2) = 12, what is the value of x?", "options": ["4", "5", "6", "7"], "correctIndex": 2},
-                {"id": 105, "question": "Simplify: 5x + 3x - 2x + 9", "options": ["6x + 9", "10x + 9", "8x - 9", "6x - 9"], "correctIndex": 0}
-            ]
-        elif quiz_id == 2:
-            formatted_questions = [
-                {"id": 201, "question": "Which organ produces bile to help digest fats?", "options": ["Stomach", "Liver", "Pancreas", "Small Intestine"], "correctIndex": 1},
-                {"id": 202, "question": "Where does most nutrient absorption occur in the human body?", "options": ["Esophagus", "Large Intestine", "Small Intestine", "Stomach"], "correctIndex": 2},
-                {"id": 203, "question": "What is Newton's First Law of Motion also known as?", "options": ["Law of Gravity", "Law of Inertia", "Law of Action-Reaction", "Law of Acceleration"], "correctIndex": 1},
-                {"id": 204, "question": "What unit is used to measure Force in the SI system?", "options": ["Joule", "Pascal", "Newton", "Watt"], "correctIndex": 2},
-                {"id": 205, "question": "Which enzyme breaks down proteins in the stomach?", "options": ["Amylase", "Pepsin", "Lipase", "Trypsin"], "correctIndex": 1}
-            ]
-        else:
-            formatted_questions = [
-                {"id": 301, "question": "Choose the correctly punctuated sentence.", "options": ["Its a beautiful day outside.", "It's a beautiful day outside.", "Its' a beautiful day outside.", "It is' a beautiful day outside."], "correctIndex": 1},
-                {"id": 302, "question": "Identify the noun in: 'The energetic dog barked loudly.'", "options": ["Energetic", "Dog", "Barked", "Loudly"], "correctIndex": 1},
-                {"id": 303, "question": "Which word is a synonym for 'Vast'?", "options": ["Tiny", "Huge", "Narrow", "Short"], "correctIndex": 1},
-                {"id": 304, "question": "Identify the tense: 'She will be attending the session tomorrow.'", "options": ["Simple Present", "Past Continuous", "Future Continuous", "Present Perfect"], "correctIndex": 2},
-                {"id": 305, "question": "Choose the correct antonym for 'Ancient'.", "options": ["Old", "Modern", "Historic", "Aged"], "correctIndex": 1}
-            ]
-
-    quiz_title = quiz_obj.title if quiz_obj else ("Algebra & Linear Equations" if quiz_id == 1 else "Human Digestive System & Physics")
-    subj_obj = db.session.get(Subject, quiz_obj.subject_id) if quiz_obj and quiz_obj.subject_id else None
-    subject_name = subj_obj.subject_name if subj_obj else "Mathematics"
-
-    return student_response(
-        data={
-            "quiz": {
-                "quiz_id": quiz_id,
-                "title": quiz_title,
-                "subject": subject_name,
-                "weekNumber": quiz_obj.week_number if quiz_obj else 5
-            },
-            "questions": formatted_questions
-        },
-        meta={"total": len(formatted_questions)}
-    )
-
-
-@student_bp.route('/quizzes/<int:quiz_id>/submit', methods=['POST'])
-@student_required
-def submit_quiz(quiz_id):
-    """
-    Submits quiz attempt, calculates percentage score, records QuizAttempt,
-    and returns weak area identification.
-    """
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    data = request.get_json() or {}
-    answers_input = data.get('answers', {})
-
-    questions_db = QuizQuestion.query.filter_by(quiz_id=quiz_id).all()
-    total_questions = len(questions_db)
-
-    correct_count = 0
-    weak_topics = []
-
-    if total_questions > 0:
-        for q in questions_db:
-            selected = answers_input.get(str(q.question_id)) or answers_input.get(q.question_id)
-            corr_letter = (q.correct_option or 'A').upper()
-            corr_idx = {'A': 0, 'B': 1, 'C': 2, 'D': 3}.get(corr_letter, 0)
-            
-            if selected is not None:
-                if str(selected).isdigit() and int(selected) == corr_idx:
-                    correct_count += 1
-                elif str(selected).upper() == corr_letter:
-                    correct_count += 1
-                else:
-                    weak_topics.append(q.question[:40] + "...")
-        score_pct = round((correct_count / total_questions) * 100, 1)
-    else:
-        for q_id, val in answers_input.items():
-            if val in [1, 'B', 'b']:
-                correct_count += 1
-            else:
-                weak_topics.append(f"Question #{q_id}")
-        total_questions = max(len(answers_input), 5)
-        score_pct = round((correct_count / total_questions) * 100, 1)
-
-    attempt = QuizAttempt.query.filter_by(quiz_id=quiz_id, student_id=student_id).first()
-    if not attempt:
-        attempt = QuizAttempt(quiz_id=quiz_id, student_id=student_id, score=score_pct, attempted_at=datetime.utcnow())
-        db.session.add(attempt)
-    else:
-        attempt.score = score_pct
-        attempt.attempted_at = datetime.utcnow()
-
-    db.session.commit()
-
-    return student_response(
-        data={
-            "quiz_id": quiz_id,
-            "score": score_pct,
-            "correctCount": correct_count,
-            "totalQuestions": total_questions,
-            "weakAreasIdentified": weak_topics if weak_topics else ["None! Excellent performance."]
-        },
-        message=f"Quiz submitted successfully! You scored {score_pct}%.",
-        meta={"total": total_questions}
-    )
-
-
-# ==================== FEATURE 5 & 6: SESSION BOOKING & ONE-TO-ONE ====================
-
-@student_bp.route('/booking-slots', methods=['GET'])
-@student_required
-def get_booking_slots():
-    """Returns available Regular and One-to-One slots from tutor calendar."""
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    scheduled_sessions = Session.query.filter_by(status='Scheduled').filter(Session.session_date >= date.today()).all()
-
-    regular_slots = []
-    one_to_one_slots = []
-
-    for s in scheduled_sessions:
-        tutor = db.session.get(Tutor, s.tutor_id)
-        subj = db.session.get(Subject, s.subject_id)
-        
-        existing_booking = SessionBooking.query.filter_by(session_id=s.session_id, student_id=student_id).first()
-        booked_by_me = existing_booking is not None
-        
-        total_bookings = SessionBooking.query.filter_by(session_id=s.session_id, booking_status='Confirmed').count()
-        available_seats = max(0, (getattr(s, 'max_seats', 5) or 5) - total_bookings)
-
-        slot_item = {
-            "id": f"b{s.session_id}",
-            "session_id": s.session_id,
-            "date": s.session_date.strftime("%d %b %Y"),
-            "time": s.start_time.strftime("%I:%M %p"),
-            "tutor": tutor.tutor_name if tutor else "Mrs. Kavitha Iyer",
-            "subject": subj.subject_name if subj else "Mathematics",
-            "seats": available_seats,
-            "booked": booked_by_me,
-            "type": s.session_type
-        }
-
-        if s.session_type == 'One-to-One':
-            one_to_one_slots.append(slot_item)
-        else:
-            regular_slots.append(slot_item)
-
-    return student_response(
-        data={
-            "bookingSlots": {
-                "regular": regular_slots,
-                "oneToOne": one_to_one_slots
-            }
-        },
-        meta={"total": len(regular_slots) + len(one_to_one_slots)}
-    )
-
-
-@student_bp.route('/book-session', methods=['POST'])
-@student_required
-def book_session():
-    """Books a session slot for the logged-in student."""
-    student_obj = get_current_student()
-    if not student_obj:
-        return student_error("Student session is invalid. Please log in again.", 401)
-
-    student_id = student_obj.student_id
-
-    data = request.get_json() or {}
-    session_id = data.get('session_id')
-    slot_id = str(data.get('id', ''))
-
-    if session_id is None and slot_id.startswith('b'):
-        try:
-            session_id = int(slot_id.replace('b', ''))
-        except ValueError:
-            session_id = None
-
-    if session_id is None:
-        return student_error("A valid session_id is required to book a session.", 400)
-
-    if isinstance(session_id, str) and not session_id.strip().isdigit():
-        return student_error("A valid session_id is required to book a session.", 400)
-
-    session_id = int(session_id)
-
-    sess = db.session.get(Session, session_id)
-    if not sess:
-        return student_error(f"Session {session_id} not found.", 404)
-
-    existing = SessionBooking.query.filter_by(session_id=session_id, student_id=student_id).first()
-    if existing:
-        return student_response(message="Session is already booked by you.", data={"booked_session_id": session_id})
-
-    booking = SessionBooking(session_id=session_id, student_id=student_id, booking_status='Confirmed')
-    db.session.add(booking)
-    db.session.commit()
-
-    return student_response(
-        message="Tuition session booked successfully!",
-        data={"booked_session_id": session_id}
-    )
-
-
-@student_bp.route('/reschedule-session', methods=['POST'])
-@student_required
-def reschedule_session():
-    """Reschedules an existing session booking to a new available slot."""
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    data = request.get_json() or {}
-    current_session_id = data.get('current_session_id')
-    target_session_id = data.get('target_session_id')
-
-    if current_session_id:
-        existing = SessionBooking.query.filter_by(session_id=current_session_id, student_id=student_id).first()
-        if existing:
-            db.session.delete(existing)
-            
-    if target_session_id:
-        new_booking = SessionBooking(session_id=target_session_id, student_id=student_id, booking_status='Confirmed')
-        db.session.add(new_booking)
-
-    db.session.commit()
-
-    return student_response(message="Session rescheduled successfully!")
-
-
-# ==================== FEATURE 7: UPCOMING SESSIONS (24H NOTICE) ====================
-
-@student_bp.route('/sessions', methods=['GET'])
-@student_required
-def get_sessions():
-    """Lists upcoming and completed sessions for student."""
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    bookings = SessionBooking.query.filter_by(student_id=student_id).all()
-    
-    upcoming = []
-    completed = []
-
-    for b in bookings:
-        s = db.session.get(Session, b.session_id)
-        if not s:
-            continue
-        tutor = db.session.get(Tutor, s.tutor_id)
-        subj = db.session.get(Subject, s.subject_id)
-        upd = SessionUpdate.query.filter_by(session_id=s.session_id).first()
-
-        item = {
-            "id": f"s{s.session_id}",
-            "session_id": s.session_id,
-            "subject": subj.subject_name if subj else "Mathematics",
-            "tutor": tutor.tutor_name if tutor else "Mrs. Kavitha Iyer",
-            "type": s.session_type,
-            "date": s.session_date.strftime("%d %b %Y"),
-            "time": s.start_time.strftime("%I:%M %p"),
-            "duration": "60 min",
-            "topics": upd.topics_covered if upd and upd.topics_covered else "Core curriculum topic practice",
-            "status": s.status
-        }
-
-        if s.status == 'Completed':
-            completed.append(item)
-        else:
-            upcoming.append(item)
-
-    return student_response(
-        data={"sessions": {"upcoming": upcoming, "completed": completed}},
-        meta={"total": len(upcoming) + len(completed)}
-    )
-
-
-@student_bp.route('/upcoming-sessions', methods=['GET'])
-@student_required
-def get_upcoming_sessions_24h():
-    """
-    Returns upcoming session details available at least 24 hours prior to class,
-    including advance preparation topics and study reminders.
-    """
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    bookings = SessionBooking.query.filter_by(student_id=student_id).join(Session).filter(
-        Session.status == 'Scheduled',
-        Session.session_date >= date.today()
-    ).all()
-
-    upcoming_list = []
-    for b in bookings:
-        s = db.session.get(Session, b.session_id)
-        if not s:
-            continue
-        tutor = db.session.get(Tutor, s.tutor_id)
-        subj = db.session.get(Subject, s.subject_id)
-        upd = SessionUpdate.query.filter_by(session_id=s.session_id).first()
-
-        upcoming_list.append({
-            "session_id": s.session_id,
-            "subject": subj.subject_name if subj else "Mathematics",
-            "tutor": tutor.tutor_name if tutor else "Mrs. Kavitha Iyer",
-            "type": s.session_type,
-            "date": s.session_date.strftime("%d %b %Y"),
-            "time": s.start_time.strftime("%I:%M %p"),
-            "duration": "60 min",
-            "preparation_topics": upd.topics_covered if upd and upd.topics_covered else "Quadratic Equations, Factorisation Methods",
-            "available_24h_notice": True,
-            "prep_advice": "Ensure all prerequisite worksheets are completed 24 hours in advance."
-        })
-
-    return student_response(data={"upcoming_sessions": upcoming_list}, meta={"total": len(upcoming_list)})
-
-
-@student_bp.route('/next-session', methods=['GET'])
-def get_next_session():
-    """Returns immediate next session data card."""
-    res = get_upcoming_sessions_24h()
-    data = res.get_json()
-    items = data.get('upcoming_sessions', [])
-    first_item = items[0] if items else {}
-    return student_response(data={"nextSession": first_item}, meta={"total": 1 if first_item else 0})
-
-
-# ==================== FEATURE 8: STUDY TIPS & SHORTCUTS ====================
-
-@student_bp.route('/study-tips', methods=['GET'])
-def get_study_tips():
-    """
-    Returns study shortcuts, techniques, and personalized tips received from tutor
-    within 2 hours of post-session completion.
-    """
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    tips_db = StudyTip.query.filter_by(student_id=student_id).all()
-    
-    tips_list = []
-    for t in tips_db:
-        sess = db.session.get(Session, t.session_id) if t.session_id else None
-        subj = db.session.get(Subject, sess.subject_id) if sess else None
-        
-        tips_list.append({
-            "id": f"st{t.tip_id}",
-            "tip_id": t.tip_id,
-            "subject": subj.subject_name if subj else "Mathematics",
-            "tip": t.tip_text,
-            "posted_within_2h": True,
-            "created_at": t.created_at.strftime("%d %b %Y, %I:%M %p") if t.created_at else "Post-Session"
-        })
-
-    return student_response(data={"studyTips": tips_list}, meta={"total": len(tips_list)})
-
-
-# ==================== FEATURE 9: INTERACTIVE ASSIGNMENTS ====================
-
-@student_bp.route('/assignments', methods=['GET'])
-def get_assignments():
-    """
-    Returns interactive post-session assignments available on platform by the end
-    of the session day, including progress tracking and AI customization tags.
-    """
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    submissions = AssignmentSubmission.query.filter_by(student_id=student_id).all()
-    
-    assignment_list = []
-    for sub in submissions:
-        assign = db.session.get(Assignment, sub.assignment_id)
-        if not assign:
-            continue
-        sess = db.session.get(Session, assign.session_id)
-        subj = db.session.get(Subject, sess.subject_id) if sess else None
-
-        assignment_list.append({
-            "id": assign.assignment_id,
-            "assignment_id": assign.assignment_id,
-            "title": assign.title,
-            "subject": subj.subject_name if subj else "Mathematics",
-            "description": assign.description,
-            "status": sub.status,
-            "dueDate": assign.due_date.strftime("%d %b %Y") if assign.due_date else "22 Jul 2026",
-            "estimatedTime": getattr(assign, "estimated_time", "20 mins"),
-            "progress": getattr(sub, "progress_percentage", 55),
-            "aiEnabled": getattr(assign, "ai_enabled", True),
-            "available_same_day": True
-        })
-
-    return student_response(data={"assignments": assignment_list}, meta={"total": len(assignment_list)})
-
-
-@student_bp.route('/assignments/<int:assignment_id>/update-progress', methods=['POST'])
-def update_assignment_progress(assignment_id):
-    """Updates interactive progress percentage and status for an assignment."""
-    student_obj = get_current_student()
-    student_id = student_obj.student_id if student_obj else 1
-
-    data = request.get_json() or {}
-    new_progress = data.get('progress', 50)
-
-    sub = AssignmentSubmission.query.filter_by(assignment_id=assignment_id, student_id=student_id).first()
-    if not sub:
-        sub = AssignmentSubmission(
-            assignment_id=assignment_id,
-            student_id=student_id,
-            status="In Progress" if new_progress < 100 else "Completed",
-            progress_percentage=new_progress
-        )
-        db.session.add(sub)
-    else:
-        sub.progress_percentage = new_progress
-        if new_progress >= 100:
-            sub.status = "Completed"
-        elif new_progress > 0:
-            sub.status = "In Progress"
-
-    db.session.commit()
-
-    return student_response(
-        message=f"Assignment progress updated to {new_progress}%.",
-        data={
-            "assignment_id": assignment_id,
-            "progress": new_progress,
-            "status": sub.status
-        },
-        meta={"total": 1}
-    )
-
-
-@student_bp.route('/assignments/<int:assignment_id>/submit', methods=['POST'])
-def submit_assignment(assignment_id):
-    """Submits completed interactive assignment."""
-    return update_assignment_progress(assignment_id)
-
-
-# ==================== ADDITIONAL TIMETABLE, RESOURCES & PROFILE ====================
-
-@student_bp.route('/timetable', methods=['GET'])
-def get_timetable():
-    """Returns student weekly timetable schedule."""
-    timetable_data = {
-        "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-        "classes": {
-            "Monday": [{"subject": "Mathematics", "time": "5:00 – 6:00 PM", "tutor": "Mrs. Kavitha Iyer", "color": "blue"}],
-            "Tuesday": [{"subject": "Science", "time": "4:00 – 4:45 PM", "tutor": "Mrs. Kavitha Iyer", "color": "green"}],
-            "Wednesday": [{"subject": "English", "time": "5:30 – 6:15 PM", "tutor": "Mrs. Kavitha Iyer", "color": "amber"}],
-            "Thursday": [],
-            "Friday": [],
-            "Saturday": [{"subject": "Mathematics", "time": "10:00 – 11:00 AM", "tutor": "Mrs. Kavitha Iyer", "color": "blue"}],
-            "Sunday": []
-        }
-    }
-    return student_response(data={"timetable": timetable_data}, meta={"total": len(timetable_data["days"])})
-
-
-@student_bp.route('/resources', methods=['GET'])
-def get_resources():
-    """Returns study resources and reference materials."""
-    resources_db = StudyResource.query.all()
-    res_list = []
-
-    for r in resources_db:
-        res_list.append({
-            "resource_id": r.resource_id,
-            "session_id": r.session_id,
-            "resource_title": r.resource_title,
-            "resource_type": r.resource_type or "PDF",
-            "resource_link": r.resource_link or "#"
-        })
-
-    if not res_list:
-        res_list = [
-            {"resource_id": 1, "session_id": 1, "resource_title": "Algebra Basics Revision Notes", "resource_type": "PDF", "resource_link": "#"},
-            {"resource_id": 2, "session_id": 1, "resource_title": "Linear Equations Practice Worksheets", "resource_type": "Practice Sheet", "resource_link": "#"},
-            {"resource_id": 3, "session_id": 2, "resource_title": "Introduction to Fractions Video Tutorial", "resource_type": "Video", "resource_link": "#"},
-            {"resource_id": 4, "session_id": 2, "resource_title": "Geometry Formula Sheet", "resource_type": "PDF", "resource_link": "#"}
-        ]
-
-    return student_response(data={"studyResources": res_list}, meta={"total": len(res_list)})
-
-
 @student_bp.route('/profile', methods=['GET', 'PUT'])
+@student_required
 def handle_profile():
-    """Gets or updates student profile."""
     student_obj = get_current_student()
     if not student_obj:
         return student_error("Student profile not found", 404)
@@ -819,8 +215,8 @@ def handle_profile():
                 "student_id": student_obj.student_id,
                 "name": student_obj.student_name,
                 "email": student_obj.email,
-                "phone": student_obj.phone_no or None,
-                "school": student_obj.school or None,
+                "phone": student_obj.phone_no,
+                "school": student_obj.school,
                 "subjects": student_subjects,
                 "parentName": parent_name
             }

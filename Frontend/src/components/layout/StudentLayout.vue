@@ -4,18 +4,29 @@ import { useRouter } from "vue-router"
 import Sidebar from "../student/StudentSidebar.vue"
 import Topbar from "../student/StudentTopbar.vue"
 import LogoutModal from "../student/LogoutModal.vue"
-import { adminApi } from "../../services/adminApi"
+import { authApi } from "../../services/authApi"
 
 const sidebarOpen = ref(false)
 const logoutOpen = ref(false)
 const router = useRouter()
 
 async function confirmLogout() {
-  await adminApi.logout()
-  localStorage.removeItem('user')
-  localStorage.removeItem('token')
-  logoutOpen.value = false
-  router.push("/login")
+  try {
+    await authApi.logout()
+  } catch (err) {
+    console.error("Logout failed:", err)
+  } finally {
+    localStorage.removeItem("user")
+    localStorage.removeItem("token")
+    localStorage.removeItem("role")
+    localStorage.removeItem("user_id")
+    localStorage.removeItem("username")
+    localStorage.removeItem("parent_id")
+    localStorage.removeItem("student_id")
+    localStorage.removeItem("tutor_id")
+    logoutOpen.value = false
+    router.push("/login")
+  }
 }
 </script>
 

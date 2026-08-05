@@ -1,13 +1,18 @@
 const BASE_URL = 'http://localhost:5000/student';
 
 /**
- * Helper to execute HTTP requests with CORS credentials and JSON headers
+ * Helper to execute HTTP requests with JWT token + credentials
  */
 async function request(endpoint, options = {}) {
   const url = `${BASE_URL}${endpoint}`;
+
+  // Get token from localStorage
+  const token = localStorage.getItem('token');
+
   const config = {
     headers: {
       'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
       ...options.headers,
     },
     credentials: 'include',
@@ -35,7 +40,7 @@ export const studentApi = {
   // Feature 2: FAQs Section
   getFaqs: (query = '') => request(`/faqs${query ? `?q=${encodeURIComponent(query)}` : ''}`),
 
-  // Feature 4: Weekly Quizzes (5+ Questions)
+  // Feature 4: Weekly Quizzes
   getQuizzes: () => request('/quizzes'),
   getQuizDetails: (quizId) => request(`/quizzes/${quizId}`),
   submitQuiz: (quizId, answers) => request(`/quizzes/${quizId}/submit`, {
@@ -43,7 +48,7 @@ export const studentApi = {
     body: JSON.stringify({ answers }),
   }),
 
-  // Features 5 & 6: Booking Tuition Slots (Regular & One-to-One)
+  // Features 5 & 6: Booking
   getBookingSlots: () => request('/booking-slots'),
   bookSession: (sessionId) => request('/book-session', {
     method: 'POST',
@@ -54,15 +59,15 @@ export const studentApi = {
     body: JSON.stringify({ current_session_id: currentSessionId, target_session_id: targetSessionId }),
   }),
 
-  // Feature 7: Session Details & 24h Advance Notice
+  // Feature 7: Sessions
   getSessions: () => request('/sessions'),
   getUpcomingSessions: () => request('/upcoming-sessions'),
   getNextSession: () => request('/next-session'),
 
-  // Feature 8: Study Shortcuts, Techniques & Tips Post-Session
+  // Feature 8: Study Tips
   getStudyTips: () => request('/study-tips'),
 
-  // Feature 9: Interactive Assignments Available Post-Session
+  // Feature 9: Assignments
   getAssignments: () => request('/assignments'),
   updateAssignmentProgress: (assignmentId, progress) => request(`/assignments/${assignmentId}/update-progress`, {
     method: 'POST',
@@ -73,7 +78,7 @@ export const studentApi = {
     body: JSON.stringify({ progress: 100 }),
   }),
 
-  // Additional Schedule, Resources & Profile
+  // Additional
   getTimetable: () => request('/timetable'),
   getResources: () => request('/resources'),
   getProfile: () => request('/profile'),

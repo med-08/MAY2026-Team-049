@@ -1,21 +1,28 @@
 <script setup>
 import { ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import {
-  Squares2X2Icon, UserGroupIcon, AcademicCapIcon, UsersIcon,
-  ClockIcon, ChartBarIcon, UserCircleIcon, ArrowLeftOnRectangleIcon,
-  ChevronDownIcon, XMarkIcon
+  Squares2X2Icon,
+  UserGroupIcon,
+  AcademicCapIcon,
+  UsersIcon,
+  ClockIcon,
+  ChartBarIcon,
+  UserCircleIcon,
+  ArrowLeftOnRectangleIcon,
+  ChevronDownIcon,
+  XMarkIcon
 } from '@heroicons/vue/24/outline'
 import ConfirmModal from '../ui/ConfirmModal.vue'
-import { adminApi } from '../../services/adminApi'
+import { useLogout } from '../../composables/useLogout'
 
 defineProps({ mobileOpen: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
 
 const route = useRoute()
-const router = useRouter()
 const usersOpen = ref(true)
 const logoutOpen = ref(false)
+const { logout } = useLogout()
 
 const isActive = (name) => route.name === name
 const usersGroupActive = ['students', 'tutors', 'parents'].includes(route.name)
@@ -27,18 +34,19 @@ const links = [
 ]
 
 async function confirmLogout() {
-  await adminApi.logout()
-  localStorage.removeItem('user')
-  localStorage.removeItem('token')
   logoutOpen.value = false
   emit('close')
-  router.push('/login')
+  await logout('/login')
 }
 </script>
 
 <template>
   <transition name="fade">
-    <div v-if="mobileOpen" class="fixed inset-0 bg-slate-900/50 z-40 lg:hidden" @click="emit('close')" />
+    <div
+      v-if="mobileOpen"
+      class="fixed inset-0 bg-slate-900/50 z-40 lg:hidden"
+      @click="emit('close')"
+    />
   </transition>
 
   <aside
@@ -76,6 +84,7 @@ async function confirmLogout() {
         </span>
         <ChevronDownIcon class="w-4 h-4 transition-transform duration-200" :class="usersOpen ? 'rotate-180' : ''" />
       </button>
+
       <div v-show="usersOpen" class="pl-4 space-y-1">
         <router-link
           v-for="l in links"
@@ -84,22 +93,38 @@ async function confirmLogout() {
           class="nav-link text-sm"
           :class="isActive(l.name) ? 'nav-link-active' : ''"
         >
-          <component :is="l.name === 'students' ? AcademicCapIcon : l.name === 'tutors' ? UserCircleIcon : UsersIcon" class="w-4.5 h-4.5" style="width:1.1rem;height:1.1rem" />
+          <component
+            :is="l.name === 'students' ? AcademicCapIcon : l.name === 'tutors' ? UserCircleIcon : UsersIcon"
+            class="w-4.5 h-4.5"
+            style="width:1.1rem;height:1.1rem"
+          />
           <span>{{ l.label }}</span>
         </router-link>
       </div>
 
-      <router-link to="/admin/pending-approvals" class="nav-link" :class="isActive('pending-approvals') ? 'nav-link-active' : ''">
+      <router-link
+        to="/admin/pending-approvals"
+        class="nav-link"
+        :class="isActive('pending-approvals') ? 'nav-link-active' : ''"
+      >
         <ClockIcon class="w-5 h-5" />
         <span>Pending Approvals</span>
       </router-link>
 
-      <router-link to="/admin/analytics" class="nav-link" :class="isActive('analytics') ? 'nav-link-active' : ''">
+      <router-link
+        to="/admin/analytics"
+        class="nav-link"
+        :class="isActive('analytics') ? 'nav-link-active' : ''"
+      >
         <ChartBarIcon class="w-5 h-5" />
         <span>Analytics</span>
       </router-link>
 
-      <router-link to="/admin/profile" class="nav-link" :class="isActive('profile') ? 'nav-link-active' : ''">
+      <router-link
+        to="/admin/profile"
+        class="nav-link"
+        :class="isActive('profile') ? 'nav-link-active' : ''"
+      >
         <UserCircleIcon class="w-5 h-5" />
         <span>Admin Profile</span>
       </router-link>

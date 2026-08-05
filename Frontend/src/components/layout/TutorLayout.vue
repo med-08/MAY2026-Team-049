@@ -93,13 +93,13 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTheme } from '../../composables/useTheme'
+import { useLogout } from '../../composables/useLogout'
 import TutorCommandPalette from '../tutor/TutorCommandPalette.vue'
 import TutorConfirmModal from '../tutor/TutorConfirmModal.vue'
 import TutorSidebar from '../tutor/TutorSidebar.vue'
 import TutorStudentDrawer from '../tutor/TutorStudentDrawer.vue'
 import TutorToastContainer from '../tutor/TutorToastContainer.vue'
 import TutorTopbar from '../tutor/TutorTopbar.vue'
-import { adminApi } from '../../services/adminApi'
 import { tutorApi } from '../../services/tutorApi'
 import '../../assets/tutorStyles.css'
 import {
@@ -135,6 +135,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const { isDark, toggleTheme } = useTheme()
+const { logout } = useLogout()
 
 const mobileMenuOpen = ref(false)
 const commandOpen = ref(false)
@@ -147,7 +148,6 @@ const clockLabel = ref('')
 const toasts = ref([])
 const confirm = reactive({ open: false, message: '' })
 
-// Live state backed by API with fallback to mock data
 const tutorUserState = ref(structuredClone(tutorUserMock))
 const dashboardStatsState = ref(structuredClone(dashboardStatsMock))
 const sessionsState = ref(structuredClone(sessionsMock))
@@ -424,11 +424,8 @@ function confirmAction() {
 }
 
 async function confirmLogout() {
-  try { await tutorApi.logout() } catch (e) {}
-  localStorage.removeItem('user')
-  localStorage.removeItem('token')
   logoutModalOpen.value = false
-  router.push('/login')
+  await logout('/login')
 }
 
 function updateClock() {

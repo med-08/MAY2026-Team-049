@@ -1,57 +1,78 @@
 <script setup>
-import { reactive } from 'vue'
+import { reactive, onMounted } from 'vue'
 import { VideoCameraIcon, PlusIcon } from '@heroicons/vue/24/outline'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import { useToast } from '../../composables/useToast'
 import { useParentPortal } from '../../composables/useParentPortal'
-import { meetingRequests } from '../../data/parentMockData'
 
 const { showToast } = useToast()
-const { parentMeetingRequests } = useParentPortal(1)
+const { children, meetings, loadProfile, loadMeetings, submitMeetingRequest } = useParentPortal()
 
 function formatDateTime(dateStr) {
-  return new Date(dateStr).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return new Date(dateStr).toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  })
 }
 
 function statusStyle(status) {
   if (status === 'Completed') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
   if (status === 'Cancelled') return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400'
+  if (status === 'Scheduled') return 'bg-brand-blue-100 text-brand-blue-700 dark:bg-brand-blue-500/15 dark:text-brand-blue-400'
   return 'bg-brand-purple-100 text-brand-purple-700 dark:bg-brand-purple-500/15 dark:text-brand-purple-400'
 }
 
-// Story 3.3 is tutor-initiated in the DB design (MeetingRequest has no requester
-// role column), so a parent "request" is modeled the same way — a new record
-// awaiting the tutor's confirmation.
-const requestForm = reactive({ reason: '', preferredDate: '' })
-let meetingSeq = meetingRequests.length + 1
+const requestForm = reactive({
+  reason: '',
+  preferredDate: '',
+  student_id: null,
+  tutor_id: 1
+})
 
-function submitRequest() {
-  if (!requestForm.reason.trim() || !requestForm.preferredDate) {
-    showToast('Add a reason and preferred date/time.', 'error')
+async function submitRequest() {
+  if (!requestForm.reason.trim() || !requestForm.preferredDate || !requestForm.student_id) {
+    showToast('Select child, add a reason and preferred date/time.', 'error')
     return
   }
-  meetingRequests.push({
-    meeting_id: meetingSeq++,
-    tutor_id: 1,
-    student_id: null,
-    parent_id: 1,
-    meeting_date: requestForm.preferredDate,
-    meeting_link: null,
-    meeting_reason: requestForm.reason,
-    status: 'Requested'
-  })
-  requestForm.reason = ''
-  requestForm.preferredDate = ''
-  showToast('Meeting request sent. The tutor will confirm within 48 hours.')
+
+  try {
+    await submitMeetingRequest({
+      reason: requestForm.reason,
+      preferredDate: requestForm.preferredDate,
+      student_id: requestForm.student_id,
+      tutor_id: requestForm.tutor_id
+    })
+
+    requestForm.reason = ''
+    requestForm.preferredDate = ''
+    requestForm.student_id = children.value[0]?.student_id || null
+
+    showToast('Meeting request sent. The tutor will confirm soon.', 'success')
+  } catch (err) {
+    showToast(err.message || 'Failed to send meeting request.', 'error')
+  }
 }
+
+onMounted(async () => {
+  try {
+    await loadProfile()
+    requestForm.student_id = children.value[0]?.student_id || null
+    await loadMeetings()
+  } catch (err) {
+    showToast(err.message || 'Failed to load meetings.', 'error')
+  }
+})
 </script>
 
 <template>
   <div class="space-y-6">
     <div class="card p-5">
       <h3 class="font-display font-semibold text-slate-800 dark:text-slate-100 mb-4">Your Meeting Requests</h3>
-      <div v-if="parentMeetingRequests.length" class="grid sm:grid-cols-2 gap-4">
-        <div v-for="m in parentMeetingRequests" :key="m.meeting_id" class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60">
+      <div v-if="meetings.length" class="grid sm:grid-cols-2 gap-4">
+        <div v-for="m in meetings" :key="m.meeting_id" class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60">
           <div class="flex items-center justify-between">
             <span class="text-xs font-semibold px-2 py-0.5 rounded-full" :class="statusStyle(m.status)">
               {{ m.status }}
@@ -74,17 +95,29 @@ function submitRequest() {
         Request a Virtual Meeting
       </h3>
       <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">
-        Can't make it in person? Request a virtual check-in with the tutor and they'll confirm a time within 48 hours.
+        Can't make it in person? Request a virtual check-in with the tutor and they'll confirm a time.
       </p>
       <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Child</label>
+          <select v-model="requestForm.student_id" class="input-field">
+            <option :value="null" disabled>Select child</option>
+            <option v-for="child in children" :key="child.student_id" :value="child.student_id">
+              {{ child.student_name }}
+            </option>
+          </select>
+        </div>
+
         <div>
           <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Reason for meeting</label>
           <input v-model="requestForm.reason" type="text" placeholder="e.g. Discuss upcoming exam preparation" class="input-field" />
         </div>
+
         <div>
           <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Preferred date & time</label>
           <input v-model="requestForm.preferredDate" type="datetime-local" class="input-field" />
         </div>
+
         <button class="btn-primary" @click="submitRequest">
           Send Request
         </button>

@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import {
   Squares2X2Icon,
   ChartBarIcon,
@@ -13,14 +13,14 @@ import {
   XMarkIcon
 } from '@heroicons/vue/24/outline'
 import ConfirmModal from '../ui/ConfirmModal.vue'
-import { adminApi } from '../../services/adminApi'
+import { useLogout } from '../../composables/useLogout'
 
 defineProps({ mobileOpen: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
 
 const route = useRoute()
-const router = useRouter()
 const logoutOpen = ref(false)
+const { logout } = useLogout()
 
 const isActive = (name) => route.name === name
 
@@ -34,18 +34,19 @@ const navItems = [
 ]
 
 async function confirmLogout() {
-  await adminApi.logout()
-  localStorage.removeItem('user')
-  localStorage.removeItem('token')
   logoutOpen.value = false
   emit('close')
-  router.push('/login')
+  await logout('/login')
 }
 </script>
 
 <template>
   <transition name="fade">
-    <div v-if="mobileOpen" class="fixed inset-0 bg-slate-900/50 z-40 lg:hidden" @click="emit('close')" />
+    <div
+      v-if="mobileOpen"
+      class="fixed inset-0 bg-slate-900/50 z-40 lg:hidden"
+      @click="emit('close')"
+    />
   </transition>
 
   <aside

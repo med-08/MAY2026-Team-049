@@ -1,54 +1,72 @@
 import os
-from flask import Flask, session, jsonify
-from database import db
+from flask import Flask, jsonify
 from flask_cors import CORS
+from database import db
 
-app = Flask(__name__)
-
-# Flask Secret Key & Database Configuration
-basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'learnathome-secret-key-2026')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'learnathome.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-db.init_app(app)
-CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5000", "http://127.0.0.1:5000"])
-
-# Import & Register Blueprints
 from auth import auth_bp
-from admin import admin_bp
-from tutor import tutor_bp
-from student import student_bp
 from parent import parent_bp
 
-app.register_blueprint(auth_bp)
-app.register_blueprint(admin_bp)
-app.register_blueprint(tutor_bp)
-app.register_blueprint(student_bp)
-app.register_blueprint(parent_bp)
 
-# Register Custom JSON Error Handlers
-@app.errorhandler(403)
-def forbidden_error(error):
-    return jsonify({"success": False, "message": "Access Forbidden (403)"}), 403
+def create_app():
+    app = Flask(__name__)
 
-@app.errorhandler(404)
-def not_found_error(error):
-    return jsonify({"success": False, "message": "Resource Not Found (404)"}), 404
+    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+    DB_PATH = os.path.join(BASE_DIR, 'learnathome.db')
 
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    return jsonify({"success": False, "message": "Internal Server Error (500)"}), 500
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SECRET_KEY'] = 'your-secret-key'
 
-with app.app_context():
-    import models
-    db.create_all()
-    print("Database tables created successfully!")
+    db.init_app(app)
 
-@app.route('/')
-def home():
-    return jsonify({"message": "LearnAtHome Backend Database API is active!"})
+    CORS(
+        app,
+        supports_credentials=True,
+        resources={r"/*": {"origins": [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:5000",
+            "http://127.0.0.1:5000"
+        ]}}
+    )
+
+    @app.route('/', methods=['GET'])
+    def home():
+        return jsonify({
+            "success": True,
+            "message": "LearnAtHome backend is running.",
+            "database_path": DB_PATH
+        }), 200
+
+    @app.route('/health', methods=['GET'])
+    def health():
+        return jsonify({
+            "success": True,
+            "message": "Server healthy",
+            "database_path": DB_PATH
+        }), 200
+
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(parent_bp, url_prefix='/parent')
+
+    @app.errorhandler(404)
+    def not_found(e):
+        return jsonify({
+            "success": False,
+            "message": "Resource Not Found (404)"
+        }), 404
+
+    @app.errorhandler(500)
+    def internal_error(e):
+        return jsonify({
+            "success": False,
+            "message": "Internal Server Error (500)"
+        }), 500
+
+    return app
+
+
+app = create_app()
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='127.0.0.1', port=5000)

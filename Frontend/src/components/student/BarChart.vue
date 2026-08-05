@@ -1,34 +1,43 @@
 <script setup>
+import { computed } from "vue"
 import { Bar } from "vue-chartjs"
 import { Chart as ChartJS, BarElement, LinearScale, CategoryScale, Tooltip } from "chart.js"
 
 ChartJS.register(BarElement, LinearScale, CategoryScale, Tooltip)
 
 const props = defineProps({
-  labels: Array,
-  data: Array,
+  labels: { type: Array, default: () => [] },
+  data: { type: Array, default: () => [] },
 })
 
-const chartData = {
-  labels: props.labels,
+const chartData = computed(() => ({
+  labels: props.labels || [],
   datasets: [
     {
       label: "Score (%)",
-      data: props.data,
+      data: props.data || [],
       backgroundColor: ["#2454ff", "#14b877", "#2454ff", "#14b877"],
       borderRadius: 8,
       maxBarThickness: 46,
     },
   ],
-}
+}))
 
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: false,
   plugins: { legend: { display: false } },
   scales: {
-    y: { beginAtZero: true, max: 100, grid: { color: "rgba(148,163,184,0.15)" }, ticks: { color: "#94a3b8" } },
-    x: { grid: { display: false }, ticks: { color: "#94a3b8" } },
+    y: {
+      beginAtZero: true,
+      max: 100,
+      grid: { color: "rgba(148,163,184,0.15)" },
+      ticks: { color: "#94a3b8" }
+    },
+    x: {
+      grid: { display: false },
+      ticks: { color: "#94a3b8" }
+    },
   },
 }
 </script>

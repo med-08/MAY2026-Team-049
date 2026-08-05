@@ -1,27 +1,69 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { BookOpenIcon } from '@heroicons/vue/24/outline'
 import EmptyState from '../../components/ui/EmptyState.vue'
+import { useToast } from '../../composables/useToast'
 import { useParentPortal } from '../../composables/useParentPortal'
 
-const { children, teachingPlanFor } = useParentPortal(1)
+const { showToast } = useToast()
+const { children, curriculumByChild, loadProfile, loadCurriculum } = useParentPortal()
 
-const selectedChildId = ref(children.value[0]?.student_id)
-const selectedChild = computed(() => children.value.find((c) => c.student_id === selectedChildId.value))
-const plan = computed(() => teachingPlanFor(selectedChildId.value))
+const selectedChildId = ref(null)
+
+const selectedChild = computed(() =>
+  children.value.find((c) => c.student_id === selectedChildId.value)
+)
+
+const plan = computed(() =>
+  curriculumByChild.value[selectedChildId.value]?.curriculum_plan || []
+)
 
 const groupedByMonth = computed(() => {
   const groups = {}
-  plan.value.forEach((item) => {
-    if (!groups[item.month]) groups[item.month] = []
-    groups[item.month].push(item)
+  plan.value.forEach((item, index) => {
+    const month = item.month || 'Untitled Month'
+    if (!groups[month]) groups[month] = []
+    groups[month].push({
+      ...item,
+      _key: item.plan_id || `${month}-${index}`
+    })
   })
   return groups
 })
 
 function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  if (!dateStr) return 'No date'
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  })
 }
+
+async function init() {
+  try {
+    await loadProfile()
+    if (children.value.length && !selectedChildId.value) {
+      selectedChildId.value = children.value[0].student_id
+    }
+    if (selectedChildId.value) {
+      await loadCurriculum(selectedChildId.value)
+    }
+  } catch (err) {
+    showToast(err.message || 'Failed to load curriculum.', 'error')
+  }
+}
+
+watch(selectedChildId, async (newId) => {
+  if (!newId) return
+  try {
+    await loadCurriculum(newId)
+  } catch (err) {
+    showToast(err.message || 'Failed to load curriculum.', 'error')
+  }
+})
+
+onMounted(init)
 </script>
 
 <template>
@@ -53,12 +95,14 @@ function formatDate(dateStr) {
         <div class="space-y-3">
           <div
             v-for="item in items"
-            :key="item.plan_id"
+            :key="item._key"
             class="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60"
           >
             <div>
-              <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ item.topic_name }}</p>
-              <p class="text-xs text-slate-500 dark:text-slate-400">{{ item.subjectName }}</p>
+              <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {{ Array.isArray(item.topics) ? item.topics.join(', ') : item.topic_name || 'No topic' }}
+              </p>
+              <p class="text-xs text-slate-500 dark:text-slate-400">{{ item.subject || 'Subject' }}</p>
             </div>
             <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-brand-blue-100 text-brand-blue-700 dark:bg-brand-blue-500/15 dark:text-brand-blue-400 shrink-0">
               {{ formatDate(item.planned_date) }}
@@ -67,6 +111,9 @@ function formatDate(dateStr) {
         </div>
       </div>
     </div>
+
     <EmptyState v-else title="No plan published yet" message="The tutor hasn't shared a curriculum plan for this child." />
   </div>
+
+  <EmptyState v-else title="No linked child found" message="Please contact support if your children are not showing." />
 </template>

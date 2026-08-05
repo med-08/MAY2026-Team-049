@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue"
+import { ref, computed, onMounted } from "vue"
 import { useRouter } from "vue-router"
 import {
   Bars3Icon,
@@ -8,61 +8,124 @@ import {
   MoonIcon,
 } from "@heroicons/vue/24/outline"
 import { useTheme } from "../../composables/useTheme"
-import {
-  student,
-  assignments,
-  homeworkList,
-  weeklyQuizzes,
-  studyResources,
-  studyTips,
-  faqs,
-} from "../../data/studentMockData"
+import { studentApi } from "../../services/studentApi"
 import InitialsAvatar from "./InitialsAvatar.vue"
 
-defineProps({})
 const emit = defineEmits(["toggle-sidebar"])
 const { isDark, toggleTheme } = useTheme()
 const search = ref("")
 const searchFocused = ref(false)
 const router = useRouter()
 
-// Flatten every searchable student data source into one list of
-// { type, title, subtitle, to } entries so the topbar search can match
-// across assignments, homework, quizzes, resources, tips and FAQs.
+const student = ref({
+  name: "",
+  initials: "ST"
+})
+
+const assignments = ref([])
+const homeworkList = ref([])
+const weeklyQuizzes = ref([])
+const studyResources = ref([])
+const studyTips = ref([])
+const faqs = ref([])
+
+function makeInitials(name) {
+  if (!name) return "ST"
+  return name
+    .split(" ")
+    .map(part => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+onMounted(async () => {
+  try {
+    const profileRes = await studentApi.getProfile()
+    if (profileRes.success && profileRes.data?.student) {
+      const s = profileRes.data.student
+      student.value = {
+        name: s.name || "",
+        initials: makeInitials(s.name || "")
+      }
+    }
+  } catch (err) {
+    console.error("Topbar profile fetch error:", err)
+  }
+
+  try {
+    const assignmentsRes = await studentApi.getAssignments()
+    assignments.value = assignmentsRes?.data?.assignments || []
+  } catch {
+    assignments.value = []
+  }
+
+  try {
+    const quizzesRes = await studentApi.getQuizzes()
+    weeklyQuizzes.value = quizzesRes?.data?.quizzes || []
+  } catch {
+    weeklyQuizzes.value = []
+  }
+
+  try {
+    const resourcesRes = await studentApi.getResources()
+    studyResources.value = resourcesRes?.data?.studyResources || []
+  } catch {
+    studyResources.value = []
+  }
+
+  try {
+    const tipsRes = await studentApi.getStudyTips()
+    studyTips.value = tipsRes?.data?.studyTips || []
+  } catch {
+    studyTips.value = []
+  }
+
+  try {
+    const faqRes = await studentApi.getFaqs()
+    faqs.value = faqRes?.data?.faqs || []
+  } catch {
+    faqs.value = []
+  }
+
+  // homework endpoint not clearly separate in current API
+  homeworkList.value = assignments.value
+})
+
 const searchIndex = computed(() => [
-  ...assignments.map((a) => ({
+  ...assignments.value.map((a) => ({
     type: "Assignment",
-    title: a.title,
-    subtitle: a.subject,
+    title: a.title || "",
+    subtitle: a.subject || "",
     to: "/student/assignments",
   })),
-  ...homeworkList.map((h) => ({
+  ...homeworkList.value.map((h) => ({
     type: "Homework",
-    title: h.title,
-    subtitle: h.session,
+    title: h.title || "",
+    subtitle: h.subject || h.session || "",
     to: "/student/homework",
   })),
-  ...weeklyQuizzes.map((q) => ({
+  ...weeklyQuizzes.value.map((q) => ({
     type: "Quiz",
-    title: q.title,
-    subtitle: q.subject,
-    to: `/student/quiz/${q.quiz_id}`,
+    title: q.title || "",
+    subtitle: q.subject || "",
+    to: q.quiz_id ? `/student/quiz/${q.quiz_id}` : "/student/quiz",
   })),
-  ...studyResources.map((r) => ({
+  ...studyResources.value.map((r) => ({
     type: "Resource",
-    title: r.resource_title,
-    subtitle: r.resource_type,
+    title: r.resource_title || r.title || "",
+    subtitle: r.resource_type || "",
     to: "/student/resources",
   })),
-  ...studyTips.map((t) => ({
+  ...studyTips.value.map((t) => ({
     type: "Study Tip",
-    title: t.tip,
-    subtitle: t.subject,
+    title: t.tip || "",
+    subtitle: t.subject || "",
     to: "/student/study-tips",
   })),
-  ...faqs.map((f) => ({
+  ...faqs.value.map((f) => ({
     type: "FAQ",
-    title: f.q,
+    title: f.q || "",
     subtitle: "Frequently Asked Questions",
     to: "/student/faq",
   })),
@@ -87,7 +150,6 @@ function goToResult(result) {
 }
 
 function handleBlur() {
-  // Delay so a click on a result registers before the dropdown closes
   setTimeout(() => {
     searchFocused.value = false
   }, 150)
@@ -101,8 +163,12 @@ function handleBlur() {
     </button>
 
     <div class="min-w-0 shrink-0 hidden sm:block">
-      <h2 class="font-display font-bold text-lg leading-tight truncate">Welcome back, {{ student.name.split(" ")[0] }} 🎓</h2>
-      <p class="text-xs text-ink-soft dark:text-slate-400 truncate">Great achievements begin with small, consistent efforts.</p>
+      <h2 class="font-display font-bold text-lg leading-tight truncate">
+        Welcome back, {{ student.name ? student.name.split(" ")[0] : "Student" }} 🎓
+      </h2>
+      <p class="text-xs text-ink-soft dark:text-slate-400 truncate">
+        Great achievements begin with small, consistent efforts.
+      </p>
     </div>
 
     <div class="flex-1 max-w-md mx-auto hidden md:block">
@@ -153,7 +219,9 @@ function handleBlur() {
 
       <router-link to="/student/profile" class="flex items-center gap-2.5 pl-2 border-l border-slate-200 dark:border-border-dark">
         <InitialsAvatar :initials="student.initials" size="sm" />
-        <span class="hidden md:block text-sm font-semibold">{{ student.name }}</span>
+        <span class="hidden md:block text-sm font-semibold">
+          {{ student.name || "Student" }}
+        </span>
       </router-link>
     </div>
   </header>
