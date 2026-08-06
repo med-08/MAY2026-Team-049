@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply font-body bg-grad-page-light text-slate-800 transition-colors duration-300;
+  }
+  html.dark body {
+    @apply bg-grad-page-dark text-slate-100;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display;
+  }
+  ::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 dark:bg-slate-700 rounded-full;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand-green-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-slate-900 rounded-2xl shadow-soft border border-slate-100 dark:border-slate-800;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-brand-green-500 to-brand-blue-500 text-white text-sm font-semibold shadow-soft hover:shadow-soft-lg hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all duration-200;
+  }
+  .input-field {
+    @apply w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm placeholder:text-slate-400 focus:border-brand-green-500 transition-colors duration-200;
+  }
+  .table-th {
+    @apply text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-4 py-3 whitespace-nowrap;
+  }
+  .table-td {
+    @apply px-4 py-3 text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap;
+  }
+  .pill-filter {
+    @apply px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors duration-200 border;
+  }
+
+  /* --- Student Dashboard additions --- */
+  .card-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06), 0 16px 32px -14px rgba(15, 23, 42, 0.16);
+  }
+  .brand-gradient {
+    background-image: linear-gradient(135deg, #2454ff 0%, #14b877 100%);
+  }
+  .ticket-stub {
+    position: relative;
+  }
+  .ticket-stub::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--stub-y, 50%);
+    border-top: 2px dashed rgba(148, 163, 184, 0.45);
+  }
+  .ticket-notch {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 9999px;
+    background: #f6f8fc;
+    top: var(--stub-y, 50%);
+    transform: translateY(-50%);
+  }
+  html.dark .ticket-notch {
+    background: #0b1220;
+  }
+  .ticket-notch.left {
+    left: -11px;
+  }
+  .ticket-notch.right {
+    right: -11px;
+  }
+}
