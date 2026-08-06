@@ -1,13 +1,31 @@
 <script setup>
+import { computed } from "vue"
 import { CalendarIcon, ClockIcon, UserIcon, BookOpenIcon, FlagIcon, TagIcon } from "@heroicons/vue/24/outline"
 
-defineProps({
-  session: Object,
+const props = defineProps({
+  session: { type: Object, default: () => ({}) },
+})
+
+// The backend returns an empty object ({}) when the student has no
+// upcoming session booked, so we can't rely on any single field being
+// present. Treat "no id/subject" as "nothing booked".
+const hasSession = computed(() => !!(props.session && props.session.session_id))
+const topicsText = computed(() => {
+  const topics = props.session?.topics
+  return Array.isArray(topics) && topics.length ? topics.join(", ") : "—"
 })
 </script>
 
 <template>
-  <div class="card overflow-hidden">
+  <div v-if="!hasSession" class="card flex flex-col items-center justify-center text-center py-10 px-6">
+    <CalendarIcon class="w-10 h-10 text-brand-blue mb-2" />
+    <h3 class="font-display font-bold mb-1">No Upcoming Session</h3>
+    <p class="text-sm text-ink-soft dark:text-slate-400">
+      You don't have any session booked yet. Head to Session Booking to schedule one.
+    </p>
+  </div>
+
+  <div v-else class="card overflow-hidden">
     <div class="brand-gradient px-6 py-4 flex items-center justify-between">
       <div>
         <p class="text-white/80 text-xs font-semibold tracking-wide uppercase">Next Session</p>
@@ -54,7 +72,7 @@ defineProps({
         <BookOpenIcon class="w-5 h-5 text-brand-blue shrink-0 mt-0.5" />
         <div>
           <p class="text-xs text-ink-soft dark:text-slate-400">Topics to be Covered</p>
-          <p class="text-sm font-semibold">{{ session.topics.join(", ") }}</p>
+          <p class="text-sm font-semibold">{{ topicsText }}</p>
         </div>
       </div>
      

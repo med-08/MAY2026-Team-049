@@ -50,7 +50,7 @@ def test_non_admin_role_forbidden(client, seed_roles):
     _db.session.add(student)
     _db.session.commit()
 
-    login_resp = client.post('/login', json={'identifier': student.email, 'password': 'Student@123'})
+    login_resp = client.post('/auth/login', json={'identifier': student.email, 'password': 'Student@123'})
     assert login_resp.status_code == 200
 
     resp = client.get('/admin/dashboard/stats')

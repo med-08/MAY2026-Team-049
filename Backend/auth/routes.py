@@ -144,7 +144,7 @@ def register():
                 email=email,
                 password_hash=hashed_pw,
                 role_id=role_id,
-                status='Active'
+                status='Pending'
             )
         elif role_name == 'Parent':
             new_user = Parent(
@@ -152,7 +152,7 @@ def register():
                 email=email,
                 password_hash=hashed_pw,
                 role_id=role_id,
-                status='Active'
+                status='Pending'
             )
         elif role_name == 'Tutor':
             new_user = Tutor(
@@ -185,9 +185,13 @@ def register():
                 db.session.add(StudentSubject(student_id=new_user.student_id, subject_id=sid))
             db.session.commit()
 
+        pending_message = (
+            'Registration Successful! Your account is pending admin approval. '
+            'You will be able to log in once an administrator approves it.'
+        )
         return jsonify({
             'success': True,
-            'message': 'Registration Successful! Please log in.'
+            'message': pending_message
         }), 201
 
     except Exception as e:

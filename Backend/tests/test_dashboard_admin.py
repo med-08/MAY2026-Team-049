@@ -3,7 +3,7 @@ Test cases for GET /admin/dashboard/*
 
 | API | Inputs | Expected Output | Actual Output | Result |
 |---|---|---|---|---|
-| GET /dashboard/stats | seeded 3 students, 2 tutors, 1 parent, 3 subjects | counts match seeded data, blocked=1, pending=2 | counts matched seeded data, blocked=1, pending=2 | Success |
+| GET /dashboard/stats | seeded 3 students, 2 tutors, 1 parent, 3 subjects | counts match seeded data, blocked_users=1, pending=2 | counts matched seeded data, blocked_users=1, pending=2 | Success |
 | GET /dashboard/stats | empty DB | all counts = 0 | all counts = 0 | Success |
 | GET /dashboard/analytics/students-per-subject | seeded subjects+enrollments | Mathematics=1, Science=1, English=0 | Mathematics=1, Science=1, English=0 | Success |
 | GET /dashboard/analytics/monthly-registrations | default (months=7) | 7 buckets returned, ordered oldest->newest | 7 buckets returned, ordered oldest->newest | Success |
@@ -22,7 +22,7 @@ def test_stats_with_seeded_data(admin_client, seed_students, seed_tutors):
     assert data["total_students"] == 3
     assert data["total_tutors"] == 2
     assert data["total_parents"] == 1
-    assert data["blocked_students"] == 1
+    assert data["blocked_users"] == 1
     assert data["pending_approvals"] == 2  # 1 pending student + 1 pending tutor
     assert data["total_subjects"] == 3
 
@@ -35,7 +35,7 @@ def test_stats_empty_database(admin_client):
         "total_students": 0,
         "total_tutors": 0,
         "total_parents": 0,
-        "blocked_students": 0,
+        "blocked_users": 0,
         "pending_approvals": 0,
         "total_subjects": 0,
     }

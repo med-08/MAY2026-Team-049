@@ -282,7 +282,6 @@ LearnAtHome
 - Tutor management UI is currently read-only.
 - Subjects taught are derived from scheduled sessions.
 - No cascade deletion for dependent records.
-- New student/parent registrations are auto-approved.
 
 ---
 

@@ -45,9 +45,9 @@ async function loadStats() {
         icon: HomeIcon
       },
       {
-        title: 'Blocked Students',
-        value: data.blocked_students,
-        subtitle: 'Currently blocked',
+        title: 'Blocked Users',
+        value: data.blocked_users,
+        subtitle: 'Blocked students, tutors & parents',
         color: 'red',
         icon: NoSymbolIcon
       },

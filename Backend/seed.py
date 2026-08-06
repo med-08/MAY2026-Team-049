@@ -83,30 +83,8 @@ with app.app_context():
         db.session.add(tutor_user)
         db.session.commit()
 
-    # 4. Demo active tutor for easier login using tutor@gmail.com
-    tutor_user_2 = Tutor.query.filter_by(email='tutor@gmail.com').first()
-    if not tutor_user_2:
-        tutor_user_2 = Tutor(
-            role_id=tutor_role.role_id,
-            tutor_name='Demo Tutor',
-            email='tutor@gmail.com',
-            phone_no='+91 99999 99999',
-            experience_years=5,
-            bio='Demo tutor account for login testing.',
-            subjects_json=json.dumps(['Mathematics', 'Science']),
-            education='B.Ed.',
-            hourly_rate='₹400/hr',
-            availability='Mon-Fri · 5:00-8:00 PM',
-            languages_json=json.dumps(['English']),
-            certificates_json=json.dumps([]),
-            password_hash=generate_password_hash('123456'),
-            status='Active'
-        )
-        db.session.add(tutor_user_2)
-        db.session.commit()
-
     # 5. Subjects
-    subject_names = ['Mathematics', 'Physics', 'English', 'Science']
+    subject_names = ['Mathematics', 'Physics', 'Science']
     subjects = {}
     for name in subject_names:
         obj = Subject.query.filter_by(subject_name=name).first()
@@ -186,20 +164,35 @@ with app.app_context():
         student_objs[sdata['name']] = s
 
     # 8. Student subjects
-    demo_student = Student.query.filter_by(email='student@gmail.com').first()
-    if demo_student:
-        for subject_name in ['Mathematics', 'Science']:
+    # Each student is enrolled in the subject(s) relevant to their profile,
+    # so the admin dashboard shows a real, non-empty subject list per student
+    # instead of only the demo account having one.
+    student_subject_map = {
+        'Aarav Sharma': ['Mathematics'],
+        'Diya Rao': ['Physics'],
+        'Kabir Joshi': ['Science'],
+        'Demo Student': ['Mathematics', 'Science'],
+    }
+    for student_name, subject_list in student_subject_map.items():
+        student_obj = student_objs.get(student_name)
+        if not student_obj:
+            continue
+        for subject_name in subject_list:
             subject_obj = subjects.get(subject_name)
+            if not subject_obj:
+                continue
             exists = StudentSubject.query.filter_by(
-                student_id=demo_student.student_id,
+                student_id=student_obj.student_id,
                 subject_id=subject_obj.subject_id
             ).first()
             if not exists:
                 db.session.add(StudentSubject(
-                    student_id=demo_student.student_id,
+                    student_id=student_obj.student_id,
                     subject_id=subject_obj.subject_id
                 ))
-        db.session.commit()
+    db.session.commit()
+
+    demo_student = Student.query.filter_by(email='student@gmail.com').first()
 
     # 9. Sessions
     if not Session.query.filter_by(tutor_id=tutor_user.tutor_id).first():

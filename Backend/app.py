@@ -5,6 +5,9 @@ from database import db
 
 from auth import auth_bp
 from parent import parent_bp
+from admin import admin_bp
+from student import student_bp
+from tutor import tutor_bp
 
 
 def create_app():
@@ -47,7 +50,10 @@ def create_app():
         }), 200
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(parent_bp, url_prefix='/parent')
+    app.register_blueprint(parent_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(student_bp)
+    app.register_blueprint(tutor_bp)
 
     @app.errorhandler(404)
     def not_found(e):

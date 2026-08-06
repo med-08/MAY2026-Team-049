@@ -86,7 +86,7 @@ components:
         total_students: { type: integer }
         total_tutors: { type: integer }
         total_parents: { type: integer }
-        blocked_students: { type: integer }
+        blocked_users: { type: integer }
         pending_approvals: { type: integer }
         total_subjects: { type: integer }
 

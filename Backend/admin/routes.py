@@ -51,6 +51,9 @@ def get_stats():
         total_tutors = Tutor.query.count()
         total_parents = Parent.query.count()
         blocked_students = Student.query.filter_by(status='Blocked').count()
+        blocked_tutors = Tutor.query.filter_by(status='Blocked').count()
+        blocked_parents = Parent.query.filter_by(status='Blocked').count()
+        blocked_users = blocked_students + blocked_tutors + blocked_parents
         pending_approvals = (
             Student.query.filter_by(status='Pending').count()
             + Tutor.query.filter_by(status='Pending').count()
@@ -64,7 +67,7 @@ def get_stats():
         "total_students": total_students,
         "total_tutors": total_tutors,
         "total_parents": total_parents,
-        "blocked_students": blocked_students,
+        "blocked_users": blocked_users,
         "pending_approvals": pending_approvals,
         "total_subjects": total_subjects,
     })
@@ -192,7 +195,7 @@ def tutors_per_subject():
 def status_breakdown():
     """GET /admin/dashboard/analytics/status-breakdown -> stacked bar chart
     data: Active/Blocked/Pending counts for each of Students/Tutors/Parents.
-    Gives a fuller picture than the single "blocked_students" KPI card on
+    Gives a fuller picture than the single "blocked_users" KPI card on
     the Overview page.
     """
     try:

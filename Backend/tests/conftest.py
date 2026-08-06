@@ -66,7 +66,7 @@ def seed_admin(client, seed_roles):
 def admin_client(client, seed_admin):
     """A test client already logged in as the seeded Admin (real session,
     via the actual POST /login endpoint -- not a bypass)."""
-    resp = client.post('/login', json={'identifier': 'admin', 'password': 'admin123'})
+    resp = client.post('/auth/login', json={'identifier': 'admin', 'password': 'admin123'})
     assert resp.status_code == 200, resp.get_json()
     assert resp.get_json()['success'] is True
     return client
