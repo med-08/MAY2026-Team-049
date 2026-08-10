@@ -5,7 +5,15 @@ from datetime import datetime
 from auth import auth_bp
 from database import db
 from models import Student, Parent, Tutor, Subject, StudentSubject
-from utils import validate_registration, find_user_by_identifier, get_role_id, generate_jwt_token
+from utils import (
+    validate_registration,
+    validate_student_with_parent_registration,
+    find_parent_by_email,
+    find_user_by_identifier,
+    get_role_id,
+    generate_jwt_token,
+    EMAIL_REGEX,
+)
 
 
 @auth_bp.route('/subjects', methods=['GET'])
@@ -14,6 +22,40 @@ def list_subjects():
     return jsonify({
         'success': True,
         'data': [{'subject_id': s.subject_id, 'subject_name': s.subject_name} for s in subjects]
+    }), 200
+
+
+@auth_bp.route('/check-parent-email', methods=['GET'])
+def check_parent_email():
+    """
+    Used by the combined Student + Parent registration form to look up a
+    Parent by email as the user types it, so the UI can either confirm the
+    existing parent account or reveal the "new parent" fields.
+    """
+    email = (request.args.get('email') or '').strip()
+
+    if not email or not EMAIL_REGEX.match(email):
+        return jsonify({
+            'success': False,
+            'message': 'Please provide a valid email address.'
+        }), 400
+
+    parent = find_parent_by_email(email)
+
+    if parent:
+        return jsonify({
+            'success': True,
+            'exists': True,
+            'parent': {
+                'parent_id': parent.parent_id,
+                'parent_name': parent.parent_name,
+                'email': parent.email
+            }
+        }), 200
+
+    return jsonify({
+        'success': True,
+        'exists': False
     }), 200
 
 
@@ -119,12 +161,23 @@ def register():
             }), 200
 
         data = request.get_json(silent=True) or request.form or {}
+
+        # Combined Student + Parent registration: the request body carries a
+        # nested `student` object (and, optionally, a `parent` object). This
+        # is the path used by the current registration form for the Student
+        # role, which replaces the old separate Parent Registration form.
+        if isinstance(data.get('student'), dict):
+            return _register_student_with_parent(data)
+
+        # Legacy flat single-role registration. Student and Parent accounts
+        # can no longer be created through this path (see
+        # validate_registration) - it now only serves Tutor sign-up, which
+        # this change did not touch.
         name = (data.get('name') or data.get('fullName') or '').strip()
         email = (data.get('email') or '').strip()
         password = data.get('password', '')
         confirm_password = data.get('confirm_password') or data.get('confirmPassword') or ''
-        role_name = (data.get('role') or 'Student').strip()
-        subject_ids = data.get('subject_ids') or data.get('subjects') or []
+        role_name = (data.get('role') or 'Tutor').strip()
 
         errors = validate_registration(name, email, password, confirm_password, role_name)
 
@@ -138,52 +191,20 @@ def register():
         role_id = get_role_id(role_name)
         hashed_pw = generate_password_hash(password)
 
-        if role_name == 'Student':
-            new_user = Student(
-                student_name=name,
-                email=email,
-                password_hash=hashed_pw,
-                role_id=role_id,
-                status='Pending'
-            )
-        elif role_name == 'Parent':
-            new_user = Parent(
-                parent_name=name,
-                email=email,
-                password_hash=hashed_pw,
-                role_id=role_id,
-                status='Pending'
-            )
-        elif role_name == 'Tutor':
-            new_user = Tutor(
-                tutor_name=name,
-                email=email,
-                password_hash=hashed_pw,
-                role_id=role_id,
-                phone_no=data.get('phone_no') or data.get('phone'),
-                experience_years=data.get('experience_years') or 0,
-                bio=data.get('bio', ''),
-                hourly_rate=data.get('hourly_rate', ''),
-                status='Pending'
-            )
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Invalid role specified.'
-            }), 400
+        new_user = Tutor(
+            tutor_name=name,
+            email=email,
+            password_hash=hashed_pw,
+            role_id=role_id,
+            phone_no=data.get('phone_no') or data.get('phone'),
+            experience_years=data.get('experience_years') or 0,
+            bio=data.get('bio', ''),
+            hourly_rate=data.get('hourly_rate', ''),
+            status='Pending'
+        )
 
         db.session.add(new_user)
         db.session.commit()
-
-        if role_name == 'Student' and subject_ids:
-            valid_ids = {
-                sid for (sid,) in db.session.query(Subject.subject_id)
-                .filter(Subject.subject_id.in_(subject_ids))
-                .all()
-            }
-            for sid in valid_ids:
-                db.session.add(StudentSubject(student_id=new_user.student_id, subject_id=sid))
-            db.session.commit()
 
         pending_message = (
             'Registration Successful! Your account is pending admin approval. '
@@ -201,6 +222,120 @@ def register():
             'success': False,
             'message': f'An error occurred during registration: {str(e)}'
         }), 500
+
+
+def _register_student_with_parent(data):
+    """
+    Combined Student + Parent registration.
+
+    Expected body:
+    {
+      "student": {"name", "email", "password", "confirm_password", "phone_no"?, "school", "subject_ids"},
+      "parent":  {"email", "name"?, "password"?, "confirm_password"?, "phone_no"?}
+    }
+
+    "school" and "subject_ids" are required (subject_ids must contain at
+    least one subject id) - see validate_student_with_parent_registration.
+
+    - Looks up the Parent by email.
+    - If found: reuses that parent_id, never creates a second Parent row.
+    - If not found: creates a new Parent using the supplied details.
+    - Both the (possible) Parent creation and the Student creation happen
+      in a single DB transaction, so a Student is never left pointing at
+      an invalid parent_id if something goes wrong partway through.
+    """
+    student_data = data.get('student') or {}
+    parent_data = data.get('parent') or {}
+
+    parent_email = (parent_data.get('email') or '').strip()
+    existing_parent = find_parent_by_email(parent_email) if parent_email else None
+
+    errors = validate_student_with_parent_registration(student_data, parent_data, existing_parent)
+
+    if errors:
+        return jsonify({
+            'success': False,
+            'message': errors[0],
+            'errors': errors
+        }), 400
+
+    student_name = (student_data.get('name') or student_data.get('student_name') or '').strip()
+    student_email = (student_data.get('email') or '').strip()
+    student_password = student_data.get('password', '')
+    student_phone = student_data.get('phone_no') or student_data.get('phone')
+    student_school = (student_data.get('school') or '').strip()
+    subject_ids = student_data.get('subject_ids') or student_data.get('subjects') or []
+
+    try:
+        creating_new_parent = existing_parent is None
+
+        if creating_new_parent:
+            parent_role_id = get_role_id('Parent')
+            parent_obj = Parent(
+                parent_name=(parent_data.get('name') or '').strip(),
+                email=parent_email,
+                phone_no=parent_data.get('phone_no') or parent_data.get('phone'),
+                password_hash=generate_password_hash(parent_data.get('password', '')),
+                role_id=parent_role_id,
+                status='Pending'
+            )
+            # flush (not commit) so parent_obj.parent_id is generated but the
+            # row is only made durable together with the Student below.
+            db.session.add(parent_obj)
+            db.session.flush()
+            resolved_parent = parent_obj
+        else:
+            resolved_parent = existing_parent
+
+        student_role_id = get_role_id('Student')
+        new_student = Student(
+            student_name=student_name,
+            email=student_email,
+            password_hash=generate_password_hash(student_password),
+            role_id=student_role_id,
+            phone_no=student_phone,
+            school=student_school,
+            parent_id=resolved_parent.parent_id,
+            status='Pending'
+        )
+        db.session.add(new_student)
+        db.session.flush()
+
+        if subject_ids:
+            valid_ids = {
+                sid for (sid,) in db.session.query(Subject.subject_id)
+                .filter(Subject.subject_id.in_(subject_ids))
+                .all()
+            }
+            for sid in valid_ids:
+                db.session.add(StudentSubject(student_id=new_student.student_id, subject_id=sid))
+
+        # Single commit: Parent (if new) + Student + subject links all
+        # succeed or all roll back together.
+        db.session.commit()
+
+    except Exception as e:
+        db.session.rollback()
+        print("REGISTER ERROR:", str(e))
+        return jsonify({
+            'success': False,
+            'message': f'An error occurred during registration: {str(e)}'
+        }), 500
+
+    pending_message = (
+        'Registration Successful! Your account is pending admin approval. '
+        'You will be able to log in once an administrator approves it.'
+    )
+    return jsonify({
+        'success': True,
+        'message': pending_message,
+        'parent': {
+            'parent_id': resolved_parent.parent_id,
+            'parent_name': resolved_parent.parent_name,
+            'email': resolved_parent.email,
+            'newly_created': creating_new_parent
+        }
+    }), 201
 
 
 @auth_bp.route('/logout', methods=['GET', 'POST'])

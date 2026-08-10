@@ -32,19 +32,75 @@ onMounted(async () => {
   }
 })
 
+// "Parent" is no longer its own registerable role - parent details are now
+// collected as part of Student registration (see parent email lookup below).
 const roles = [
   { name: "Student", value: "Student", icon: "🎓" },
-  { name: "Tutor", value: "Tutor", icon: "👩‍🏫" },
-  { name: "Parent", value: "Parent", icon: "👨‍👩‍👧" }
+  { name: "Tutor", value: "Tutor", icon: "👩‍🏫" }
 ]
 
 const form = ref({
   fullName: "",
   email: "",
   mobile: "",
+  school: "",
   password: "",
-  confirmPassword: ""
+  confirmPassword: "",
+  parentEmail: "",
+  parentName: "",
+  parentPassword: "",
+  parentConfirmPassword: "",
+  parentPhone: ""
 })
+
+// Parent-email lookup state: 'idle' | 'checking' | 'found' | 'not_found' | 'error'
+const parentCheckStatus = ref("idle")
+const parentCheckMessage = ref("")
+const foundParentName = ref("")
+
+const EMAIL_RE = /^[\w.-]+@[\w.-]+\.\w+$/
+
+function resetParentCheck() {
+  parentCheckStatus.value = "idle"
+  parentCheckMessage.value = ""
+  foundParentName.value = ""
+}
+
+// Called when the Parent Email field loses focus. Looks the email up on the
+// backend so we can either confirm the existing parent account or reveal
+// the "new parent" fields dynamically.
+async function checkParentEmail() {
+  const email = form.value.parentEmail.trim()
+
+  if (!email) {
+    resetParentCheck()
+    return
+  }
+
+  if (!EMAIL_RE.test(email)) {
+    parentCheckStatus.value = "error"
+    parentCheckMessage.value = "Please enter a valid parent email address."
+    return
+  }
+
+  parentCheckStatus.value = "checking"
+  parentCheckMessage.value = ""
+
+  try {
+    const data = await authApi.checkParentEmail(email)
+
+    if (data.exists) {
+      parentCheckStatus.value = "found"
+      foundParentName.value = data.parent?.parent_name || ""
+    } else {
+      parentCheckStatus.value = "not_found"
+      foundParentName.value = ""
+    }
+  } catch (err) {
+    parentCheckStatus.value = "error"
+    parentCheckMessage.value = err.message || "Could not check parent email right now."
+  }
+}
 
 const register = async () => {
   authError.value = ""
@@ -65,18 +121,82 @@ const register = async () => {
     return
   }
 
-  submitting.value = true
+  let payload
 
-  try {
-    const data = await authApi.register({
+  if (selectedRole.value === "Student") {
+    if (!selectedSubjectIds.value.length) {
+      authError.value = "Please select at least one subject."
+      return
+    }
+
+    if (!form.value.parentEmail) {
+      authError.value = "Please enter the Parent Email."
+      return
+    }
+
+    if (parentCheckStatus.value === "idle" || parentCheckStatus.value === "checking") {
+      // Make sure we know whether this parent already exists before submitting.
+      await checkParentEmail()
+    }
+
+    if (parentCheckStatus.value === "error") {
+      authError.value = parentCheckMessage.value || "Please enter a valid parent email address."
+      return
+    }
+
+    const parentAlreadyExists = parentCheckStatus.value === "found"
+
+    if (!parentAlreadyExists) {
+      if (
+        !form.value.parentName ||
+        !form.value.parentPassword ||
+        !form.value.parentConfirmPassword
+      ) {
+        authError.value = "Please fill in the new Parent account details."
+        return
+      }
+
+      if (form.value.parentPassword !== form.value.parentConfirmPassword) {
+        authError.value = "Parent passwords do not match."
+        return
+      }
+    }
+
+    payload = {
+      student: {
+        name: form.value.fullName,
+        email: form.value.email,
+        password: form.value.password,
+        confirm_password: form.value.confirmPassword,
+        phone_no: form.value.mobile,
+        school: form.value.school.trim(),
+        subject_ids: selectedSubjectIds.value
+      },
+      parent: parentAlreadyExists
+        ? { email: form.value.parentEmail }
+        : {
+            email: form.value.parentEmail,
+            name: form.value.parentName,
+            password: form.value.parentPassword,
+            confirm_password: form.value.parentConfirmPassword,
+            phone_no: form.value.parentPhone
+          }
+    }
+  } else {
+    payload = {
       name: form.value.fullName,
       email: form.value.email,
       role: selectedRole.value,
       password: form.value.password,
       confirm_password: form.value.confirmPassword,
-      phone_no: form.value.mobile,
-      subject_ids: selectedRole.value === "Student" ? selectedSubjectIds.value : []
-    })
+      phone_no: form.value.mobile
+    }
+  }
+
+  submitting.value = true
+
+  try {
+    const data = await authApi.register(payload)
 
     if (data.success) {
       authSuccess.value = data.message || "Registration Successful! Please log in."
@@ -85,10 +205,17 @@ const register = async () => {
         fullName: "",
         email: "",
         mobile: "",
+        school: "",
         password: "",
-        confirmPassword: ""
+        confirmPassword: "",
+        parentEmail: "",
+        parentName: "",
+        parentPassword: "",
+        parentConfirmPassword: "",
+        parentPhone: ""
       }
       selectedSubjectIds.value = []
+      resetParentCheck()
 
       setTimeout(() => {
         router.push("/login")
@@ -127,7 +254,7 @@ const register = async () => {
             Register As
           </label>
 
-          <div class="grid grid-cols-3 gap-3 mt-3">
+          <div class="grid grid-cols-2 gap-3 mt-3">
             <button
               v-for="r in roles"
               :key="r.value"
@@ -148,11 +275,11 @@ const register = async () => {
 
         <div v-if="selectedRole === 'Student'" class="mt-6">
           <label class="font-semibold text-slate-700 dark:text-slate-300">
-            Subjects You're Interested In
+            Subjects You're Interested In <span class="text-rose-500">*</span>
           </label>
 
           <p class="text-xs text-slate-400 mt-1 mb-3">
-            Optional — pick a few so tutors and admins know what to set you up with.
+            Required — pick at least one so tutors and admins know what to set you up with.
           </p>
 
           <div v-if="subjectsLoading" class="text-sm text-slate-400">
@@ -176,8 +303,8 @@ const register = async () => {
             </button>
           </div>
 
-          <p v-else class="text-sm text-slate-400">
-            No subjects available right now — you can add these later from your profile.
+          <p v-else class="text-sm text-rose-500 dark:text-rose-400">
+            No subjects are available right now, so registration can't be completed. Please try again later or contact support.
           </p>
         </div>
 
@@ -221,6 +348,19 @@ const register = async () => {
             />
           </div>
 
+          <div v-if="selectedRole === 'Student'">
+            <label class="font-medium text-slate-700 dark:text-slate-300">
+              School
+            </label>
+
+            <input
+              v-model="form.school"
+              type="text"
+              placeholder="Enter your school name (optional)"
+              class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+            />
+          </div>
+
           <div>
             <label class="font-medium text-slate-700 dark:text-slate-300">
               Password
@@ -245,6 +385,97 @@ const register = async () => {
               placeholder="Confirm password"
               class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
             />
+          </div>
+
+          <div v-if="selectedRole === 'Student'" class="pt-2 border-t border-slate-200 dark:border-slate-700">
+            <p class="font-semibold text-slate-700 dark:text-slate-300 mt-5 mb-1">
+              Parent Details
+            </p>
+            <p class="text-xs text-slate-400 mb-3">
+              We'll link your account to your parent's account.
+            </p>
+
+            <div>
+              <label class="font-medium text-slate-700 dark:text-slate-300">
+                Parent Email
+              </label>
+
+              <input
+                v-model="form.parentEmail"
+                type="email"
+                placeholder="Enter your parent's email"
+                @blur="checkParentEmail"
+                @input="resetParentCheck"
+                class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+              />
+
+              <p v-if="parentCheckStatus === 'checking'" class="text-xs text-slate-400 mt-2">
+                Checking parent email…
+              </p>
+              <p v-else-if="parentCheckStatus === 'found'" class="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+                ✓ Parent account found{{ foundParentName ? ` for ${foundParentName}` : '' }}. We'll link your account to it.
+              </p>
+              <p v-else-if="parentCheckStatus === 'not_found'" class="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                No parent account found for this email — please fill in the parent details below to create one.
+              </p>
+              <p v-else-if="parentCheckStatus === 'error'" class="text-xs text-rose-600 dark:text-rose-400 mt-2">
+                {{ parentCheckMessage }}
+              </p>
+            </div>
+
+            <div v-if="parentCheckStatus === 'not_found'" class="space-y-5 mt-5">
+              <div>
+                <label class="font-medium text-slate-700 dark:text-slate-300">
+                  Parent Name
+                </label>
+
+                <input
+                  v-model="form.parentName"
+                  type="text"
+                  placeholder="Enter parent's full name"
+                  class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+                />
+              </div>
+
+              <div>
+                <label class="font-medium text-slate-700 dark:text-slate-300">
+                  Parent Phone
+                </label>
+
+                <input
+                  v-model="form.parentPhone"
+                  type="text"
+                  placeholder="Enter parent's mobile number"
+                  class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+                />
+              </div>
+
+              <div>
+                <label class="font-medium text-slate-700 dark:text-slate-300">
+                  Parent Password
+                </label>
+
+                <input
+                  v-model="form.parentPassword"
+                  type="password"
+                  placeholder="Create a password for the parent account"
+                  class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+                />
+              </div>
+
+              <div>
+                <label class="font-medium text-slate-700 dark:text-slate-300">
+                  Confirm Parent Password
+                </label>
+
+                <input
+                  v-model="form.parentConfirmPassword"
+                  type="password"
+                  placeholder="Confirm parent password"
+                  class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+                />
+              </div>
+            </div>
           </div>
 
           <button

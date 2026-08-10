@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 from database import db
-from models import Parent, Student, WeeklySummary, QuizAttempt, AttendanceRecord, TeachingPlan, MeetingRequest, Session, Tutor
+from models import Parent, Student, WeeklySummary, QuizAttempt, AttendanceRecord, TeachingPlan, MeetingRequest, Tutor
 from decorators import parent_required
 from datetime import datetime, date
 
@@ -178,12 +178,12 @@ def get_child_progress(parent_id, student_id):
     attendance_rate = f"{round((present / total) * 100)}%" if total > 0 else "N/A"
 
     # Recent quiz scores
-    recent_quizzes = db.session.query(QuizAttempt, Session).join(Session).filter(
+    recent_quizzes = QuizAttempt.query.filter(
         QuizAttempt.student_id == student_id
     ).order_by(QuizAttempt.attempted_at.desc()).limit(5).all()
 
     quiz_scores = []
-    for attempt, sess in recent_quizzes:
+    for attempt in recent_quizzes:
         quiz_scores.append({
             "subject": "Mathematics",  # You can enhance with subject join later
             "topic": "Quiz",

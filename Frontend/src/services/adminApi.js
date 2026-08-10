@@ -37,6 +37,9 @@ export const adminApi = {
   // ---- Tutors ----
   listTutors: (params) => apiRequest(`${BASE}/tutors`, { params }),
   getTutor: (id) => apiRequest(`${BASE}/tutors/${id}`),
+  updateTutorStatus: (id, status) =>
+    apiRequest(`${BASE}/tutors/${id}/status`, { method: 'PATCH', body: { status } }),
+  deleteTutor: (id) => apiRequest(`${BASE}/tutors/${id}`, { method: 'DELETE' }),
 
   // ---- Approvals ----
   listApprovals: (status = 'Pending') => apiRequest(`${BASE}/approvals`, { params: { status } }),
@@ -50,8 +53,7 @@ export const adminApi = {
   updateProfile: (payload) => apiRequest(`${BASE}/profile/me`, { method: 'PUT', body: payload }),
   changePassword: (payload) => apiRequest(`${BASE}/profile/me/password`, { method: 'PUT', body: payload }),
 
-  // ---- Auth (login/logout live at the app root, not under /admin) ----
-  login: (identifier, password, remember = false) =>
-    apiRequest('/login', { method: 'POST', body: { identifier, password, remember } }),
-  logout: () => apiRequest('/logout', { method: 'POST' }),
+  // NOTE: login/logout for every role (including Admin) go through
+  // authApi ('/auth/login', '/auth/logout') -- see Frontend/src/services/authApi.js.
+  // There is no separate '/admin' login endpoint on the backend.
 }

@@ -13,6 +13,12 @@ export const authApi = {
       body: payload
     }),
 
+  checkParentEmail: (email) =>
+    apiRequest('/auth/check-parent-email', {
+      method: 'GET',
+      params: { email }
+    }),
+
   logout: () =>
     apiRequest('/auth/logout', {
       method: 'POST'

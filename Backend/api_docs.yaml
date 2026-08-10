@@ -285,16 +285,72 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /auth/check-parent-email:
+    get:
+      tags: [Auth]
+      summary: Look up a Parent account by email (used while filling the registration form)
+      description: >
+        Used by the combined Student + Parent registration form as the
+        Parent Email field is filled in, so the UI can either confirm the
+        existing parent account (and hide the "new parent" fields) or
+        reveal the fields needed to create a new Parent. This is a
+        best-effort UI hint only; POST /auth/register performs its own
+        authoritative lookup in the same transaction as account creation.
+      security: []
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema: { type: string, format: email }
+      responses:
+        '200':
+          description: Lookup completed (whether or not a match was found)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  exists: { type: boolean }
+                  parent:
+                    type: object
+                    nullable: true
+                    description: Present only when exists=true
+                    properties:
+                      parent_id: { type: integer }
+                      parent_name: { type: string }
+                      email: { type: string }
+        '400':
+          description: Missing or invalid email
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /register:
     post:
       tags: [Auth]
-      summary: Register a new Student or Parent account
+      summary: Register a new Student (with linked Parent), or a new Tutor account
       description: >
-        Self-service sign-up, restricted to the Student and Parent roles
-        (Admin/Tutor accounts are provisioned separately). Validates name,
-        email format, password length/match, and email uniqueness across
-        Admin/Tutor/Student/Parent before creating the row with
-        status="Active". If the caller already has an active session, the
+        Self-service sign-up. Supports two request shapes:
+
+        1. **Combined Student + Parent** (current registration form) - body
+        contains a nested `student` object and a `parent` object. The
+        Parent's email is looked up first: if a Parent with that email
+        already exists, the new Student is linked to it via
+        `student.parent_id` and no new Parent row is created; otherwise a
+        new Parent is created from the supplied `parent` fields and the
+        Student is linked to its new `parent_id`. Parent creation (when
+        needed) and Student creation happen in a single DB transaction, so
+        a Student is never left pointing at an invalid/partially-created
+        Parent.
+
+        2. **Legacy flat single-role body** (`name`/`email`/`password`/
+        `confirm_password`/`role`) - now only accepts `role: "Tutor"`.
+        Standalone Parent registration and flat (unlinked) Student
+        registration have been removed; Student accounts must go through
+        the combined shape above so every Student is linked to a Parent.
+
+        In both cases, if the caller already has an active session, the
         request short-circuits and returns a redirect for their existing
         role instead of creating a new account.
       security: []
@@ -303,29 +359,94 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [name, email, password, confirm_password, role]
-              properties:
-                name: { type: string, minLength: 2, description: "Full name" }
-                email: { type: string, format: email }
-                password: { type: string, minLength: 6 }
-                confirm_password: { type: string, minLength: 6 }
-                role:
-                  type: string
-                  enum: [Student, Parent]
-                  default: Student
-            example:
-              name: "New Student"
-              email: "new.student@learnmail.com"
-              password: "Passw0rd!"
-              confirm_password: "Passw0rd!"
-              role: "Student"
+              oneOf:
+                - type: object
+                  required: [student, parent]
+                  properties:
+                    student:
+                      type: object
+                      required: [name, email, password, confirm_password]
+                      properties:
+                        name: { type: string, minLength: 2 }
+                        email: { type: string, format: email }
+                        password: { type: string, minLength: 6 }
+                        confirm_password: { type: string, minLength: 6 }
+                        phone_no: { type: string, nullable: true }
+                        school: { type: string, nullable: true }
+                        subject_ids:
+                          type: array
+                          items: { type: integer }
+                    parent:
+                      type: object
+                      required: [email]
+                      description: >
+                        Only `email` is required if the Parent already
+                        exists. `name`/`password`/`confirm_password` are
+                        required when the Parent email is new (i.e. no
+                        existing Parent account was found for it).
+                      properties:
+                        email: { type: string, format: email }
+                        name: { type: string, minLength: 2 }
+                        password: { type: string, minLength: 6 }
+                        confirm_password: { type: string, minLength: 6 }
+                        phone_no: { type: string, nullable: true }
+                - type: object
+                  required: [name, email, password, confirm_password, role]
+                  properties:
+                    name: { type: string, minLength: 2, description: "Full name" }
+                    email: { type: string, format: email }
+                    password: { type: string, minLength: 6 }
+                    confirm_password: { type: string, minLength: 6 }
+                    role:
+                      type: string
+                      enum: [Tutor]
+            examples:
+              student_with_existing_parent:
+                summary: Student registration, Parent email already exists
+                value:
+                  student:
+                    name: "New Student"
+                    email: "new.student@learnmail.com"
+                    password: "Passw0rd!"
+                    confirm_password: "Passw0rd!"
+                  parent:
+                    email: "ravi@gmail.com"
+              student_with_new_parent:
+                summary: Student registration, Parent email is new
+                value:
+                  student:
+                    name: "New Student"
+                    email: "new.student2@learnmail.com"
+                    password: "Passw0rd!"
+                    confirm_password: "Passw0rd!"
+                  parent:
+                    email: "new.parent@parentmail.com"
+                    name: "New Parent"
+                    password: "ParentPass1!"
+                    confirm_password: "ParentPass1!"
+                    phone_no: "+1 200 555 2000"
+              tutor_legacy_flat:
+                summary: Tutor registration (legacy flat shape)
+                value:
+                  name: "New Tutor"
+                  email: "new.tutor@learnmail.com"
+                  password: "Passw0rd!"
+                  confirm_password: "Passw0rd!"
+                  role: "Tutor"
       responses:
         '200':
           description: >
-            Registration successful, OR caller was already logged in (in
-            which case no new account is created and a redirect_url for
-            their existing role is returned instead).
+            Caller was already logged in - no new account is created and a
+            redirect_url for their existing role is returned instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  redirect_url: { type: string }
+        '201':
+          description: Registration successful
           content:
             application/json:
               schema:
@@ -333,20 +454,29 @@ paths:
                 properties:
                   success: { type: boolean, example: true }
                   message: { type: string, example: "Registration Successful! Please log in." }
-                  redirect_url:
-                    type: string
+                  parent:
+                    type: object
                     nullable: true
-                    description: Only present when short-circuited by an existing session
+                    description: Only present for the combined Student + Parent shape
+                    properties:
+                      parent_id: { type: integer }
+                      parent_name: { type: string }
+                      email: { type: string }
+                      newly_created:
+                        type: boolean
+                        description: true if a new Parent row was created, false if an existing one was reused
         '400':
           description: >
-            Validation failed - name too short, invalid email, password
-            too short, password/confirm_password mismatch, role not in
-            [Student, Parent], or email already registered
+            Validation failed - e.g. name too short, invalid email,
+            password too short, password/confirm_password mismatch,
+            Student or Parent email already registered, missing Parent
+            details when the Parent email is new, or role not in [Tutor]
+            for the legacy flat shape
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500':
-          description: Unexpected error while creating the account (rolled back)
+          description: Unexpected error while creating the account(s) (transaction rolled back)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
