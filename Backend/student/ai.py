@@ -10,9 +10,8 @@ from student.routes import student_response, student_error, get_current_student
 
 def call_gemini(prompt, system_instruction=None):
     """
-    Backend-only Gemini API helper using google.generativeai.
-    Uses GEMINI_API_KEY from environment or .env file. Model: gemini-2.0-flash.
-    Returns generated text or raises Exception on failure.
+    Backend-only Gemini API helper.
+    Tries google.generativeai SDK first; falls back to standard urllib REST API.
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -35,32 +34,72 @@ def call_gemini(prompt, system_instruction=None):
     if not api_key:
         raise ValueError("GEMINI_API_KEY missing")
 
-    import google.generativeai as genai
-    genai.configure(api_key=api_key)
-    
-    models_to_try = ["gemini-flash-latest", "gemini-3.5-flash", "gemini-2.0-flash"]
-    last_err = None
     full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
 
+    # 1. Try SDK if available
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        for m_name in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]:
+            try:
+                model = genai.GenerativeModel(
+                    model_name=m_name,
+                    generation_config={"temperature": 0.3, "max_output_tokens": 2500}
+                )
+                res = model.generate_content(full_prompt)
+                if res and res.text:
+                    return res.text.strip()
+            except Exception:
+                continue
+    except ImportError:
+        pass
+
+    # 2. Fallback to urllib.request REST API (zero dependencies required)
+    import urllib.request
+    import urllib.parse
+
+    models_to_try = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
+    ]
+    last_err = None
+
     for m_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(
-                model_name=m_name,
-                generation_config={
-                    "temperature": 0.3,
-                    "max_output_tokens": 2500,
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_name}:generateContent?key={api_key}"
+        payload = json.dumps({
+            "contents": [
+                {
+                    "parts": [{"text": full_prompt}]
                 }
-            )
-            response = model.generate_content(full_prompt)
-            if response and response.text:
-                return response.text.strip()
+            ],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 2500
+            }
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"}
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                candidates = result.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        return parts[0]["text"].strip()
         except Exception as e:
             last_err = e
             continue
 
     if last_err:
         raise last_err
-    raise RuntimeError("Gemini API generation failed")
+    raise RuntimeError("Gemini REST API call failed")
 
 
 def parse_json_from_response(text):

@@ -161,6 +161,21 @@ export function useParentPortal() {
     }
   }
 
+  async function generateWeeklyReport(studentId) {
+    if (!studentId) return null
+    loading.value = true
+    error.value = ''
+    try {
+      const res = await parentApi.generateWeeklyReport(studentId)
+      return res.report || res.data?.report || 'Report generated successfully.'
+    } catch (err) {
+      error.value = err.message || 'Failed to generate weekly report'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   const latestSummary = computed(() => overview.value?.latest_summary || null)
 
   return {
@@ -181,6 +196,7 @@ export function useParentPortal() {
     loadChildProgress,
     loadCurriculum,
     updateProfile,
-    submitMeetingRequest
+    submitMeetingRequest,
+    generateWeeklyReport
   }
 }

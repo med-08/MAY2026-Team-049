@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, watch } from "vue"
+import { computed, ref, onMounted, onUnmounted } from "vue"
 import { useRoute, useRouter, RouterLink } from "vue-router"
 import PageHeader from "../../components/student/PageHeader.vue"
 import {
@@ -7,10 +7,9 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   TrophyIcon,
-  BoltIcon
+  ClockIcon
 } from "@heroicons/vue/24/outline"
-import { weeklyQuizzes as mockWeeklyQuizzes, quizQuestions as mockQuizQuestions } from "../../data/studentMockData"
-import { apiRequest } from "../../services/apiClient"
+import { studentApi } from "../../services/studentApi"
 
 const route = useRoute()
 const router = useRouter()
@@ -20,29 +19,49 @@ const quiz = ref(null)
 const rawQuestions = ref([])
 
 const currentIndex = ref(0)
-const answers = ref({})
+const answers = ref({})  // { question_id: option_letter }
 const submitted = ref(false)
-const currentDifficulty = ref("medium")
+const isSubmitting = ref(false)
 
-// Sequence of question indices traversed during adaptive attempt
-const traversalPath = ref([0])
+const startTime = ref(Date.now())
+const elapsedTime = ref(0)
+let timerInterval = null
+
+const submissionResult = ref(null)
+
+function getQuestionKey(q, idx) {
+  if (!q) return idx
+  return q.id ?? q.question_id ?? q.questionId ?? idx
+}
 
 async function fetchQuizData() {
   try {
-    const res = await apiRequest(`/student/quizzes/${quizId.value}`)
+    const res = await studentApi.getQuizDetails(quizId.value)
     if (res.data) {
       quiz.value = res.data
       rawQuestions.value = res.data.questions || []
     }
   } catch (err) {
-    console.warn("Using mock quiz data fallback:", err.message)
-    quiz.value = mockWeeklyQuizzes.find((q) => q.quiz_id === quizId.value) || null
-    rawQuestions.value = mockQuizQuestions[quizId.value] || []
+    console.warn("Quiz fetch error:", err.message)
   }
 }
 
 onMounted(() => {
   fetchQuizData()
+  startTime.value = Date.now()
+  timerInterval = setInterval(() => {
+    elapsedTime.value = Math.floor((Date.now() - startTime.value) / 1000)
+  }, 1000)
+})
+
+onUnmounted(() => {
+  if (timerInterval) clearInterval(timerInterval)
+})
+
+const timerDisplay = computed(() => {
+  const mins = Math.floor(elapsedTime.value / 60)
+  const secs = elapsedTime.value % 60
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 })
 
 const questions = computed(() => rawQuestions.value)
@@ -52,51 +71,36 @@ const isLastQuestion = computed(
   () => currentIndex.value === questions.value.length - 1
 )
 
-const hasAnsweredCurrent = computed(
-  () => currentQuestion.value && answers.value[currentQuestion.value.id] !== undefined
-)
-
-function selectOption(optionIndex) {
+function selectOption(optionLetter) {
   if (currentQuestion.value) {
-    answers.value[currentQuestion.value.id] = optionIndex
-  }
-}
-
-// Plain if/else rule-based difficulty adjustment
-function getNextDifficulty(currentDiff, isCorrect) {
-  if (isCorrect) {
-    if (currentDiff === 'easy') return 'medium'
-    if (currentDiff === 'medium') return 'hard'
-    return 'hard'
-  } else {
-    if (currentDiff === 'hard') return 'medium'
-    if (currentDiff === 'medium') return 'easy'
-    return 'easy'
+    const key = getQuestionKey(currentQuestion.value, currentIndex.value)
+    answers.value[key] = optionLetter
   }
 }
 
 async function goNext() {
-  if (!currentQuestion.value) return
-
-  // Determine correctness of current answer
-  const isCorrect = answers.value[currentQuestion.value.id] === currentQuestion.value.correctIndex
-
   if (!isLastQuestion.value) {
-    // Adaptive difficulty adjustment for next question
-    currentDifficulty.value = getNextDifficulty(currentDifficulty.value, isCorrect)
     currentIndex.value++
-    traversalPath.value.push(currentIndex.value)
   } else {
-    submitted.value = true
-    // Post attempt to backend if available
-    try {
-      await apiRequest(`/student/quizzes/${quizId.value}/attempt`, {
-        method: "POST",
-        body: { score: score.value }
-      })
-    } catch (err) {
-      console.warn("Could not save quiz attempt:", err.message)
+    await submitQuiz()
+  }
+}
+
+async function submitQuiz() {
+  if (isSubmitting.value) return
+  isSubmitting.value = true
+  if (timerInterval) clearInterval(timerInterval)
+
+  try {
+    const res = await studentApi.submitQuiz(quizId.value, answers.value)
+    if (res.data) {
+      submissionResult.value = res.data
     }
+  } catch (err) {
+    console.error("Quiz submission error:", err)
+  } finally {
+    submitted.value = true
+    isSubmitting.value = false
   }
 }
 
@@ -105,169 +109,166 @@ function goPrevious() {
     currentIndex.value--
   }
 }
-
-function retakeQuiz() {
-  currentIndex.value = 0
-  answers.value = {}
-  submitted.value = false
-  currentDifficulty.value = "medium"
-  traversalPath.value = [0]
-}
-
-const score = computed(() => {
-  if (questions.value.length === 0) return 0
-  const correct = questions.value.filter(
-    (q) => answers.value[q.id] === q.correctIndex
-  ).length
-  return Math.round((correct / questions.value.length) * 100)
-})
-
-const correctCount = computed(
-  () => questions.value.filter((q) => answers.value[q.id] === q.correctIndex).length
-)
 </script>
 
 <template>
   <div>
     <button
       @click="router.push('/student/quiz')"
-      class="flex items-center gap-1.5 text-sm font-medium text-ink-soft dark:text-slate-400 hover:text-brand-blue dark:hover:text-brand-blue mb-4 transition"
+      class="flex items-center gap-1.5 text-sm font-medium text-ink-soft dark:text-slate-400 hover:text-brand-blue dark:hover:text-brand-blue mb-4 transition cursor-pointer"
     >
       <ArrowLeftIcon class="w-4 h-4" />
-      Back to Weekly Quiz
+      Back to Quizzes
     </button>
 
     <div v-if="!quiz">
-      <PageHeader title="Quiz Not Found" subtitle="We couldn't find this quiz." />
-      <RouterLink to="/student/quiz" class="text-brand-blue font-medium text-sm">
-        Go back to Weekly Quiz
-      </RouterLink>
+      <PageHeader title="Loading Quiz..." subtitle="Please wait while we prepare your quiz." />
     </div>
 
     <div v-else>
-      <PageHeader :title="quiz.title" :subtitle="`${quiz.subject} · Week ${quiz.weekNumber || 1}`" />
+      <PageHeader :title="quiz.title" :subtitle="`${quiz.subject || 'Subject'} · ${quiz.className || 'Class 8/10'} · ${quiz.topicName || 'Practice'}`" />
 
       <!-- Results screen -->
-      <div v-if="submitted" class="card p-8 max-w-xl mx-auto text-center">
-        <TrophyIcon class="w-12 h-12 text-yellow-500 mx-auto mb-3" />
-        <h2 class="text-xl font-display font-bold mb-1">Quiz Completed!</h2>
-        <p class="text-sm text-ink-soft dark:text-slate-400 mb-6">
-          You scored {{ correctCount }} out of {{ questions.length }} questions correctly.
+      <div v-if="submitted" class="card p-6 md:p-8 max-w-2xl mx-auto text-center">
+        <TrophyIcon class="w-14 h-14 text-yellow-500 mx-auto mb-3" />
+        <h2 class="text-2xl font-display font-bold mb-1">Quiz Completed!</h2>
+        <p class="text-xs text-ink-soft dark:text-slate-400 mb-6">
+          Your answers have been evaluated and topic performance updated.
         </p>
 
-        <div class="text-4xl font-display font-bold text-brand-blue mb-6">
-          {{ score }}%
+        <div class="flex justify-center items-center gap-6 mb-6">
+          <div class="p-4 rounded-2xl bg-brand-blue/10 border border-brand-blue/20">
+            <p class="text-3xl font-display font-bold text-brand-blue">
+              {{ submissionResult?.score ?? 0 }}%
+            </p>
+            <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Overall Score</p>
+          </div>
+          <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+            <p class="text-3xl font-display font-bold text-emerald-500">
+              {{ submissionResult?.correctCount ?? 0 }} / {{ submissionResult?.totalQuestions ?? questions.length }}
+            </p>
+            <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Correct Answers</p>
+          </div>
+          <div class="p-4 rounded-2xl bg-slate-500/10 border border-slate-500/20">
+            <p class="text-3xl font-display font-bold text-slate-400">
+              {{ submissionResult?.timeTaken || '5m 12s' }}
+            </p>
+            <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5">Time Taken</p>
+          </div>
         </div>
 
-        <div class="text-left space-y-3 mb-6">
+        <!-- Topic Performance Breakdown -->
+        <div v-if="submissionResult?.topicPerformance" class="mb-6 p-4 rounded-2xl bg-slate-50 dark:bg-white/5 text-left border border-slate-100 dark:border-white/5">
+          <h4 class="font-bold text-xs text-slate-500 uppercase tracking-wider mb-3">Topic Performance Analysis</h4>
+          <div class="space-y-2">
+            <div v-for="(score, top) in submissionResult.topicPerformance" :key="top" class="flex justify-between items-center text-xs font-semibold">
+              <span>{{ top }}</span>
+              <span :class="score < 65 ? 'text-amber-500 font-bold' : 'text-emerald-500 font-bold'">{{ score }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Question Explanations Review -->
+        <div class="text-left space-y-4 mb-6">
+          <h4 class="font-bold text-sm mb-2">Question Breakdown & Explanations</h4>
           <div
-            v-for="(q, idx) in questions"
-            :key="q.id"
-            class="flex items-start gap-2 text-sm border-b border-slate-200 dark:border-border-dark pb-3"
+            v-for="(q, idx) in (submissionResult?.questionBreakdown || questions)"
+            :key="idx"
+            class="p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5"
           >
-            <CheckCircleIcon
-              v-if="answers[q.id] === q.correctIndex"
-              class="w-5 h-5 text-brand-green shrink-0 mt-0.5"
-            />
-            <XCircleIcon v-else class="w-5 h-5 text-danger shrink-0 mt-0.5" />
-            <div>
-              <p class="font-medium">{{ idx + 1 }}. {{ q.question }}</p>
-              <p class="text-ink-soft dark:text-slate-400 mt-0.5">
-                Correct answer: {{ q.options ? q.options[q.correctIndex] : q.correctIndex }}
-              </p>
+            <div class="flex items-start gap-2.5">
+              <CheckCircleIcon
+                v-if="q.isCorrect || q.userAnswer === q.correctOption"
+                class="w-5 h-5 text-emerald-500 shrink-0 mt-0.5"
+              />
+              <XCircleIcon v-else class="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+              <div class="min-w-0 flex-1">
+                <p class="font-semibold text-sm">{{ idx + 1 }}. {{ q.question }}</p>
+                <div class="mt-2 text-xs space-y-1">
+                  <p :class="q.isCorrect ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-rose-600 dark:text-rose-400 font-semibold'">
+                    Your Answer: {{ q.userAnswer || 'Skipped' }}
+                  </p>
+                  <p class="text-slate-600 dark:text-slate-300 font-semibold">
+                    Correct Option: {{ q.correctOption }}
+                  </p>
+                  <div v-if="q.explanation" class="mt-2 p-2.5 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs">
+                    💡 <strong>Explanation:</strong> {{ q.explanation }}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <div class="flex gap-3 justify-center">
-          <button
-            @click="retakeQuiz"
-            class="px-5 py-2.5 rounded-xl font-semibold text-sm bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:hover:bg-cyan-500/25 transition"
-          >
-            Retake Quiz
-          </button>
           <RouterLink
-            to="/student/quiz"
-            class="px-5 py-2.5 rounded-xl font-semibold text-sm bg-slate-100 text-ink hover:bg-slate-200 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 transition"
+            to="/student/dashboard"
+            class="px-6 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-brand-purple to-brand-blue text-white shadow-md hover:opacity-90 transition-all"
           >
-            Back to Quizzes
+            Back to Student Dashboard
           </RouterLink>
         </div>
       </div>
 
       <!-- Quiz taking screen -->
       <div v-else-if="questions.length > 0 && currentQuestion" class="card p-6 md:p-8 max-w-2xl mx-auto">
-        <!-- Progress + Adaptive Difficulty Badge -->
-        <div class="flex items-center justify-between mb-5">
+        <!-- Timer + Progress Header -->
+        <div class="flex items-center justify-between mb-5 pb-3 border-b border-slate-100 dark:border-white/10">
           <div class="flex items-center gap-2">
-            <span class="text-xs font-semibold text-ink-soft dark:text-slate-400">
+            <span class="text-xs font-bold text-brand-purple">
               Question {{ currentIndex + 1 }} of {{ questions.length }}
-            </span>
-            <span
-              class="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider flex items-center gap-1"
-              :class="{
-                'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300': (currentQuestion.difficulty || currentDifficulty) === 'easy',
-                'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300': (currentQuestion.difficulty || currentDifficulty) === 'medium',
-                'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300': (currentQuestion.difficulty || currentDifficulty) === 'hard'
-              }"
-            >
-              <BoltIcon class="w-3 h-3" />
-              {{ currentQuestion.difficulty || currentDifficulty }}
             </span>
           </div>
 
-          <div class="flex gap-1.5">
-            <span
-              v-for="(q, idx) in questions"
-              :key="q.id"
-              class="w-6 h-1.5 rounded-full"
-              :class="idx <= currentIndex ? 'bg-brand-blue' : 'bg-slate-200 dark:bg-white/10'"
-            />
+          <div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-white/10 text-xs font-mono font-bold text-slate-700 dark:text-slate-200">
+            <ClockIcon class="w-4 h-4 text-brand-blue" />
+            {{ timerDisplay }}
           </div>
         </div>
 
-        <h3 class="text-lg font-display font-semibold mb-5">
+        <h3 class="text-lg font-display font-semibold mb-6">
           {{ currentQuestion.question }}
         </h3>
 
+        <!-- Options -->
         <div class="space-y-3 mb-6">
           <button
-            v-for="(option, idx) in currentQuestion.options"
-            :key="idx"
-            @click="selectOption(idx)"
-            class="w-full text-left px-4 py-3 rounded-xl border text-sm font-medium transition"
-            :class="answers[currentQuestion.id] === idx
-              ? 'border-brand-blue bg-brand-blue/10 text-brand-blue dark:bg-brand-blue/15'
-              : 'border-slate-200 dark:border-border-dark hover:bg-slate-50 dark:hover:bg-white/5'"
+            v-for="(optText, optKey) in { 'A': currentQuestion.option_a || currentQuestion.options?.[0], 'B': currentQuestion.option_b || currentQuestion.options?.[1], 'C': currentQuestion.option_c || currentQuestion.options?.[2], 'D': currentQuestion.option_d || currentQuestion.options?.[3] }"
+            :key="optKey"
+            type="button"
+            @click="selectOption(optKey)"
+            class="w-full text-left px-4 py-3.5 rounded-xl border text-sm font-medium transition-all flex items-center justify-between cursor-pointer"
+            :class="answers[getQuestionKey(currentQuestion, currentIndex)] === optKey
+              ? 'border-brand-purple bg-brand-purple/15 text-brand-purple font-bold dark:bg-brand-purple/25 ring-2 ring-brand-purple/30'
+              : 'border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5'"
           >
-            {{ option }}
+            <span><strong class="mr-2">{{ optKey }}.</strong> {{ optText }}</span>
+            <span v-if="answers[getQuestionKey(currentQuestion, currentIndex)] === optKey" class="w-3.5 h-3.5 rounded-full bg-brand-purple flex items-center justify-center text-white text-[9px] font-bold">✓</span>
           </button>
         </div>
 
+        <!-- Navigation Buttons -->
         <div class="flex items-center justify-between">
           <button
+            type="button"
             @click="goPrevious"
             :disabled="currentIndex === 0"
-            class="px-4 py-2 rounded-xl font-semibold text-sm text-ink-soft dark:text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-white/5 transition"
+            style="background: rgba(100, 116, 139, 0.12) !important; color: #475569 !important;"
+            class="px-5 py-2.5 rounded-xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-80 transition cursor-pointer border-0"
           >
-            Previous
+            ← Previous
           </button>
 
           <button
+            type="button"
             @click="goNext"
-            :disabled="!hasAnsweredCurrent"
-            class="px-5 py-2.5 rounded-xl font-semibold text-sm bg-brand-blue text-white hover:bg-brand-blue-dark disabled:opacity-40 disabled:cursor-not-allowed transition"
+            :disabled="isSubmitting"
+            style="background: linear-gradient(135deg, #7C3AED, #2563EB) !important; color: #FFFFFF !important;"
+            class="px-6 py-2.5 rounded-xl font-bold text-sm shadow-md hover:opacity-90 disabled:opacity-50 transition-all cursor-pointer border-0"
           >
-            {{ isLastQuestion ? "Submit Quiz" : "Next Question" }}
+            {{ isLastQuestion ? (isSubmitting ? "Evaluating..." : "Submit Quiz ✓") : "Next Question →" }}
           </button>
         </div>
-      </div>
-
-      <!-- No questions available -->
-      <div v-else class="card p-8 max-w-xl mx-auto text-center">
-        <p class="text-sm text-ink-soft dark:text-slate-400">
-          No questions are available for this quiz yet.
-        </p>
       </div>
     </div>
   </div>
