@@ -24,7 +24,6 @@ export const tutorApi = {
   createAssignment: (payload) => apiRequest(`${BASE}/assignments`, { method: 'POST', body: payload }),
   aiGenerateQuestions: (topic) => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST', body: { topic } }),
   aiGenerateQuizFull: (payload) => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST', body: payload }),
-  generateRemedialQuiz: (payload) => apiRequest(`${BASE}/remedial-quiz/generate`, { method: 'POST', body: payload }),
   createAndAssignQuiz: (payload) => apiRequest(`${BASE}/assignments/create-and-assign`, { method: 'POST', body: payload }),
   deleteAssignment: (id) => apiRequest(`${BASE}/assignments/${id}`, { method: 'DELETE' }),
 

@@ -267,46 +267,7 @@ def ai_generate_quiz_questions():
         }), 200
 
 
-@tutor_bp.route('/remedial-quiz/generate', methods=['POST'])
-@tutor_required
-def generate_remedial_quiz():
-    data = request.get_json() or {}
-    weak_topic = data.get("weak_topic") or data.get("topic", "Factorisation")
-    class_name = data.get("class_name", "Class 10")
 
-    try:
-        from student.ai import call_gemini, parse_json_from_response
-        prompt = (
-            f"Generate a focused 5-question remedial practice quiz for students struggling with topic '{weak_topic}'. "
-            "Questions should be targeted, easy-to-medium difficulty, with step-by-step explanations. "
-            "Return raw JSON array of 5 objects with keys: \"question\", \"option_a\", \"option_b\", \"option_c\", \"option_d\", \"correct_option\", \"explanation\", \"difficulty\"."
-        )
-        raw_output = call_gemini(prompt)
-        parsed = parse_json_from_response(raw_output)
-        if not isinstance(parsed, list):
-            parsed = []
-    except Exception:
-        parsed = []
-
-    if len(parsed) < 5:
-        parsed = [
-            {"question": f"Remedial Practice 1: Factorize x^2 - 16", "option_a": "(x-4)(x+4)", "option_b": "(x-4)(x-4)", "option_c": "(x+16)(x-1)", "option_d": "(x+4)(x+4)", "correct_option": "A", "explanation": "Difference of squares formula: (a-b)(a+b).", "difficulty": "easy"},
-            {"question": f"Remedial Practice 2: Factorize x^2 + 5x + 6", "option_a": "(x+2)(x+3)", "option_b": "(x+1)(x+6)", "option_c": "(x-2)(x-3)", "option_d": "(x+5)(x+1)", "correct_option": "A", "explanation": "Factors of 6 summing to 5 are 2 and 3.", "difficulty": "easy"},
-            {"question": f"Remedial Practice 3: Factorize 3x^2 + 6x", "option_a": "3x(x+2)", "option_b": "3(x^2+2)", "option_c": "x(3x+6)", "option_d": "3x(x+6)", "correct_option": "A", "explanation": "Take 3x common: 3x(x + 2).", "difficulty": "easy"},
-            {"question": f"Remedial Practice 4: Factorize x^2 - 4x + 4", "option_a": "(x-2)^2", "option_b": "(x+2)^2", "option_c": "(x-4)(x+1)", "option_d": "(x-2)(x+2)", "correct_option": "A", "explanation": "Perfect square trinomial: (x-2)^2.", "difficulty": "medium"},
-            {"question": f"Remedial Practice 5: Factorize 2x^2 + 7x + 3", "option_a": "(2x+1)(x+3)", "option_b": "(2x+3)(x+1)", "option_c": "(x+3)(x+1)", "option_d": "(2x+7)(x+3)", "correct_option": "A", "explanation": "2x^2 + 6x + x + 3 = 2x(x+3) + 1(x+3) = (2x+1)(x+3).", "difficulty": "medium"}
-        ]
-
-    for idx, q in enumerate(parsed, 1):
-        q["id"] = idx
-        q["topic"] = weak_topic
-
-    return jsonify({
-        "success": True,
-        "topic": weak_topic,
-        "title": f"Remedial Practice — {weak_topic}",
-        "questions": parsed
-    })
 
 
 @tutor_bp.route('/assignments/create-and-assign', methods=['POST'])
