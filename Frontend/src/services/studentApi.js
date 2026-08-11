@@ -80,7 +80,10 @@ export const studentApi = {
 
   // Additional
   getTimetable: () => request('/timetable'),
-  getResources: () => request('/resources'),
+  askTutor: (payload) => request('/ask-tutor', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
   getProfile: () => request('/profile'),
   updateProfile: (data) => request('/profile', {
     method: 'PUT',
