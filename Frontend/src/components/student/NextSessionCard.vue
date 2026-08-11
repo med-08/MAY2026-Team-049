@@ -77,5 +77,16 @@ const topicsText = computed(() => {
       </div>
      
     </div>
+
+      <div v-if="session.meeting_url || session.meetingUrl" class="px-6 pb-6">
+        <a
+          :href="session.meeting_url || session.meetingUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 bg-brand-blue text-white font-semibold shadow-sm hover:opacity-90 transition"
+        >
+          Join Google Meet
+        </a>
+      </div>
   </div>
 </template>

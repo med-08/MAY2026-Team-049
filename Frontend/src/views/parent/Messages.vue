@@ -1,20 +1,5 @@
 <script setup>
-import { ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline'
-import EmptyState from '../../components/ui/EmptyState.vue'
+import {ref,onMounted} from 'vue';import {ChatBubbleLeftRightIcon} from '@heroicons/vue/24/outline';import {parentApi} from '../../services/parentApi';import {useParentPortal} from '../../composables/useParentPortal'
+const {parentId}=useParentPortal();const messages=ref([]),loading=ref(true),error=ref('');onMounted(async()=>{try{const r=await parentApi.getMessages(parentId.value);messages.value=r.data||[]}catch(e){error.value=e.message}finally{loading.value=false}})
 </script>
-
-<template>
-  <div class="space-y-6">
-    <div class="card p-5">
-      <h3 class="font-display font-semibold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-        <ChatBubbleLeftRightIcon class="w-5 h-5 text-brand-green-500" />
-        Messages with Tutor
-      </h3>
-
-      <EmptyState
-        title="Messages API not connected yet"
-        message="This page was using mock data before. Add backend message routes to make this page fully live."
-      />
-    </div>
-  </div>
-</template>
+<template><div class="space-y-6"><div class="card p-5"><h3 class="font-display font-semibold mb-4 flex items-center gap-2"><ChatBubbleLeftRightIcon class="w-5 h-5 text-brand-green-500"/> Messages with Tutor</h3><p v-if="loading">Loading messages...</p><p v-else-if="error" class="text-red-500">{{error}}</p><div v-else-if="!messages.length" class="text-slate-500">No messages yet.</div><div v-else class="space-y-3"><div v-for="m in messages" :key="m.message_id" class="rounded-xl border p-4"><p class="text-xs text-slate-500">{{m.sender_type}} · {{m.sent_at}}</p><p class="mt-1">{{m.message}}</p></div></div></div></div></template>

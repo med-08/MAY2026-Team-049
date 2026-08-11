@@ -15,6 +15,7 @@ const weeklyQuizProgress = ref({ labels: [], data: [] })
 const subjectQuizScores = ref({ labels: [], data: [] })
 const nextSession = ref({})
 const todaysTasks = ref([])
+const meetings = ref([])
 
 const loading = ref(true)
 const error = ref("")
@@ -31,13 +32,14 @@ onMounted(async () => {
       subjectQuizScores.value = d.subjectQuizScores || { labels: [], data: [] }
       nextSession.value = d.nextSession || {}
       todaysTasks.value = d.todaysTasks || []
+      meetings.value = d.meetings || []
       error.value = ""
     } else {
-      error.value = "Failed to load dashboard data"
+      error.value = res.message || "Failed to load dashboard data"
     }
   } catch (err) {
     console.error("Dashboard fetch error:", err)
-    error.value = "Failed to load dashboard data"
+    error.value = err?.message || "Failed to load dashboard data"
   } finally {
     loading.value = false
   }
@@ -109,6 +111,14 @@ onMounted(async () => {
               No tasks scheduled for today.
             </p>
           </div>
+        </div>
+      </div>
+
+      <div v-if="meetings.length" class="card p-5 mt-6">
+        <h3 class="font-display font-bold mb-3">Upcoming Meetings</h3>
+        <div v-for="m in meetings" :key="m.id" class="flex items-center justify-between gap-3 py-2 border-b last:border-0 border-slate-100 dark:border-slate-700">
+          <div><p class="text-sm font-semibold">{{ m.tutor }}</p><p class="text-xs text-slate-500">{{ new Date(m.date).toLocaleString() }} · {{ m.reason || 'Meeting' }}</p></div>
+          <a v-if="m.link" :href="m.link" target="_blank" class="btn grad sm">Join</a>
         </div>
       </div>
     </div>

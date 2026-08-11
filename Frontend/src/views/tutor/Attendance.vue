@@ -1,42 +1,5 @@
-<template>
-  <section class="view on">
-    <div class="grid g2col reveal" style="grid-template-columns:1fr 1fr">
-      <div class="card glass">
-        <div class="ch"><h3>Attendance</h3><span class="badge live">Maths · 4:00 PM</span></div>
-        <div v-for="record in records" :key="record.attendanceId" class="row">
-          <div class="av" :style="{ background: studentById(record.studentId).gradient }">{{ studentById(record.studentId).initials }}</div>
-          <div class="g1"><div class="t">{{ studentById(record.studentId).name }}</div></div>
-          <TutorAttendanceToggle v-model="record.status" :name="studentById(record.studentId).name" />
-        </div>
-        <div class="eyebrow" style="margin-top:14px">Parents are notified automatically</div>
-        <div style="display:flex;gap:8px;margin-top:14px"><button class="btn sm" type="button" @click="$emit('toast', 'Attendance CSV exported')">Export CSV</button><button class="btn sm" type="button" @click="$emit('toast', 'Attendance PDF exported')">Export PDF</button></div>
-      </div>
-      <div class="card glass">
-        <div class="ch"><h3>Attendance analytics</h3><span class="eyebrow">this month</span></div>
-        <TutorPieChart :data="analytics" />
-      </div>
-      <div class="card glass">
-        <div class="ch"><h3>Session update</h3></div>
-        <label class="lab" for="topics">Topics covered</label><input id="topics" class="field" style="margin-bottom:12px" placeholder="Quadratic equations — factorisation">
-        <label class="lab" for="homework">Homework</label><input id="homework" class="field" style="margin-bottom:12px" placeholder="Exercise 4.2 · Q1–Q10">
-        <label class="lab" for="next-session">Next session</label><input id="next-session" class="field" style="margin-bottom:16px" placeholder="Wed, 4:00 PM">
-        <button class="btn grad magnetic" type="button" style="width:100%;justify-content:center" @click="$emit('toast', 'Update sent · parents & students notified')">Send update to parents &amp; students</button>
-      </div>
-    </div>
-  </section>
-</template>
-
+<template><section class="view on"><div class="grid g2col reveal" style="grid-template-columns:1fr 1fr"><div class="card glass"><div class="ch"><h3>Attendance</h3></div><div v-if="!records.length" class="eyebrow">No attendance records yet.</div><div v-for="record in records" :key="record.attendanceId" class="row"><div class="g1"><div class="t">{{name(record.studentId)}}</div><div class="s">Session #{{record.sessionId}}</div></div><select v-model="record.status" class="field" style="width:auto"><option>Present</option><option>Absent</option><option>Late</option></select></div><button v-if="records.length" class="btn grad" style="margin-top:14px" @click="save">Save Attendance</button></div><div class="card glass"><div class="ch"><h3>Attendance analytics</h3></div><TutorPieChart :data="analytics"/></div><div class="card glass"><div class="ch"><h3>Session update</h3></div><label class="lab">Session</label><select v-model="update.session_id" class="field" style="margin-bottom:12px"><option value="">Choose session</option><option v-for="s in sessions" :key="s.id" :value="s.id">{{s.subject}} · {{s.date}} · {{s.time}}</option></select><label class="lab">Topics covered</label><input v-model="update.topics_covered" class="field" style="margin-bottom:12px"><label class="lab">Homework</label><input v-model="update.homework_assigned" class="field" style="margin-bottom:12px"><label class="lab">Next session date</label><input v-model="update.next_session_date" type="date" class="field" style="margin-bottom:12px"><button class="btn grad" @click="sendUpdate">Save update & notify</button><p v-if="message" class="eyebrow" style="margin-top:10px">{{message}}</p></div></div></section></template>
 <script setup>
-import TutorAttendanceToggle from '../../components/tutor/TutorAttendanceToggle.vue'
-import TutorPieChart from '../../components/tutor/TutorPieChart.vue'
-
-const props = defineProps({
-  records: { type: Array, required: true },
-  students: { type: Array, required: true },
-  analytics: { type: Array, required: true }
-})
-defineEmits(['toast'])
-function studentById(id) {
-  return props.students.find((student) => student.studentId === id) || props.students[0]
-}
+import {reactive,ref} from 'vue';import TutorPieChart from '../../components/tutor/TutorPieChart.vue';import {tutorApi} from '../../services/tutorApi'
+const props=defineProps({records:{type:Array,required:true},students:{type:Array,required:true},analytics:{type:Array,required:true},sessions:{type:Array,default:()=>[]}});const emit=defineEmits(['toast']);const update=reactive({session_id:'',topics_covered:'',homework_assigned:'',next_session_date:''});const message=ref('');function name(id){return props.students.find(s=>s.studentId===id)?.name||`Student #${id}`}async function save(){try{await tutorApi.markAttendance(props.records);emit('toast','Attendance saved')}catch(e){message.value=e.message}}async function sendUpdate(){try{if(!update.session_id)throw new Error('Choose a session');await tutorApi.sendSessionUpdate(update);message.value='Session update saved and notifications created';emit('toast','Students and linked parents notified')}catch(e){message.value=e.message}}
 </script>

@@ -29,11 +29,11 @@ const requestForm = reactive({
   reason: '',
   preferredDate: '',
   student_id: null,
-  tutor_id: 1
+  tutor_id: null
 })
 
 async function submitRequest() {
-  if (!requestForm.reason.trim() || !requestForm.preferredDate || !requestForm.student_id) {
+  if (!requestForm.reason.trim() || !requestForm.preferredDate || !requestForm.student_id || !requestForm.tutor_id) {
     showToast('Select child, add a reason and preferred date/time.', 'error')
     return
   }
@@ -49,6 +49,7 @@ async function submitRequest() {
     requestForm.reason = ''
     requestForm.preferredDate = ''
     requestForm.student_id = children.value[0]?.student_id || null
+    requestForm.tutor_id = children.value[0]?.tutor_id || null
 
     showToast('Meeting request sent. The tutor will confirm soon.', 'success')
   } catch (err) {
@@ -60,6 +61,7 @@ onMounted(async () => {
   try {
     await loadProfile()
     requestForm.student_id = children.value[0]?.student_id || null
+    requestForm.tutor_id = children.value[0]?.tutor_id || null
     await loadMeetings()
   } catch (err) {
     showToast(err.message || 'Failed to load meetings.', 'error')

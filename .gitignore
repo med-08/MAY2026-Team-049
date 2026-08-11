@@ -18,3 +18,8 @@ Frontend/dist/
 .env
 .env.local
 Frontend/.env.local
+# Google Meet OAuth secrets
+Backend/google_meet_credentials.json
+Backend/google_meet_token.json
+google_meet_credentials.json
+google_meet_token.json

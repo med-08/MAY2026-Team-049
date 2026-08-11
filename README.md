@@ -321,3 +321,49 @@ BS Degree Program
 ---
 
 ## ⭐ If you found this project useful, don't forget to star the repository!
+
+## Real-data integration update
+
+The Student, Tutor and Parent flows now use the existing database instead of frontend mock records for the implemented workflows.
+
+### Backend
+
+- Student routes cover dashboard, progress, FAQs, quizzes, quiz submission, booking, sessions, timetable, assignments, resources, study tips, profile, meetings and notifications.
+- Tutor routes cover dashboard, schedule creation, students, attendance, session updates/notifications, assignments, quizzes/questions, material upload/delete, FAQs, doubts, messages, meetings, earnings, profile and notifications.
+- Parent routes preserve the existing Student -> Parent relationship and provide real profile, overview, meetings, child progress, curriculum, schedule, messages and notifications.
+- No database reset or schema replacement is performed.
+
+### Tutor content flow
+
+Tutor-created data is stored in the existing database and is then exposed to the relevant Student through the existing Subject/Session/Booking/StudentSubject relationships.
+
+Tutor can:
+
+1. Add a session from **Tutor > Schedule**.
+2. Create assignments or quizzes from **Tutor > Assignments**.
+3. Add quiz questions after creating a quiz.
+4. Upload a local file or external resource link from **Tutor > Materials**.
+5. Record attendance and session updates from **Tutor > Attendance**.
+6. Schedule meetings and send messages from **Tutor > Messages**.
+
+Uploaded files are stored locally under `Backend/uploads/` and served through the authenticated application's tutor upload endpoint.
+
+### Run locally
+
+Backend:
+
+```bash
+cd Backend
+python -m pip install -r requirements.txt
+python app.py
+```
+
+Frontend:
+
+```bash
+cd Frontend
+npm install
+npm run dev
+```
+
+The frontend defaults to `http://localhost:5000` for the backend and `http://localhost:5173` for Vite.

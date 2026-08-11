@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:5000/student';
+const BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/student`;
 
 /**
  * Helper to execute HTTP requests with JWT token + credentials
@@ -82,10 +82,11 @@ export const studentApi = {
   getTimetable: () => request('/timetable'),
   getResources: () => request('/resources'),
   getProfile: () => request('/profile'),
-  updateProfile: (data) => request('/profile', {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  }),
+  updateProfile: (data) => request('/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  changePassword: (data) => request('/profile/password', { method: 'PUT', body: JSON.stringify(data) }),
+  getMeetings: () => request('/meetings'),
+  getNotifications: () => request('/notifications'),
+  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'PATCH' }),
 };
 
 export default studentApi;

@@ -96,6 +96,8 @@ class Session(db.Model):
     end_time = db.Column(db.Time, nullable=False)
     session_type = db.Column(db.String(20), default='Regular')  # Regular, One-to-One
     status = db.Column(db.String(20), default='Scheduled')      # Scheduled, Completed, Cancelled, Rescheduled
+    # Real Google Meet URL for this session. Nullable so existing sessions remain valid.
+    meeting_url = db.Column(db.String(500), nullable=True)
     # max_seats = db.Column(db.Integer, default=5)
 
 class SessionUpdate(db.Model):

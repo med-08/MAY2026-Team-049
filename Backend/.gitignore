@@ -5,3 +5,8 @@ __pycache__/
 *.pyc
 *.db
 venv/
+# Google Meet OAuth secrets
+Backend/google_meet_credentials.json
+Backend/google_meet_token.json
+google_meet_credentials.json
+google_meet_token.json

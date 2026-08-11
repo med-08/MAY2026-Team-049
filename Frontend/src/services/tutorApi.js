@@ -9,6 +9,7 @@ export const tutorApi = {
   // ---- Schedule ----
   getSchedule: () => apiRequest(`${BASE}/schedule`),
   addClass: (payload) => apiRequest(`${BASE}/schedule/class`, { method: 'POST', body: payload }),
+  startClass: (sessionId) => apiRequest(`${BASE}/schedule/class/${sessionId}/start`, { method: 'POST' }),
 
   // ---- Students ----
   getStudents: () => apiRequest(`${BASE}/students`),
@@ -23,6 +24,9 @@ export const tutorApi = {
   createAssignment: (payload) => apiRequest(`${BASE}/assignments`, { method: 'POST', body: payload }),
   aiGenerateQuestions: () => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST' }),
   deleteAssignment: (id) => apiRequest(`${BASE}/assignments/${id}`, { method: 'DELETE' }),
+  getQuizzes: () => apiRequest(`${BASE}/quizzes`),
+  createQuiz: (payload) => apiRequest(`${BASE}/quizzes`, { method: 'POST', body: payload }),
+  addQuizQuestion: (quizId, payload) => apiRequest(`${BASE}/quizzes/${quizId}/questions`, { method: 'POST', body: payload }),
 
   // ---- Materials ----
   getMaterials: () => apiRequest(`${BASE}/materials`),

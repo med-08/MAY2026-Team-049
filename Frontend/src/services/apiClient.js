@@ -27,8 +27,9 @@ export async function apiRequest(path, { method = 'GET', body, params } = {}) {
 
   const token = localStorage.getItem('token')
 
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const headers = {
-    ...(body !== undefined && { 'Content-Type': 'application/json' }),
+    ...(body !== undefined && !isFormData && { 'Content-Type': 'application/json' }),
     ...(token && { Authorization: `Bearer ${token}` }),
   }
 
@@ -38,7 +39,7 @@ export async function apiRequest(path, { method = 'GET', body, params } = {}) {
       method,
       credentials: 'include',
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
     })
   } catch (networkErr) {
     throw new ApiError(

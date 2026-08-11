@@ -1,42 +1,15 @@
 <template>
-  <section class="view on">
-    <div class="grid g2col reveal" style="grid-template-columns:1.4fr 1fr">
-      <div class="card glass">
-        <div class="ch"><h3>To grade</h3><TutorSegmentedControl v-model="tab" :options="['Pending', 'Active', 'Drafts']" /></div>
-        <TutorEmptyState v-if="!assignments.length" title="No assignments" />
-        <div v-for="assignment in pagedAssignments" :key="assignment.assignmentId" class="row">
-          <div class="g1"><div class="t">{{ assignment.title }}</div><div class="s">{{ assignment.classLevel }} · {{ assignment.submissions }}</div></div>
-          <span class="badge" :class="statusClass(assignment.homeworkStatus)">{{ assignment.homeworkStatus }}</span>
-          <button class="btn grad sm magnetic" type="button" @click="$emit('toast', 'Opening grader…')">Grade</button>
-          <button class="btn sm" type="button" @click="$emit('confirm-action', `Delete ${assignment.title}?`)">Delete</button>
-        </div>
-        <TutorPagination v-if="assignments.length" v-model:page="page" :total-pages="totalPages" />
-      </div>
-      <div class="card glass">
-        <div class="ch"><h3>Create new</h3></div>
-        <TutorSegmentedControl v-model="createType" :options="['Quiz', 'Assignment', 'Puzzle']" style="margin-bottom:14px" />
-        <label class="lab" for="assignment-title">Title</label><input id="assignment-title" class="field" style="margin-bottom:12px" placeholder="Weekly quiz — Trigonometry">
-        <label class="lab" for="assign-to">Assign to</label><input id="assign-to" class="field" style="margin-bottom:16px" placeholder="Class 10 · Maths">
-        <div style="display:flex;gap:9px"><button class="btn grad magnetic" type="button" @click="$emit('toast', 'Quiz created · assigned to Class 10')">Create</button><button class="btn magnetic" type="button" @click="$emit('toast', 'Generating questions with AI…')"><svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></svg> AI generate</button></div>
-      </div>
-    </div>
-  </section>
+<section class="view on"><div class="grid g2col reveal" style="grid-template-columns:1.4fr 1fr">
+<div class="card glass"><div class="ch"><h3>Assignments</h3></div><TutorEmptyState v-if="!assignments.length" title="No assignments"/><div v-for="a in assignments" :key="a.assignmentId" class="row"><div class="g1"><div class="t">{{a.title}}</div><div class="s">{{a.classLevel}} · {{a.submissions}}</div></div><span class="badge" :class="statusClass(a.homeworkStatus)">{{a.homeworkStatus}}</span><button class="btn sm" @click="remove(a.assignmentId)">Delete</button></div></div>
+<div class="card glass"><div class="ch"><h3>Create assignment / quiz</h3></div><label class="lab">Type</label><select v-model="type" class="field" style="margin-bottom:12px"><option>Assignment</option><option>Quiz</option></select><label class="lab">Title</label><input v-model="title" class="field" style="margin-bottom:12px"><template v-if="type==='Assignment'"><label class="lab">Session</label><select v-model="sessionId" class="field" style="margin-bottom:12px"><option value="">Choose session</option><option v-for="s in sessions" :key="s.id" :value="s.id">{{s.subject}} · {{s.date}} · {{s.time}}</option></select><label class="lab">Description</label><textarea v-model="description" class="field" rows="3" style="margin-bottom:12px"></textarea><label class="lab">Due date</label><input v-model="dueDate" type="date" class="field" style="margin-bottom:12px"></template><template v-else><label class="lab">Subject</label><select v-model="subjectId" class="field" style="margin-bottom:12px"><option value="">Choose subject</option><option v-for="s in uniqueSubjects" :key="s.subjectId" :value="s.subjectId">{{s.subject}}</option></select><label class="lab">Week</label><input v-model.number="week" type="number" min="1" class="field" style="margin-bottom:12px"></template><button class="btn grad" @click="create">Create</button><p v-if="message" class="eyebrow" style="margin-top:10px">{{message}}</p></div></div>
+<div class="card glass reveal" style="margin-top:18px"><div class="ch"><h3>Quiz questions</h3></div><p v-if="!quizzes.length" class="eyebrow">Create a quiz first.</p><template v-else><select v-model="question.quizId" class="field" style="margin-bottom:12px"><option value="">Choose quiz</option><option v-for="q in quizzes" :key="q.quiz_id" :value="q.quiz_id">{{q.title}} · {{q.subject}}</option></select><input v-model="question.text" class="field" placeholder="Question" style="margin-bottom:8px"><div class="grid" style="grid-template-columns:1fr 1fr;gap:8px"><input v-model="question.a" class="field" placeholder="Option A"><input v-model="question.b" class="field" placeholder="Option B"><input v-model="question.c" class="field" placeholder="Option C"><input v-model="question.d" class="field" placeholder="Option D"></div><select v-model="question.correct" class="field" style="margin:10px 0"><option value="">Correct option</option><option>A</option><option>B</option><option>C</option><option>D</option></select><button class="btn grad" @click="addQuestion">Add question</button></template></div>
+</section>
 </template>
-
 <script setup>
-import { computed, ref } from 'vue'
-import TutorEmptyState from '../../components/tutor/TutorEmptyState.vue'
-import TutorPagination from '../../components/tutor/TutorPagination.vue'
-import TutorSegmentedControl from '../../components/tutor/TutorSegmentedControl.vue'
-const props = defineProps({ assignments: { type: Array, required: true } })
-defineEmits(['toast', 'confirm-action'])
-const tab = ref('Pending')
-const createType = ref('Quiz')
-const page = ref(1)
-const pageSize = 3
-const totalPages = computed(() => Math.max(1, Math.ceil(props.assignments.length / pageSize)))
-const pagedAssignments = computed(() => props.assignments.slice((page.value - 1) * pageSize, page.value * pageSize))
-function statusClass(status) {
-  return { Submitted: 'done', Pending: '', Late: 'warn', Missing: 'warn' }[status] || ''
-}
+import {computed,ref,onMounted} from 'vue';import TutorEmptyState from '../../components/tutor/TutorEmptyState.vue';import {tutorApi} from '../../services/tutorApi'
+const props=defineProps({assignments:{type:Array,required:true},sessions:{type:Array,default:()=>[]}});const emit=defineEmits(['toast']);const type=ref('Assignment'),title=ref(''),sessionId=ref(''),subjectId=ref(''),description=ref(''),dueDate=ref(''),week=ref(1),message=ref(''),quizzes=ref([]);const question=ref({quizId:'',text:'',a:'',b:'',c:'',d:'',correct:''});const assignments=computed(()=>props.assignments);const uniqueSubjects=computed(()=>{const m=new Map();props.sessions.forEach(s=>m.set(s.subjectId,{subjectId:s.subjectId,subject:s.subject}));return [...m.values()]});function statusClass(s){return {Submitted:'done',Late:'warn',Missing:'warn'}[s]||''}
+async function loadQuizzes(){try{quizzes.value=(await tutorApi.getQuizzes()).quizzes||[]}catch{quizzes.value=[]}}onMounted(loadQuizzes)
+async function create(){try{if(!title.value)throw new Error('Enter a title');if(type.value==='Assignment'){if(!sessionId.value)throw new Error('Choose a session');await tutorApi.createAssignment({session_id:Number(sessionId.value),title:title.value,description:description.value,due_date:dueDate.value})}else{if(!subjectId.value)throw new Error('Choose a subject');await tutorApi.createQuiz({subject_id:Number(subjectId.value),title:title.value,week_number:week.value});await loadQuizzes()}message.value=`${type.value} created`;emit('toast',`${type.value} created in database`);title.value='';description.value='';dueDate.value=''}catch(e){message.value=e.message}}
+async function addQuestion(){try{if(!question.value.quizId||!question.value.text||!question.value.correct)throw new Error('Choose quiz, enter question and correct option');await tutorApi.addQuizQuestion(question.value.quizId,{question:question.value.text,option_a:question.value.a,option_b:question.value.b,option_c:question.value.c,option_d:question.value.d,correct_option:question.value.correct});message.value='Question added';question.value={...question.value,text:'',a:'',b:'',c:'',d:'',correct:''};emit('toast','Quiz question saved')}catch(e){message.value=e.message}}
+async function remove(id){try{await tutorApi.deleteAssignment(id);emit('toast','Assignment deleted');location.reload()}catch(e){emit('toast',e.message)}}
 </script>

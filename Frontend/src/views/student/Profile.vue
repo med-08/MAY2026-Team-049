@@ -119,7 +119,7 @@ function openPasswordModal() {
   passwordModalOpen.value = true
 }
 
-function changePassword() {
+async function changePassword() {
   if (!passwordForm.currentPassword.trim()) {
     alert("Please enter your current password.")
     return
@@ -135,12 +135,16 @@ function changePassword() {
     return
   }
 
-  passwordModalOpen.value = false
-  passwordForm.currentPassword = ""
-  passwordForm.newPassword = ""
-  passwordForm.confirmPassword = ""
-
-  alert("Password change API not connected yet.")
+  try {
+    await studentApi.changePassword(passwordForm)
+    passwordModalOpen.value = false
+    passwordForm.currentPassword = ""
+    passwordForm.newPassword = ""
+    passwordForm.confirmPassword = ""
+    alert("Password changed successfully.")
+  } catch (err) {
+    alert(err.message || "Failed to change password.")
+  }
 }
 </script>
 

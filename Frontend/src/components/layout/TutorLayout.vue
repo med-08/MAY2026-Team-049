@@ -65,12 +65,14 @@
       @close="closeDrawer"
       @toast="addToast"
     />
+
     <TutorCommandPalette
       :open="commandOpen"
       :items="commandItems"
       @close="commandOpen = false"
       @run="runCommand"
     />
+
     <TutorConfirmModal
       :open="confirm.open"
       title="Confirm action"
@@ -78,6 +80,7 @@
       @cancel="confirm.open = false"
       @confirm="confirmAction"
     />
+
     <TutorConfirmModal
       :open="logoutModalOpen"
       title="Log out of LearnAtHome?"
@@ -85,6 +88,7 @@
       @cancel="logoutModalOpen = false"
       @confirm="confirmLogout"
     />
+
     <TutorToastContainer :toasts="toasts" />
   </div>
 </template>
@@ -102,35 +106,7 @@ import TutorToastContainer from '../tutor/TutorToastContainer.vue'
 import TutorTopbar from '../tutor/TutorTopbar.vue'
 import { tutorApi } from '../../services/tutorApi'
 import '../../assets/tutorStyles.css'
-import {
-  achievements as achievementsMock,
-  aiSuggestions as aiSuggestionsMock,
-  assignments as assignmentsMock,
-  attendanceAnalytics as attendanceAnalyticsMock,
-  attendanceRecords as attendanceRecordsMock,
-  calendarEvents as calendarEventsMock,
-  commandItems,
-  conversationsSeed,
-  dashboardStats as dashboardStatsMock,
-  doubtsSeed,
-  earningsHistory as earningsHistoryMock,
-  faqEntriesSeed,
-  leaderboard as leaderboardMock,
-  navGroups,
-  notifications as notificationsMock,
-  quizScores,
-  recentActivities as recentActivitiesMock,
-  scheduleRows as scheduleRowsMock,
-  sessions as sessionsMock,
-  sessionHistory,
-  students as studentsMock,
-  studyResources as studyResourcesMock,
-  todayOverview as todayOverviewMock,
-  tutorUser as tutorUserMock,
-  upcomingDeadlines as upcomingDeadlinesMock,
-  upcomingMeetings as upcomingMeetingsMock,
-  viewTitles
-} from '../../data/tutorMockData'
+import { commandItems, navGroups, viewTitles } from '../../data/tutorMockData'
 
 const route = useRoute()
 const router = useRouter()
@@ -148,28 +124,48 @@ const clockLabel = ref('')
 const toasts = ref([])
 const confirm = reactive({ open: false, message: '' })
 
-const tutorUserState = ref(structuredClone(tutorUserMock))
-const dashboardStatsState = ref(structuredClone(dashboardStatsMock))
-const sessionsState = ref(structuredClone(sessionsMock))
-const todayOverviewState = ref(structuredClone(todayOverviewMock))
-const recentActivitiesState = ref(structuredClone(recentActivitiesMock))
-const upcomingDeadlinesState = ref(structuredClone(upcomingDeadlinesMock))
-const aiSuggestionsState = ref(structuredClone(aiSuggestionsMock))
-const upcomingMeetingsState = ref(structuredClone(upcomingMeetingsMock))
-const leaderboardState = ref(structuredClone(leaderboardMock))
-const achievementsState = ref(structuredClone(achievementsMock))
-const scheduleRowsState = ref(structuredClone(scheduleRowsMock))
-const calendarEventsState = ref(structuredClone(calendarEventsMock))
-const studentsState = ref(structuredClone(studentsMock))
-const attendanceState = ref(structuredClone(attendanceRecordsMock))
-const attendanceAnalyticsState = ref(structuredClone(attendanceAnalyticsMock))
-const assignmentsState = ref(structuredClone(assignmentsMock))
-const studyResourcesState = ref(structuredClone(studyResourcesMock))
-const notificationState = ref(structuredClone(notificationsMock))
-const faqEntries = ref(structuredClone(faqEntriesSeed))
-const doubts = ref(structuredClone(doubtsSeed))
-const conversations = ref(structuredClone(conversationsSeed))
-const earningsHistoryState = ref(structuredClone(earningsHistoryMock))
+const tutorUserState = ref({
+  name: '',
+  displayName: '',
+  userId: null,
+  subjects: [],
+  languages: [],
+  certificates: []
+})
+
+const dashboardStatsState = ref([])
+const sessionsState = ref([])
+const todayOverviewState = ref([])
+const recentActivitiesState = ref([])
+const upcomingDeadlinesState = ref([])
+const aiSuggestionsState = ref([])
+const upcomingMeetingsState = ref([])
+const leaderboardState = ref([])
+const achievementsState = ref([])
+
+const scheduleRowsState = ref([])
+const calendarEventsState = ref([])
+
+/*
+ * NEW:
+ * Subjects available to the tutor for creating new sessions.
+ *
+ * This is separate from sessionsState because a tutor with
+ * zero existing sessions still needs subjects available in
+ * the Schedule dropdown.
+ */
+const scheduleSubjectsState = ref([])
+
+const studentsState = ref([])
+const attendanceState = ref([])
+const attendanceAnalyticsState = ref([])
+const assignmentsState = ref([])
+const studyResourcesState = ref([])
+const notificationState = ref([])
+const faqEntries = ref([])
+const doubts = ref([])
+const conversations = ref({})
+const earningsHistoryState = ref([])
 
 const mainRef = ref(null)
 const ringRef = ref(null)
@@ -185,27 +181,46 @@ let mx = 0
 let my = 0
 let rx = 0
 let ry = 0
+
 const chatTimers = new Set()
 
 const activeView = computed(() => route.meta.tutorView || 'dashboard')
+
 const greeting = computed(() => {
   const hour = new Date().getHours()
+
   if (hour < 12) return 'Good morning'
   if (hour < 17) return 'Good afternoon'
+
   return 'Good evening'
 })
+
 const activeTitle = computed(() => {
   if (activeView.value === 'dashboard') {
-    return { prefix: `${greeting.value}, `, highlight: tutorUserState.value.displayName || tutorUserState.value.name }
+    return {
+      prefix: `${greeting.value}, `,
+      highlight:
+        tutorUserState.value.displayName ||
+        tutorUserState.value.name
+    }
   }
+
   return viewTitles[activeView.value] || viewTitles.dashboard
 })
-const openDoubts = computed(() => doubts.value.filter((doubt) => doubt.status === 'Open').length)
-const selectedStudentScores = computed(() => selectedStudent.value ? quizScores[selectedStudent.value.studentId] || [] : [])
-const selectedStudentSessions = computed(() => selectedStudent.value ? sessionHistory[selectedStudent.value.studentId] || [] : [])
+
+const openDoubts = computed(() =>
+  doubts.value.filter((doubt) => doubt.status === 'Open').length
+)
+
+const selectedStudentScores = computed(() => [])
+const selectedStudentSessions = computed(() => [])
 
 const routeProps = computed(() => {
-  const shared = { activeKey: activeKey.value, reduceMotion: reduceMotion.value }
+  const shared = {
+    activeKey: activeKey.value,
+    reduceMotion: reduceMotion.value
+  }
+
   const propsByView = {
     dashboard: {
       stats: dashboardStatsState.value,
@@ -219,23 +234,84 @@ const routeProps = computed(() => {
       achievements: achievementsState.value,
       ...shared
     },
-    schedule: { rows: scheduleRowsState.value, events: calendarEventsState.value },
-    students: { students: studentsState.value },
-    attendance: { records: attendanceState.value, students: studentsState.value, analytics: attendanceAnalyticsState.value },
-    assignments: { assignments: assignmentsState.value },
-    materials: { resources: studyResourcesState.value },
-    qa: { entries: faqEntries.value },
-    doubts: { doubts: doubts.value, students: studentsState.value },
-    messages: { conversations: conversations.value, activeConversationId: activeConversationId.value },
-    earnings: { history: earningsHistoryState.value, ...shared },
-    profile: { tutor: tutorUserState.value }
+
+    /*
+     * UPDATED:
+     * Schedule now receives subjects independently from
+     * existing sessions.
+     */
+    schedule: {
+      rows: scheduleRowsState.value,
+      events: calendarEventsState.value,
+      sessions: sessionsState.value,
+      subjects: scheduleSubjectsState.value
+    },
+
+    students: {
+      students: studentsState.value
+    },
+
+    attendance: {
+      records: attendanceState.value,
+      students: studentsState.value,
+      analytics: attendanceAnalyticsState.value,
+      sessions: sessionsState.value
+    },
+
+    assignments: {
+      assignments: assignmentsState.value,
+      sessions: sessionsState.value
+    },
+
+    materials: {
+      resources: studyResourcesState.value,
+      sessions: sessionsState.value
+    },
+
+    qa: {
+      entries: faqEntries.value
+    },
+
+    doubts: {
+      doubts: doubts.value,
+      students: studentsState.value
+    },
+
+    messages: {
+      conversations: conversations.value,
+      activeConversationId: activeConversationId.value,
+      students: studentsState.value
+    },
+
+    earnings: {
+      history: earningsHistoryState.value,
+      ...shared
+    },
+
+    profile: {
+      tutor: tutorUserState.value
+    }
   }
+
   return propsByView[activeView.value] || propsByView.dashboard
 })
 
 async function fetchBackendData() {
   try {
-    const [dashRes, schedRes, stRes, attRes, asgRes, matRes, qaRes, doubtRes, convRes, earnRes, profRes, notifRes] = await Promise.allSettled([
+    const [
+      dashRes,
+      schedRes,
+      stRes,
+      attRes,
+      asgRes,
+      matRes,
+      qaRes,
+      doubtRes,
+      convRes,
+      earnRes,
+      profRes,
+      notifRes
+    ] = await Promise.allSettled([
       tutorApi.getDashboard(),
       tutorApi.getSchedule(),
       tutorApi.getStudents(),
@@ -251,50 +327,122 @@ async function fetchBackendData() {
     ])
 
     if (dashRes.status === 'fulfilled' && dashRes.value.success) {
-      if (dashRes.value.stats) dashboardStatsState.value = dashRes.value.stats
-      if (dashRes.value.sessions) sessionsState.value = dashRes.value.sessions
-      if (dashRes.value.overview) todayOverviewState.value = dashRes.value.overview
-      if (dashRes.value.activities) recentActivitiesState.value = dashRes.value.activities
-      if (dashRes.value.deadlines) upcomingDeadlinesState.value = dashRes.value.deadlines
-      if (dashRes.value.suggestions) aiSuggestionsState.value = dashRes.value.suggestions
-      if (dashRes.value.meetings) upcomingMeetingsState.value = dashRes.value.meetings
-      if (dashRes.value.leaderboard) leaderboardState.value = dashRes.value.leaderboard
-      if (dashRes.value.achievements) achievementsState.value = dashRes.value.achievements
+      if (dashRes.value.stats) {
+        dashboardStatsState.value = dashRes.value.stats
+      }
+
+      if (dashRes.value.sessions) {
+        sessionsState.value = dashRes.value.sessions
+      }
+
+      if (dashRes.value.overview) {
+        todayOverviewState.value = dashRes.value.overview
+      }
+
+      if (dashRes.value.activities) {
+        recentActivitiesState.value = dashRes.value.activities
+      }
+
+      if (dashRes.value.deadlines) {
+        upcomingDeadlinesState.value = dashRes.value.deadlines
+      }
+
+      if (dashRes.value.suggestions) {
+        aiSuggestionsState.value = dashRes.value.suggestions
+      }
+
+      if (dashRes.value.meetings) {
+        upcomingMeetingsState.value = dashRes.value.meetings
+      }
+
+      if (dashRes.value.leaderboard) {
+        leaderboardState.value = dashRes.value.leaderboard
+      }
+
+      if (dashRes.value.achievements) {
+        achievementsState.value = dashRes.value.achievements
+      }
     }
+
     if (schedRes.status === 'fulfilled' && schedRes.value.success) {
-      if (schedRes.value.rows) scheduleRowsState.value = schedRes.value.rows
-      if (schedRes.value.events) calendarEventsState.value = schedRes.value.events
+      if (schedRes.value.rows) {
+        scheduleRowsState.value = schedRes.value.rows
+      }
+
+      if (schedRes.value.events) {
+        calendarEventsState.value = schedRes.value.events
+      }
+
+      /*
+       * NEW:
+       * Receive real subjects from the backend.
+       *
+       * This fixes the situation where a tutor has no
+       * existing sessions and therefore previously had
+       * an empty subject dropdown.
+       */
+      if (schedRes.value.subjects) {
+        scheduleSubjectsState.value = schedRes.value.subjects
+      }
     }
-    if (stRes.status === 'fulfilled' && stRes.value.success && stRes.value.students?.length) {
-      studentsState.value = stRes.value.students
+
+    if (stRes.status === 'fulfilled' && stRes.value.success) {
+      studentsState.value = stRes.value.students || []
     }
+
     if (attRes.status === 'fulfilled' && attRes.value.success) {
-      if (attRes.value.records) attendanceState.value = attRes.value.records
-      if (attRes.value.analytics) attendanceAnalyticsState.value = attRes.value.analytics
+      if (attRes.value.records) {
+        attendanceState.value = attRes.value.records
+      }
+
+      if (attRes.value.analytics) {
+        attendanceAnalyticsState.value = attRes.value.analytics
+      }
     }
-    if (asgRes.status === 'fulfilled' && asgRes.value.success && asgRes.value.assignments?.length) {
-      assignmentsState.value = asgRes.value.assignments
+
+    if (asgRes.status === 'fulfilled' && asgRes.value.success) {
+      assignmentsState.value = asgRes.value.assignments || []
     }
-    if (matRes.status === 'fulfilled' && matRes.value.success && matRes.value.resources?.length) {
-      studyResourcesState.value = matRes.value.resources
+
+    if (matRes.status === 'fulfilled' && matRes.value.success) {
+      studyResourcesState.value = matRes.value.resources || []
     }
-    if (qaRes.status === 'fulfilled' && qaRes.value.success && qaRes.value.entries?.length) {
-      faqEntries.value = qaRes.value.entries
+
+    if (qaRes.status === 'fulfilled' && qaRes.value.success) {
+      faqEntries.value = qaRes.value.entries || []
     }
-    if (doubtRes.status === 'fulfilled' && doubtRes.value.success && doubtRes.value.doubts?.length) {
-      doubts.value = doubtRes.value.doubts
+
+    if (doubtRes.status === 'fulfilled' && doubtRes.value.success) {
+      doubts.value = doubtRes.value.doubts || []
     }
-    if (convRes.status === 'fulfilled' && convRes.value.success && convRes.value.conversations) {
-      conversations.value = convRes.value.conversations
+
+    if (convRes.status === 'fulfilled' && convRes.value.success) {
+      conversations.value = convRes.value.conversations || {}
+
+      if (
+        !activeConversationId.value &&
+        Object.keys(conversations.value).length
+      ) {
+        activeConversationId.value =
+          Object.keys(conversations.value)[0]
+      }
     }
-    if (earnRes.status === 'fulfilled' && earnRes.value.success && earnRes.value.history) {
-      earningsHistoryState.value = earnRes.value.history
+
+    if (earnRes.status === 'fulfilled' && earnRes.value.success) {
+      earningsHistoryState.value = earnRes.value.history || []
     }
-    if (profRes.status === 'fulfilled' && profRes.value.success && profRes.value.tutor) {
+
+    if (
+      profRes.status === 'fulfilled' &&
+      profRes.value.success &&
+      profRes.value.tutor
+    ) {
       tutorUserState.value = profRes.value.tutor
     }
-    if (notifRes.status === 'fulfilled' && notifRes.value.success && notifRes.value.notifications) {
-      notificationState.value = notifRes.value.notifications
+
+    if (notifRes.status === 'fulfilled' && notifRes.value.success) {
+      notificationState.value =
+        notifRes.value.notifications || []
     }
   } catch (err) {
     console.warn('Backend loading warning:', err)
@@ -304,31 +452,48 @@ async function fetchBackendData() {
 function navigate(view) {
   mobileMenuOpen.value = false
   notificationsOpen.value = false
-  router.push({ name: `tutor-${view}` })
+
+  router.push({
+    name: `tutor-${view}`
+  })
 }
 
 function addToast(message) {
   const id = ++toastId
-  toasts.value.push({ id, message })
+
+  toasts.value.push({
+    id,
+    message
+  })
+
   const timer = window.setTimeout(() => {
-    toasts.value = toasts.value.filter((toast) => toast.id !== id)
+    toasts.value = toasts.value.filter(
+      (toast) => toast.id !== id
+    )
+
     chatTimers.delete(timer)
   }, 2600)
+
   chatTimers.add(timer)
 }
 
 async function selectNotification(notification) {
   notification.isRead = true
   notificationsOpen.value = false
+
   if (notification.id) {
-    try { await tutorApi.markNotificationRead(notification.id) } catch (e) {}
+    try {
+      await tutorApi.markNotificationRead(notification.id)
+    } catch (e) {}
   }
+
   navigate(notification.go || 'dashboard')
 }
 
 async function publishFaq(payload) {
   try {
     const res = await tutorApi.publishQaEntry(payload)
+
     if (res.success && res.entry) {
       faqEntries.value.unshift(res.entry)
     } else {
@@ -349,25 +514,53 @@ async function publishFaq(payload) {
       meta: 'Just published · all students notified'
     })
   }
+
   addToast('Published to board · students notified')
 }
 
 async function replyToDoubt(doubtId, replyText) {
-  const doubt = doubts.value.find((item) => item.doubtId === doubtId || item.id === doubtId)
-  if (doubt) doubt.status = 'Answered'
+  const doubt = doubts.value.find(
+    (item) =>
+      item.doubtId === doubtId ||
+      item.id === doubtId
+  )
+
+  if (doubt) {
+    doubt.status = 'Answered'
+  }
+
   try {
-    const numericId = typeof doubtId === 'number' ? doubtId : parseInt(String(doubtId).replace('doubt-', ''))
+    const numericId =
+      typeof doubtId === 'number'
+        ? doubtId
+        : parseInt(
+            String(doubtId).replace('doubt-', '')
+          )
+
     if (!isNaN(numericId)) {
-      await tutorApi.replyDoubt(numericId, replyText)
+      await tutorApi.replyDoubt(
+        numericId,
+        replyText
+      )
     }
   } catch (e) {}
-  const student = studentsState.value.find((item) => item.studentId === doubt?.studentId)
-  addToast(`Reply sent to ${student?.name || 'student'}`)
+
+  const student = studentsState.value.find(
+    (item) =>
+      item.studentId === doubt?.studentId
+  )
+
+  addToast(
+    `Reply sent to ${student?.name || 'student'}`
+  )
 }
 
 async function sendMessage(conversationId, message) {
-  const conversation = conversations.value[conversationId]
+  const conversation =
+    conversations.value[conversationId]
+
   if (!conversation) return
+
   conversation.messages.push({
     messageId: `msg-${Date.now()}`,
     senderId: tutorUserState.value.userId,
@@ -377,26 +570,23 @@ async function sendMessage(conversationId, message) {
     status: 'sent',
     w: 'me'
   })
-  try { await tutorApi.sendMessage({ conversationId, message }) } catch (e) {}
-  addToast(`Sent to ${conversation.participantName}`)
-  if (reduceMotion.value) return
-  const timer = window.setTimeout(() => {
-    const target = conversations.value[conversationId]
-    if (target) {
-      target.messages.push({
-        messageId: `msg-${Date.now()}-reply`,
-        senderId: conversationId,
-        receiverId: tutorUserState.value.userId,
-        message: 'Got it, thank you!',
-        timestamp: new Date().toISOString(),
-        status: 'read',
-        w: 'them'
-      })
-      addToast(`New reply from ${target.participantName}`)
-    }
-    chatTimers.delete(timer)
-  }, 1600)
-  chatTimers.add(timer)
+
+  try {
+    await tutorApi.sendMessage({
+      receiver_type: conversation.otherType,
+      receiver_id: conversation.otherId,
+      message
+    })
+
+    addToast(
+      `Sent to ${conversation.participantName}`
+    )
+  } catch (e) {
+    addToast(
+      e.message ||
+      'Message could not be sent'
+    )
+  }
 }
 
 function runCommand(item) {
@@ -404,9 +594,16 @@ function runCommand(item) {
     commandOpen.value = true
     return
   }
+
   commandOpen.value = false
-  if (item?.a === 'theme') toggleTheme()
-  if (item?.v) navigate(item.v)
+
+  if (item?.a === 'theme') {
+    toggleTheme()
+  }
+
+  if (item?.v) {
+    navigate(item.v)
+  }
 }
 
 function closeDrawer() {
@@ -429,25 +626,63 @@ async function confirmLogout() {
 }
 
 function updateClock() {
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const dayNames = [
+    'Sun',
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat'
+  ]
+
+  const monthNames = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ]
+
   const date = new Date()
   const hour = date.getHours()
   const minute = date.getMinutes()
   const meridiem = hour < 12 ? 'AM' : 'PM'
   const hour12 = (hour % 12) || 12
-  clockLabel.value = `${dayNames[date.getDay()]} · ${date.getDate()} ${monthNames[date.getMonth()]} · ${hour12}:${minute < 10 ? '0' : ''}${minute} ${meridiem}`
+
+  clockLabel.value =
+    `${dayNames[date.getDay()]} · ` +
+    `${date.getDate()} ${monthNames[date.getMonth()]} · ` +
+    `${hour12}:${minute < 10 ? '0' : ''}${minute} ${meridiem}`
 }
 
 function runReveal() {
   nextTick(() => {
-    const elements = [...document.querySelectorAll('.tutor-portal .view.on .reveal:not(.in)')]
+    const elements = [
+      ...document.querySelectorAll(
+        '.tutor-portal .view.on .reveal:not(.in)'
+      )
+    ]
+
     elements.forEach((element, index) => {
-      if (reduceMotion.value || !revealObserver) {
+      if (
+        reduceMotion.value ||
+        !revealObserver
+      ) {
         element.classList.add('in')
         return
       }
-      element.style.transitionDelay = `${index * 70}ms`
+
+      element.style.transitionDelay =
+        `${index * 70}ms`
+
       revealObserver.observe(element)
     })
   })
@@ -455,99 +690,236 @@ function runReveal() {
 
 function setupReveal() {
   if (reduceMotion.value) return
-  revealObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('in')
-        revealObserver.unobserve(entry.target)
+
+  revealObserver =
+    new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in')
+            revealObserver.unobserve(
+              entry.target
+            )
+          }
+        })
+      },
+      {
+        threshold: 0.08
       }
-    })
-  }, { threshold: 0.08 })
+    )
 }
 
 function setupCursor() {
-  if (reduceMotion.value || !hoverPointer.value) return
+  if (
+    reduceMotion.value ||
+    !hoverPointer.value
+  ) {
+    return
+  }
+
   mx = window.innerWidth / 2
   my = window.innerHeight / 2
   rx = mx
   ry = my
+
   const loop = () => {
     rx += (mx - rx) * 0.16
     ry += (my - ry) * 0.16
-    if (ringRef.value) ringRef.value.style.transform = `translate(${rx}px,${ry}px)`
-    cursorFrame = requestAnimationFrame(loop)
+
+    if (ringRef.value) {
+      ringRef.value.style.transform =
+        `translate(${rx}px,${ry}px)`
+    }
+
+    cursorFrame =
+      requestAnimationFrame(loop)
   }
-  cursorFrame = requestAnimationFrame(loop)
+
+  cursorFrame =
+    requestAnimationFrame(loop)
 }
 
 function onMouseMove(event) {
   mx = event.clientX
   my = event.clientY
-  if (dotRef.value) dotRef.value.style.transform = `translate(${mx}px,${my}px)`
+
+  if (dotRef.value) {
+    dotRef.value.style.transform =
+      `translate(${mx}px,${my}px)`
+  }
+
   if (reduceMotion.value) return
-  document.querySelectorAll('.tutor-portal .magnetic').forEach((button) => {
-    const rect = button.getBoundingClientRect()
-    const cx = rect.left + rect.width / 2
-    const cy = rect.top + rect.height / 2
-    const dx = event.clientX - cx
-    const dy = event.clientY - cy
-    button.style.transform = Math.abs(dx) < 90 && Math.abs(dy) < 60 ? `translate(${dx * 0.18}px,${dy * 0.22}px)` : ''
-  })
+
+  document
+    .querySelectorAll(
+      '.tutor-portal .magnetic'
+    )
+    .forEach((button) => {
+      const rect =
+        button.getBoundingClientRect()
+
+      const cx =
+        rect.left + rect.width / 2
+
+      const cy =
+        rect.top + rect.height / 2
+
+      const dx =
+        event.clientX - cx
+
+      const dy =
+        event.clientY - cy
+
+      button.style.transform =
+        Math.abs(dx) < 90 &&
+        Math.abs(dy) < 60
+          ? `translate(${dx * 0.18}px,${dy * 0.22}px)`
+          : ''
+    })
 }
 
 function onMouseOver(event) {
-  if (!event.target.closest('.tutor-portal')) return
-  const selector = 'a,button,.nav,.qact,.scard,.ci,.icbtn,.ava,.seg span,.toggle span,.lnk,.tt .cell.free,[data-cur],[data-go],[data-student]'
-  if (event.target.closest(selector)) ringRef.value?.classList.add('big')
+  if (
+    !event.target.closest('.tutor-portal')
+  ) {
+    return
+  }
+
+  const selector =
+    'a,button,.nav,.qact,.scard,.ci,.icbtn,.ava,.seg span,.toggle span,.lnk,.tt .cell.free,[data-cur],[data-go],[data-student]'
+
+  if (event.target.closest(selector)) {
+    ringRef.value?.classList.add('big')
+  }
 }
 
 function onMouseOut(event) {
-  if (!event.target.closest('.tutor-portal')) return
-  const selector = 'a,button,.nav,.qact,.scard,.ci,.icbtn,.ava,.seg span,.toggle span,.lnk,.tt .cell.free,[data-cur],[data-go],[data-student]'
-  if (event.target.closest(selector)) ringRef.value?.classList.remove('big')
+  if (
+    !event.target.closest('.tutor-portal')
+  ) {
+    return
+  }
+
+  const selector =
+    'a,button,.nav,.qact,.scard,.ci,.icbtn,.ava,.seg span,.toggle span,.lnk,.tt .cell.free,[data-cur],[data-go],[data-student]'
+
+  if (event.target.closest(selector)) {
+    ringRef.value?.classList.remove('big')
+  }
 }
 
 function onEscape(event) {
   if (event.key !== 'Escape') return
-  if (logoutModalOpen.value) logoutModalOpen.value = false
-  else if (selectedStudent.value) closeDrawer()
-  else if (notificationsOpen.value) notificationsOpen.value = false
-  else if (commandOpen.value) commandOpen.value = false
+
+  if (logoutModalOpen.value) {
+    logoutModalOpen.value = false
+  } else if (selectedStudent.value) {
+    closeDrawer()
+  } else if (notificationsOpen.value) {
+    notificationsOpen.value = false
+  } else if (commandOpen.value) {
+    commandOpen.value = false
+  }
 }
 
 watch(activeView, (view) => {
-  activeKey.value = `${view}-${Date.now()}`
+  activeKey.value =
+    `${view}-${Date.now()}`
+
   mobileMenuOpen.value = false
   notificationsOpen.value = false
+
   nextTick(() => {
     runReveal()
-    mainRef.value?.scrollIntoView({ behavior: reduceMotion.value ? 'auto' : 'smooth', block: 'start' })
+
+    mainRef.value?.scrollIntoView({
+      behavior:
+        reduceMotion.value
+          ? 'auto'
+          : 'smooth',
+      block: 'start'
+    })
   })
 })
 
 onMounted(() => {
   fetchBackendData()
-  reduceMotion.value = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  hoverPointer.value = window.matchMedia('(hover: hover)').matches
+
+  reduceMotion.value =
+    window.matchMedia(
+      '(prefers-reduced-motion: reduce)'
+    ).matches
+
+  hoverPointer.value =
+    window.matchMedia(
+      '(hover: hover)'
+    ).matches
+
   updateClock()
-  clockTimer = window.setInterval(updateClock, 20000)
+
+  clockTimer =
+    window.setInterval(
+      updateClock,
+      20000
+    )
+
   setupReveal()
   setupCursor()
   runReveal()
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseover', onMouseOver)
-  document.addEventListener('mouseout', onMouseOut)
-  document.addEventListener('keydown', onEscape)
+
+  document.addEventListener(
+    'mousemove',
+    onMouseMove
+  )
+
+  document.addEventListener(
+    'mouseover',
+    onMouseOver
+  )
+
+  document.addEventListener(
+    'mouseout',
+    onMouseOut
+  )
+
+  document.addEventListener(
+    'keydown',
+    onEscape
+  )
 })
 
 onUnmounted(() => {
   clearInterval(clockTimer)
+
   revealObserver?.disconnect()
-  cancelAnimationFrame(cursorFrame)
-  chatTimers.forEach((timer) => clearTimeout(timer))
-  document.removeEventListener('mousemove', onMouseMove)
-  document.removeEventListener('mouseover', onMouseOver)
-  document.removeEventListener('mouseout', onMouseOut)
-  document.removeEventListener('keydown', onEscape)
+
+  cancelAnimationFrame(
+    cursorFrame
+  )
+
+  chatTimers.forEach(
+    (timer) =>
+      clearTimeout(timer)
+  )
+
+  document.removeEventListener(
+    'mousemove',
+    onMouseMove
+  )
+
+  document.removeEventListener(
+    'mouseover',
+    onMouseOver
+  )
+
+  document.removeEventListener(
+    'mouseout',
+    onMouseOut
+  )
+
+  document.removeEventListener(
+    'keydown',
+    onEscape
+  )
 })
 </script>
