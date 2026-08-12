@@ -50,6 +50,7 @@
             @select-student="selectedStudent = $event"
             @confirm-action="requestConfirm"
             @publish="publishFaq"
+            @delete-faq="deleteFaq"
             @reply="replyToDoubt"
             @select-conversation="activeConversationId = $event"
             @send-message="sendMessage"
@@ -496,26 +497,30 @@ async function publishFaq(payload) {
 
     if (res.success && res.entry) {
       faqEntries.value.unshift(res.entry)
+      addToast('Published to board · students notified')
     } else {
-      faqEntries.value.unshift({
-        faqId: `faq-${Date.now()}`,
-        question: payload.question,
-        answer: payload.answer,
-        createdBy: tutorUserState.value.userId,
-        meta: 'Just published · all students notified'
-      })
+      addToast(res.message || 'Could not publish to the Q&A board')
     }
   } catch (e) {
-    faqEntries.value.unshift({
-      faqId: `faq-${Date.now()}`,
-      question: payload.question,
-      answer: payload.answer,
-      createdBy: tutorUserState.value.userId,
-      meta: 'Just published · all students notified'
-    })
+    // Never fabricate a board entry on failure - only ever reflect what the
+    // backend actually persisted.
+    addToast(e.message || 'Could not publish to the Q&A board')
   }
+}
 
-  addToast('Published to board · students notified')
+async function deleteFaq(faqId) {
+  const previous = faqEntries.value
+  try {
+    const res = await tutorApi.deleteQaEntry(faqId)
+    if (res.success) {
+      faqEntries.value = previous.filter((entry) => entry.faqId !== faqId)
+      addToast('Q&A entry deleted')
+    } else {
+      addToast(res.message || 'Could not delete Q&A entry')
+    }
+  } catch (e) {
+    addToast(e.message || 'Could not delete Q&A entry')
+  }
 }
 
 async function replyToDoubt(doubtId, replyText) {

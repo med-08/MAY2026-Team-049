@@ -4,6 +4,7 @@ import { useRouter } from "vue-router"
 import Sidebar from "../student/StudentSidebar.vue"
 import Topbar from "../student/StudentTopbar.vue"
 import LogoutModal from "../student/LogoutModal.vue"
+import ToastStack from "../ui/ToastStack.vue"
 import { authApi } from "../../services/authApi"
 
 const sidebarOpen = ref(false)
@@ -46,6 +47,7 @@ async function confirmLogout() {
     </div>
 
     <LogoutModal :open="logoutOpen" @cancel="logoutOpen = false" @confirm="confirmLogout" />
+    <ToastStack />
   </div>
 </template>
 

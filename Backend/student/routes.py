@@ -6,7 +6,7 @@ from models import (
     Student, Parent, Tutor, Subject, StudentSubject, Session, SessionUpdate,
     SessionBooking, Quiz, QuizQuestion, QuizAttempt, Assignment,
     AssignmentSubmission, StudyTip, StudyResource, FAQ, LearningProgress,
-    MeetingRequest, Notification
+    MeetingRequest, Notification, Doubt
 )
 from decorators import student_required
 from utils import decode_jwt_token
@@ -73,6 +73,27 @@ def session_json(sess, booking_status=None):
     }
 
 
+def homework_status(submission, due_date):
+    """Simple, meaningful homework status - no fake 100%-complete requirement.
+
+    Exactly four values, driven by real backend state (submission status +
+    due date), never a synthetic progress percentage:
+      - Done         -> student marked it completed
+      - Due Passed   -> due date has already passed, not completed
+      - Due Today    -> due date is today, not completed
+      - Pending      -> due in the future (or no due date), not completed
+    """
+    if submission and submission.status in ("Completed", "Submitted", "Done"):
+        return "Done"
+    today = date.today()
+    if due_date:
+        if due_date < today:
+            return "Due Passed"
+        if due_date == today:
+            return "Due Today"
+    return "Pending"
+
+
 def assignment_json(assignment, student_id):
     sess = db.session.get(Session, assignment.session_id)
     submission = AssignmentSubmission.query.filter_by(
@@ -88,9 +109,11 @@ def assignment_json(assignment, student_id):
         "dueDate": assignment.due_date.strftime("%d %b %Y") if assignment.due_date else None,
         "due_date": assignment.due_date.isoformat() if assignment.due_date else None,
         "status": submission.status if submission else "Not Started",
+        "homeworkStatus": homework_status(submission, assignment.due_date),
         "progress": submission.progress_percentage if submission else 0,
         "submissionDate": submission.submission_date.strftime("%d %b %Y %I:%M %p") if submission and submission.submission_date else None,
         "feedback": submission.tutor_feedback if submission else "",
+        "canComplete": not (submission and submission.status in ("Completed", "Submitted", "Done")),
     }
 
 
@@ -247,7 +270,7 @@ def submit_quiz(quiz_id):
     attempt = QuizAttempt(quiz_id=quiz_id, student_id=student.student_id, score=score)
     db.session.add(attempt)
     db.session.commit()
-    return ok({"score": score, "correctCount": correct, "totalQuestions": len(questions)}, message="Quiz submitted")
+    return ok({"score": score, "correctCount": correct, "totalQuestions": len(questions)}, message="Quiz submitted", meta={"total": len(questions)})
 
 
 @student_bp.route('/booking-slots', methods=['GET'])
@@ -332,7 +355,7 @@ def sessions():
 @student_bp.route('/upcoming-sessions', methods=['GET'])
 @student_required
 def upcoming_sessions():
-    data, _, = _student_upcoming()
+    data, _, _ = _student_upcoming()
     return ok({"upcoming_sessions": data}, meta={"total": len(data)})
 
 
@@ -393,7 +416,36 @@ def update_assignment_progress(assignment_id):
     sub.status = "Completed" if progress >= 100 else ("In Progress" if progress > 0 else "Pending")
     sub.submission_date = datetime.utcnow()
     db.session.commit()
-    return ok({"assignment_id": assignment_id, "progress": progress, "status": sub.status})
+    return ok({"assignment_id": assignment_id, "progress": progress, "status": sub.status}, meta={"total": 1})
+
+
+@student_bp.route('/assignments/<int:assignment_id>/complete', methods=['POST'])
+@student_required
+def mark_homework_completed(assignment_id):
+    """Simplified 'Mark as Completed' action for the Homework page.
+
+    Persists directly through the backend/database - no 100% progress
+    requirement, no frontend-only state changes.
+    """
+    student = current_student()
+    assignment = db.session.get(Assignment, assignment_id)
+    if not assignment:
+        return fail("Assignment not found", 404)
+    sess = db.session.get(Session, assignment.session_id)
+    if not sess or not StudentSubject.query.filter_by(student_id=student.student_id, subject_id=sess.subject_id).first():
+        return fail("Assignment is not available to you", 403)
+    sub = AssignmentSubmission.query.filter_by(assignment_id=assignment_id, student_id=student.student_id).first()
+    if not sub:
+        sub = AssignmentSubmission(assignment_id=assignment_id, student_id=student.student_id)
+        db.session.add(sub)
+    sub.status = "Completed"
+    sub.progress_percentage = 100
+    sub.submission_date = datetime.utcnow()
+    db.session.commit()
+    return ok(
+        {"assignment_id": assignment_id, "status": sub.status, "homeworkStatus": "Done"},
+        message="Homework marked as completed"
+    )
 
 
 @student_bp.route('/assignments/<int:assignment_id>/submit', methods=['POST'])
@@ -479,6 +531,110 @@ def mark_notification(notification_id):
     student = current_student(); n = Notification.query.filter_by(notification_id=notification_id, recipient_type="Student", recipient_id=student.student_id).first()
     if not n: return fail("Notification not found", 404)
     n.is_read = True; db.session.commit(); return ok(message="Notification marked as read")
+
+
+def _student_tutor_ids(student_id):
+    """Tutors actually relevant to this student, from real booking/subject
+    data - falls back to all active tutors only if the student has no
+    sessions/subjects linked yet, so Ask Doubt always has someone to pick.
+    """
+    tutor_ids = set()
+    subject_ids = {x.subject_id for x in StudentSubject.query.filter_by(student_id=student_id).all()}
+    if subject_ids:
+        for s in Session.query.filter(Session.subject_id.in_(subject_ids)).all():
+            tutor_ids.add(s.tutor_id)
+    for b in SessionBooking.query.filter_by(student_id=student_id).all():
+        sess = db.session.get(Session, b.session_id)
+        if sess:
+            tutor_ids.add(sess.tutor_id)
+    if not tutor_ids:
+        tutor_ids = {t.tutor_id for t in Tutor.query.filter_by(status="Active").all()}
+    return tutor_ids
+
+
+@student_bp.route('/tutors', methods=['GET'])
+@student_required
+def student_tutors():
+    """Real tutors the student can address a doubt to (used by Ask Doubt)."""
+    student = current_student()
+    ids = _student_tutor_ids(student.student_id)
+    tutors = Tutor.query.filter(Tutor.tutor_id.in_(ids), Tutor.status == "Active").order_by(Tutor.tutor_name).all() if ids else []
+    subjects = [subject_name(x.subject_id) for x in StudentSubject.query.filter_by(student_id=student.student_id).all()]
+    return ok({
+        "tutors": [{"tutor_id": t.tutor_id, "name": t.tutor_name, "email": t.email} for t in tutors],
+        "subjects": subjects,
+    })
+
+
+def doubt_json(d):
+    tutor = db.session.get(Tutor, d.tutor_id)
+    return {
+        "id": d.doubt_id,
+        "doubt_id": d.doubt_id,
+        "doubtId": d.doubt_id,  # matches the field name used on /tutor/doubts
+        "tutor_id": d.tutor_id,
+        "tutor": tutor.tutor_name if tutor else "Tutor",
+        "subject": d.subject or "General",
+        "question": d.question,
+        "answer": d.answer,
+        "status": d.status,
+        "askedAt": d.asked_at.isoformat() if d.asked_at else None,
+        "repliedAt": d.replied_at.isoformat() if d.replied_at else None,
+    }
+
+
+@student_bp.route('/doubts', methods=['GET', 'POST'])
+@student_required
+def doubts():
+    student = current_student()
+    if not student:
+        return fail("Student not found or not logged in", 404)
+
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        question = (data.get("question") or "").strip()
+        if not question:
+            return fail("Question is required")
+        subject = (data.get("subject") or "").strip() or None
+
+        allowed_tutor_ids = _student_tutor_ids(student.student_id)
+        tutor_id = data.get("tutor_id")
+        if tutor_id is not None:
+            try:
+                tutor_id = int(tutor_id)
+            except (TypeError, ValueError):
+                return fail("tutor_id must be a valid id")
+            tutor = db.session.get(Tutor, tutor_id)
+            if not tutor or tutor.status != "Active":
+                return fail("Selected tutor is not available", 404)
+        else:
+            if not allowed_tutor_ids:
+                return fail("No tutor is available to receive doubts right now", 404)
+            tutor_id = sorted(allowed_tutor_ids)[0]
+
+        doubt = Doubt(
+            tutor_id=tutor_id,
+            student_id=student.student_id,
+            subject=subject,
+            question=question,
+            status="Open",
+        )
+        db.session.add(doubt)
+        db.session.commit()
+
+        db.session.add(Notification(
+            recipient_type="Tutor",
+            recipient_id=tutor_id,
+            title="New doubt from a student",
+            message=question,
+            notification_type="Doubt",
+        ))
+        db.session.commit()
+
+        return ok({"doubt": doubt_json(doubt)}, message="Doubt submitted", status=201)
+
+    rows = Doubt.query.filter_by(student_id=student.student_id).order_by(Doubt.asked_at.desc()).all()
+    return ok({"doubts": [doubt_json(d) for d in rows]}, meta={"total": len(rows)})
 
 
 @student_bp.route('/profile/password', methods=['PUT'])

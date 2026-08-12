@@ -56,6 +56,15 @@
                 </div>
               </div>
 
+              <button
+                type="button"
+                class="qa-delete-btn"
+                title="Delete this Q&amp;A entry"
+                @click="remove(entry)"
+              >
+                Delete
+              </button>
+
             </div>
 
             <!-- Answer -->
@@ -230,6 +239,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'publish',
+  'delete-faq',
   'toast'
 ])
 
@@ -271,6 +281,13 @@ async function publish() {
   } finally {
     publishing.value = false
   }
+}
+
+function remove(entry) {
+  if (!window.confirm('Delete this Q&A entry? This cannot be undone.')) {
+    return
+  }
+  emit('delete-faq', entry.faqId)
 }
 </script>
 
@@ -533,6 +550,34 @@ async function publish() {
 
   font-size: 10.5px;
   font-style: italic;
+}
+
+
+/* =========================================================
+   DELETE BUTTON
+========================================================= */
+
+.qa-delete-btn {
+  flex: 0 0 auto;
+
+  padding: 4px 10px;
+  margin-left: 8px;
+
+  border: 1px solid rgba(225, 60, 60, 0.2);
+  border-radius: 999px;
+  background: rgba(225, 60, 60, 0.06);
+
+  color: #d43c3c;
+
+  font-size: 10px;
+  font-weight: 700;
+
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.qa-delete-btn:hover {
+  background: rgba(225, 60, 60, 0.14);
 }
 
 

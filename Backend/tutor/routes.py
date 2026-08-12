@@ -2015,6 +2015,39 @@ def qa():
     })
 
 
+@tutor_bp.route(
+    "/qa/<int:faq_id>",
+    methods=["DELETE"]
+)
+@tutor_required
+def delete_qa(
+    faq_id
+):
+    """Delete a Q&A board entry. Tutor/admin-only action, exposed here
+    because the tutor role already owns Q&A publishing."""
+
+    faq = db.session.get(
+        FAQ,
+        faq_id
+    )
+
+    if not faq:
+
+        return fail(
+            "Q&A entry not found",
+            404
+        )
+
+    db.session.delete(
+        faq
+    )
+    db.session.commit()
+
+    return ok(
+        message="Q&A entry deleted"
+    )
+
+
 # =========================================================
 # DOUBTS
 # =========================================================

@@ -36,6 +36,7 @@ export const tutorApi = {
   // ---- Q&A Board ----
   getQaEntries: () => apiRequest(`${BASE}/qa`),
   publishQaEntry: (payload) => apiRequest(`${BASE}/qa`, { method: 'POST', body: payload }),
+  deleteQaEntry: (id) => apiRequest(`${BASE}/qa/${id}`, { method: 'DELETE' }),
 
   // ---- Doubts ----
   getDoubts: () => apiRequest(`${BASE}/doubts`),

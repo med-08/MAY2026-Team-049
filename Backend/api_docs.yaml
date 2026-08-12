@@ -226,7 +226,29 @@ components:
 
 paths:
   # ==================== AUTH (not admin-only; included for context) ====================
-  /login:
+  /auth/subjects:
+    get:
+      tags: [Auth]
+      summary: List all subjects (used to populate the registration subject picker)
+      security: []
+      responses:
+        '200':
+          description: List of subjects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        subject_id: { type: integer }
+                        subject_name: { type: string }
+
+  /auth/login:
     post:
       tags: [Auth]
       summary: Log in (any role) and start a session
@@ -326,7 +348,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /register:
+  /auth/register:
     post:
       tags: [Auth]
       summary: Register a new Student (with linked Parent), or a new Tutor account
@@ -365,7 +387,7 @@ paths:
                   properties:
                     student:
                       type: object
-                      required: [name, email, password, confirm_password]
+                      required: [name, email, password, confirm_password, subject_ids]
                       properties:
                         name: { type: string, minLength: 2 }
                         email: { type: string, format: email }
@@ -375,6 +397,8 @@ paths:
                         school: { type: string, nullable: true }
                         subject_ids:
                           type: array
+                          minItems: 1
+                          description: "Required - at least one subject must be selected"
                           items: { type: integer }
                     parent:
                       type: object
@@ -481,10 +505,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /logout:
+  /auth/logout:
     post:
       tags: [Auth]
-      summary: Clear the current session
+      summary: Clear the current session (also accepts GET)
       responses:
         '200':
           description: Logged out
@@ -1107,6 +1131,64 @@ paths:
       responses:
         '200':
           description: Progress updated
+  /student/assignments/{id}/complete:
+    post:
+      tags: [Student Dashboard]
+      summary: Mark homework as completed - sets homeworkStatus to "Done"
+      description: >
+        Homework has exactly four possible `homeworkStatus` values: Pending,
+        Due Today, Due Passed, Done. No 100%-progress requirement - this
+        endpoint is the only way a student moves an assignment to Done.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Homework marked as completed (homeworkStatus is now "Done")
+        '403':
+          description: Assignment is not available to this student
+        '404':
+          description: Assignment not found
+  /student/tutors:
+    get:
+      tags: [Student Dashboard]
+      summary: Get tutors relevant to the student (used by Ask Doubt)
+      responses:
+        '200':
+          description: List of tutors and enrolled subjects
+  /student/doubts:
+    get:
+      tags: [Student Dashboard]
+      summary: Get the student's own submitted doubts, including tutor replies
+      responses:
+        '200':
+          description: List of doubts with status and answer
+    post:
+      tags: [Student Dashboard]
+      summary: Submit a new doubt to a tutor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                subject:
+                  type: string
+                tutor_id:
+                  type: integer
+      responses:
+        '201':
+          description: Doubt submitted, tutor notified
+        '400':
+          description: Bad Request (missing question)
+        '404':
+          description: Selected tutor not available / no tutor available
 
 # =========Tutor Dashboard APIs========= #
   /tutor/dashboard:
@@ -1344,6 +1426,23 @@ paths:
       responses:
         '201':
           description: Q&A entry published successfully
+
+  /tutor/qa/{faq_id}:
+    delete:
+      tags:
+        - Tutor Dashboard
+      summary: Delete a Q&A board entry
+      parameters:
+        - name: faq_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Q&A entry deleted
+        '404':
+          description: Q&A entry not found
 
   /tutor/doubts:
     get:

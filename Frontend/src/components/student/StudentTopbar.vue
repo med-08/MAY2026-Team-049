@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from "vue"
+import { ref, computed, onMounted, onUnmounted } from "vue"
 import { useRouter } from "vue-router"
 import {
   Bars3Icon,
   MagnifyingGlassIcon,
   SunIcon,
   MoonIcon,
+  BellIcon,
 } from "@heroicons/vue/24/outline"
 import { useTheme } from "../../composables/useTheme"
 import { studentApi } from "../../services/studentApi"
@@ -28,6 +29,45 @@ const weeklyQuizzes = ref([])
 const studyResources = ref([])
 const studyTips = ref([])
 const faqs = ref([])
+
+// Real, backend-driven notifications (e.g. a tutor replying to a doubt).
+// Polled so the student notices a reply without needing to refresh.
+const notifications = ref([])
+const notificationsOpen = ref(false)
+let notificationsTimer = null
+const unreadCount = computed(() => notifications.value.filter((n) => !n.isRead).length)
+
+async function loadNotifications() {
+  try {
+    const res = await studentApi.getNotifications()
+    notifications.value = res?.data?.notifications || []
+  } catch {
+    // keep last known state on transient failure
+  }
+}
+
+async function openNotification(n) {
+  if (!n.isRead) {
+    try {
+      await studentApi.markNotificationRead(n.id)
+      n.isRead = true
+    } catch {
+      // ignore - non-critical
+    }
+  }
+  notificationsOpen.value = false
+  if (n.type === "Doubt") {
+    router.push("/student/ask-doubt")
+  }
+}
+
+function toggleNotifications() {
+  notificationsOpen.value = !notificationsOpen.value
+}
+
+function closeNotifications() {
+  setTimeout(() => { notificationsOpen.value = false }, 150)
+}
 
 function makeInitials(name) {
   if (!name) return "ST"
@@ -90,6 +130,13 @@ onMounted(async () => {
 
   // homework endpoint not clearly separate in current API
   homeworkList.value = assignments.value
+
+  await loadNotifications()
+  notificationsTimer = window.setInterval(loadNotifications, 30000)
+})
+
+onUnmounted(() => {
+  if (notificationsTimer) window.clearInterval(notificationsTimer)
 })
 
 const searchIndex = computed(() => [
@@ -212,6 +259,49 @@ function handleBlur() {
     </div>
 
     <div class="flex items-center gap-2 md:gap-3 ml-auto shrink-0">
+      <div class="relative">
+        <button
+          class="relative w-10 h-10 rounded-xl flex items-center justify-center text-ink-soft hover:bg-slate-100 dark:hover:bg-white/5 transition"
+          @click="toggleNotifications"
+          @blur="closeNotifications"
+        >
+          <BellIcon class="w-5.5 h-5.5" />
+          <span
+            v-if="unreadCount"
+            class="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center leading-none"
+          >
+            {{ unreadCount > 9 ? '9+' : unreadCount }}
+          </span>
+        </button>
+
+        <div
+          v-if="notificationsOpen"
+          class="card absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto py-2 z-40"
+        >
+          <p class="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-soft dark:text-slate-400">
+            Notifications
+          </p>
+          <p v-if="!notifications.length" class="px-4 py-4 text-sm text-ink-soft dark:text-slate-400">
+            No notifications yet.
+          </p>
+          <button
+            v-for="n in notifications"
+            :key="n.id"
+            class="w-full text-left px-4 py-2.5 hover:bg-slate-100 dark:hover:bg-white/5 transition flex items-start gap-2"
+            @mousedown.prevent="openNotification(n)"
+          >
+            <span
+              class="mt-1.5 w-2 h-2 rounded-full shrink-0"
+              :class="n.isRead ? 'bg-transparent' : 'bg-brand-blue'"
+            />
+            <span class="min-w-0">
+              <span class="block text-sm font-semibold truncate">{{ n.title }}</span>
+              <span class="block text-xs text-ink-soft dark:text-slate-400 line-clamp-2">{{ n.message }}</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
       <button class="w-10 h-10 rounded-xl flex items-center justify-center text-ink-soft hover:bg-slate-100 dark:hover:bg-white/5 transition" @click="toggleTheme">
         <SunIcon v-if="isDark" class="w-5.5 h-5.5" />
         <MoonIcon v-else class="w-5.5 h-5.5" />

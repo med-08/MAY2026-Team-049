@@ -77,6 +77,17 @@ export const studentApi = {
     method: 'POST',
     body: JSON.stringify({ progress: 100 }),
   }),
+  markHomeworkCompleted: (assignmentId) => request(`/assignments/${assignmentId}/complete`, {
+    method: 'POST',
+  }),
+
+  // Ask Doubt
+  getDoubts: () => request('/doubts'),
+  askDoubt: (payload) => request('/doubts', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  getDoubtTutors: () => request('/tutors'),
 
   // Additional
   getTimetable: () => request('/timetable'),

@@ -12,6 +12,7 @@ import {
   BookOpenIcon,
   LightBulbIcon,
   QuestionMarkCircleIcon,
+  ChatBubbleLeftRightIcon,
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
   XMarkIcon,
@@ -33,6 +34,7 @@ const navItems = [
   { name: "Study Resources", to: "/student/resources", icon: BookOpenIcon },
   { name: "Study Tips", to: "/student/study-tips", icon: LightBulbIcon },
   { name: "FAQ", to: "/student/faq", icon: QuestionMarkCircleIcon },
+  { name: "Ask Doubt", to: "/student/ask-doubt", icon: ChatBubbleLeftRightIcon },
   { name: "Profile", to: "/student/profile", icon: UserCircleIcon },
 ]
 </script>

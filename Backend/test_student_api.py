@@ -16,6 +16,11 @@ Test cases for /student/*
 | GET /student/study-tips | logged-in student | 200, study tips list | 200, study tips list | Success |
 | GET /student/assignments | logged-in student | 200, assignments list | 200, assignments list | Success |
 | POST /student/assignments/<id>/update-progress | valid progress payload | 200, progress updated | 200, progress updated | Success |
+| POST /student/assignments/<id>/complete | logged-in student | 200, homeworkStatus Done | 200, homeworkStatus Done | Success |
+| GET /student/tutors | logged-in student | 200, tutors list | 200, tutors list | Success |
+| GET /student/doubts | logged-in student | 200, doubts list | 200, doubts list | Success |
+| POST /student/doubts | valid question | 201, doubt created | 201, doubt created | Success |
+| POST /student/doubts | missing question | 400 Bad Request | 400 Bad Request | Success |
 """
 
 from datetime import date, datetime, time, timedelta
@@ -35,6 +40,7 @@ from models import (
     Session,
     SessionBooking,
     SessionUpdate,
+    LearningProgress,
     StudyResource,
     StudyTip,
     Student,
@@ -96,6 +102,21 @@ def client():
             db.session.add(session)
             db.session.commit()
 
+            # A second, still-available session (not pre-booked) so the
+            # booking test can exercise the real "book a session" flow
+            # instead of colliding with the session already booked below.
+            bookable_session = Session(
+                tutor_id=tutor.tutor_id,
+                subject_id=subject.subject_id,
+                session_date=date.today() + timedelta(days=2),
+                start_time=time(11, 0),
+                end_time=time(12, 0),
+                session_type='Regular',
+                status='Scheduled'
+            )
+            db.session.add(bookable_session)
+            db.session.commit()
+
             student = Student(
                 role_id=student_role.role_id,
                 parent_id=parent.parent_id,
@@ -123,6 +144,20 @@ def client():
                     session_id=session.session_id,
                     student_id=student_id,
                     booking_status='Confirmed',
+                ),
+                LearningProgress(
+                    session_id=session.session_id,
+                    student_id=student_id,
+                    session_completion_status='Completed',
+                    learning_pace='Fast',
+                    tutor_remarks='Grasped fractions quickly.',
+                ),
+                LearningProgress(
+                    session_id=session.session_id,
+                    student_id=student_id,
+                    session_completion_status='Partially Completed',
+                    learning_pace='Average',
+                    tutor_remarks='Needs more practice on geometry.',
                 ),
                 FAQ(
                     question='How do I book a tuition session?',
@@ -310,13 +345,15 @@ def test_get_student_booking_slots(client):
 
 
 def test_book_student_session(client):
-    payload = {"session_id": 1}
+    # session_id 1 is pre-booked by the fixture (used by other read-only
+    # tests); session_id 2 is the still-available slot for this test.
+    payload = {"session_id": 2}
     response = client.post('/student/book-session', json=payload)
     assert response.status_code == 200
     body = response.get_json()
     data = body["data"]
     assert body["success"] is True
-    assert data["booked_session_id"] == 1
+    assert data["booked_session_id"] == 2
 
 
 def test_book_student_session_requires_valid_session_id(client):
@@ -365,4 +402,69 @@ def test_get_student_assignments(client):
     assert update_body["success"] is True
     assert update_data["progress"] == 75
     assert update_body["meta"]["total"] == 1
+
+
+def test_get_student_assignments_have_simplified_homework_status(client):
+    response = client.get('/student/assignments')
+    data = response.get_json()["data"]
+    for item in data["assignments"]:
+        assert item["homeworkStatus"] in ("Pending", "Due Today", "Due Passed", "Done")
+        assert "canComplete" in item
+
+
+def test_mark_homework_completed(client):
+    response = client.post('/student/assignments/1/complete')
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["data"]["homeworkStatus"] == "Done"
+
+    # Reflected immediately in the assignments list too - no fake frontend-only state.
+    listing = client.get('/student/assignments').get_json()["data"]["assignments"]
+    updated = next(a for a in listing if a["assignment_id"] == 1)
+    assert updated["homeworkStatus"] == "Done"
+    assert updated["canComplete"] is False
+
+
+def test_mark_homework_completed_requires_enrollment(client):
+    response = client.post('/student/assignments/9999/complete')
+    assert response.status_code == 404
+
+
+def test_get_student_tutors(client):
+    response = client.get('/student/tutors')
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert len(body["data"]["tutors"]) >= 1
+    assert body["data"]["subjects"]
+
+
+def test_ask_doubt_requires_question(client):
+    response = client.post('/student/doubts', json={})
+    assert response.status_code == 400
+    assert response.get_json()["success"] is False
+
+
+def test_ask_and_list_doubt(client):
+    create_res = client.post('/student/doubts', json={
+        "question": "How do I factor a quadratic equation?",
+        "subject": "Mathematics",
+    })
+    assert create_res.status_code == 201
+    created = create_res.get_json()["data"]["doubt"]
+    assert created["status"] == "Open"
+    assert created["question"] == "How do I factor a quadratic equation?"
+
+    list_res = client.get('/student/doubts')
+    assert list_res.status_code == 200
+    body = list_res.get_json()
+    assert body["success"] is True
+    assert body["meta"]["total"] == len(body["data"]["doubts"])
+    assert any(d["question"] == "How do I factor a quadratic equation?" for d in body["data"]["doubts"])
+
+
+def test_ask_doubt_with_invalid_tutor_id(client):
+    response = client.post('/student/doubts', json={"question": "Explain photosynthesis", "tutor_id": 9999})
+    assert response.status_code == 404
 

@@ -33,6 +33,7 @@ import StudentHomework from '../views/student/Homework.vue'
 import StudentStudyResources from '../views/student/StudyResources.vue'
 import StudentStudyTips from '../views/student/StudyTips.vue'
 import StudentFAQ from '../views/student/FAQ.vue'
+import StudentAskDoubt from '../views/student/AskDoubt.vue'
 import StudentProfile from '../views/student/Profile.vue'
 
 // Parent Layout
@@ -116,6 +117,7 @@ const routes = [
       { path: 'resources', name: 'student-study-resources', component: StudentStudyResources, meta: { title: 'Study Resources' } },
       { path: 'study-tips', name: 'student-study-tips', component: StudentStudyTips, meta: { title: 'Study Tips' } },
       { path: 'faq', name: 'student-faq', component: StudentFAQ, meta: { title: 'FAQ' } },
+      { path: 'ask-doubt', name: 'student-ask-doubt', component: StudentAskDoubt, meta: { title: 'Ask Doubt' } },
       { path: 'profile', name: 'student-profile', component: StudentProfile, meta: { title: 'Student Profile' } }
     ]
   },
