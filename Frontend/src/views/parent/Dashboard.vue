@@ -4,7 +4,8 @@ import {
   ChartBarIcon,
   BellAlertIcon,
   BookOpenIcon,
-  LightBulbIcon
+  LightBulbIcon,
+  SparklesIcon
 } from '@heroicons/vue/24/outline'
 import StatCard from '../../components/ui/StatCard.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
@@ -22,14 +23,35 @@ const {
   loadProfile,
   loadOverview,
   loadChildProgress,
-  loadCurriculum
+  loadCurriculum,
+  generateWeeklyReport
 } = useParentPortal()
 
 const selectedChildId = ref(null)
+const isGeneratingReport = ref(false)
+const generatedReportText = ref('')
+const reportError = ref('')
 
 const selectedChild = computed(() =>
   children.value.find((c) => c.student_id === selectedChildId.value)
 )
+
+async function handleGenerateReport() {
+  if (!selectedChildId.value) return
+  isGeneratingReport.value = true
+  reportError.value = ''
+
+  try {
+    const report = await generateWeeklyReport(selectedChildId.value)
+    generatedReportText.value = report
+    showToast('AI Weekly Progress Report generated!', 'success')
+  } catch (err) {
+    reportError.value = err.message || 'Failed to generate report.'
+    showToast(reportError.value, 'error')
+  } finally {
+    isGeneratingReport.value = false
+  }
+}
 
 const progress = computed(() =>
   progressByChild.value[selectedChildId.value] || null
@@ -96,6 +118,8 @@ async function init() {
 
 watch(selectedChildId, async (newId) => {
   if (!newId) return
+  generatedReportText.value = ''
+  reportError.value = ''
   try {
     await Promise.all([
       loadChildProgress(newId),
@@ -138,6 +162,48 @@ function formatDate(dateStr, short = false) {
 
     <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard v-for="card in stats" :key="card.title" v-bind="card" />
+    </div>
+
+    <!-- AI Weekly Progress Report Section for Parent -->
+    <div class="card p-6 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-cyan-500/10 border border-emerald-500/20 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <SparklesIcon class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            <h3 class="font-display font-bold text-base text-slate-800 dark:text-slate-100">
+              Child Weekly AI Progress Report
+            </h3>
+          </div>
+          <p class="text-xs text-slate-600 dark:text-slate-400">
+            Generate an AI-powered summary of <strong class="text-slate-800 dark:text-slate-200">{{ selectedChild?.student_name }}</strong>'s weekly attendance, quiz performance, and assignment progress.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          @click="handleGenerateReport"
+          :disabled="isGeneratingReport || !selectedChildId"
+          style="background: linear-gradient(135deg, #059669, #0D9488) !important; color: #FFFFFF !important;"
+          class="px-5 py-2.5 rounded-xl font-bold text-xs shadow-md hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer border-0"
+        >
+          <SparklesIcon v-if="!isGeneratingReport" class="w-4 h-4" />
+          <span>{{ isGeneratingReport ? 'Generating Report...' : 'Generate AI Progress Report' }}</span>
+        </button>
+      </div>
+
+      <div v-if="reportError" class="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 text-xs font-semibold text-rose-600 dark:text-rose-400">
+        {{ reportError }}
+      </div>
+
+      <div v-if="generatedReportText" class="mt-5 p-4 rounded-xl bg-white dark:bg-slate-800/90 border border-emerald-500/30 text-sm leading-relaxed text-slate-700 dark:text-slate-200 shadow-inner">
+        <div class="flex items-center gap-2 mb-2 border-b border-slate-100 dark:border-white/5 pb-2">
+          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+            ✨ AI Weekly Report
+          </span>
+          <span class="text-xs text-slate-400">For {{ selectedChild?.student_name }}</span>
+        </div>
+        <p class="whitespace-pre-line text-xs sm:text-sm font-medium">{{ generatedReportText }}</p>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">

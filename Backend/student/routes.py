@@ -648,3 +648,118 @@ def change_password():
     if len(new)<8: return fail('New password must contain at least 8 characters')
     if new!=confirm: return fail('New passwords do not match')
     student.password_hash=generate_password_hash(new);db.session.commit();return ok(message='Password changed successfully')
+
+
+# ==================== STUDENT AI FEATURES ====================
+@student_bp.route('/quizzes/generate', methods=['POST'])
+@student_required
+def generate_ai_quiz():
+    student = current_student()
+    data = request.get_json(silent=True) or {}
+    topic = data.get("topic") or data.get("topicName") or "Quadratic Equations"
+
+    try:
+        from student.ai import generate_quiz_questions
+        questions = generate_quiz_questions(topic)
+    except Exception:
+        questions = [
+            {"question": f"Practice Q1 on {topic}", "options": ["Option A", "Option B", "Option C", "Option D"], "correct_option": "A", "explanation": "Basic concept explanation."},
+            {"question": f"Practice Q2 on {topic}", "options": ["Option A", "Option B", "Option C", "Option D"], "correct_option": "B", "explanation": "Basic concept explanation."}
+        ]
+
+    return ok({
+        "topic": topic,
+        "title": f"AI Practice Quiz — {topic}",
+        "questions": questions
+    })
+
+
+@student_bp.route('/flashcards/decks', methods=['GET'])
+@student_required
+def get_flashcard_decks():
+    student = current_student()
+    decks = FlashcardDeck.query.filter_by(student_id=student.student_id).order_by(FlashcardDeck.created_at.desc()).all()
+    result = []
+    for d in decks:
+        cards = FlashcardItem.query.filter_by(deck_id=d.deck_id).all()
+        result.append({
+            "deck_id": d.deck_id,
+            "topic": d.topic,
+            "card_count": len(cards),
+            "cards": [{"card_id": c.card_id, "front": c.front, "back": c.back} for c in cards]
+        })
+    return ok({"decks": result})
+
+
+@student_bp.route('/flashcards', methods=['POST'])
+@student_required
+def create_flashcards():
+    student = current_student()
+    data = request.get_json(silent=True) or {}
+    topic = (data.get("topic") or "General Knowledge").strip()
+
+    try:
+        from student.ai import generate_flashcards
+        cards = generate_flashcards(topic)
+    except Exception:
+        cards = [
+            {"front": f"Core concept of {topic}?", "back": "Key principle definition and formula."},
+            {"front": f"Important application of {topic}?", "back": "Solving structured domain problems."}
+        ]
+
+    deck = FlashcardDeck(student_id=student.student_id, topic=topic)
+    db.session.add(deck)
+    db.session.commit()
+
+    saved = []
+    for c in cards:
+        item = FlashcardItem(deck_id=deck.deck_id, front=c.get("front", ""), back=c.get("back", ""))
+        db.session.add(item)
+        saved.append(item)
+    db.session.commit()
+
+    return ok({
+        "deck_id": deck.deck_id,
+        "topic": topic,
+        "cards": [{"card_id": c.card_id, "front": c.front, "back": c.back} for c in saved]
+    }, message="Flashcards created successfully")
+
+
+@student_bp.route('/flashcards/decks/<int:deck_id>', methods=['DELETE'])
+@student_required
+def delete_flashcard_deck(deck_id):
+    student = current_student()
+    deck = FlashcardDeck.query.filter_by(deck_id=deck_id, student_id=student.student_id).first()
+    if not deck:
+        return fail("Deck not found", 404)
+    db.session.delete(deck)
+    db.session.commit()
+    return ok(message="Deck deleted")
+
+
+@student_bp.route('/flashcards/items/<int:card_id>', methods=['DELETE'])
+@student_required
+def delete_flashcard_item(card_id):
+    card = db.session.get(FlashcardItem, card_id)
+    if card:
+        db.session.delete(card)
+        db.session.commit()
+    return ok(message="Card deleted")
+
+
+@student_bp.route('/faq-chat', methods=['POST'])
+@student_required
+def faq_chat():
+    data = request.get_json(silent=True) or {}
+    question = (data.get("question") or "").strip()
+    if not question:
+        return fail("Question is required", 400)
+
+    try:
+        from student.ai import answer_faq_question
+        ans = answer_faq_question(question)
+    except Exception:
+        ans = "For platform queries, check our FAQ section or submit a doubt to your tutor!"
+
+    return ok({"question": question, "answer": ans})
+

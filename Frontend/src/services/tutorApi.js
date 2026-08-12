@@ -18,11 +18,14 @@ export const tutorApi = {
   getAttendance: () => apiRequest(`${BASE}/attendance`),
   markAttendance: (records) => apiRequest(`${BASE}/attendance`, { method: 'POST', body: { records } }),
   sendSessionUpdate: (payload) => apiRequest(`${BASE}/session-update`, { method: 'POST', body: payload }),
+  aiGenerateSessionSummary: (bulletPoints) => apiRequest(`${BASE}/session-summary/draft`, { method: 'POST', body: { bullet_points: bulletPoints } }),
 
   // ---- Assignments ----
   getAssignments: () => apiRequest(`${BASE}/assignments`),
   createAssignment: (payload) => apiRequest(`${BASE}/assignments`, { method: 'POST', body: payload }),
-  aiGenerateQuestions: () => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST' }),
+  aiGenerateQuestions: (topic) => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST', body: { topic } }),
+  aiGenerateQuizFull: (payload) => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST', body: payload }),
+  createAndAssignQuiz: (payload) => apiRequest(`${BASE}/assignments/create-and-assign`, { method: 'POST', body: payload }),
   deleteAssignment: (id) => apiRequest(`${BASE}/assignments/${id}`, { method: 'DELETE' }),
   getQuizzes: () => apiRequest(`${BASE}/quizzes`),
   createQuiz: (payload) => apiRequest(`${BASE}/quizzes`, { method: 'POST', body: payload }),
