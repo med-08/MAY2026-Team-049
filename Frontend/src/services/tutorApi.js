@@ -18,15 +18,26 @@ export const tutorApi = {
   getAttendance: () => apiRequest(`${BASE}/attendance`),
   markAttendance: (records) => apiRequest(`${BASE}/attendance`, { method: 'POST', body: { records } }),
   sendSessionUpdate: (payload) => apiRequest(`${BASE}/session-update`, { method: 'POST', body: payload }),
+  aiGenerateSessionSummary: (bulletPoints) => apiRequest(`${BASE}/session-summary/draft`, { method: 'POST', body: { bullet_points: bulletPoints } }),
 
-  // ---- Assignments ----
+  // ---- Assignments & Submissions ----
   getAssignments: () => apiRequest(`${BASE}/assignments`),
   createAssignment: (payload) => apiRequest(`${BASE}/assignments`, { method: 'POST', body: payload }),
-  aiGenerateQuestions: () => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST' }),
+  aiGenerateQuestions: (topic) => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST', body: { topic } }),
+  aiGenerateQuizFull: (payload) => apiRequest(`${BASE}/assignments/ai-generate`, { method: 'POST', body: payload }),
+  createAndAssignQuiz: (payload) => apiRequest(`${BASE}/assignments/create-and-assign`, { method: 'POST', body: payload }),
   deleteAssignment: (id) => apiRequest(`${BASE}/assignments/${id}`, { method: 'DELETE' }),
+  getSubmissions: () => apiRequest(`${BASE}/assignments/submissions`),
+  gradeSubmission: (subId, payload) => apiRequest(`${BASE}/assignments/submissions/${subId}/grade`, { method: 'POST', body: payload }),
   getQuizzes: () => apiRequest(`${BASE}/quizzes`),
   createQuiz: (payload) => apiRequest(`${BASE}/quizzes`, { method: 'POST', body: payload }),
   addQuizQuestion: (quizId, payload) => apiRequest(`${BASE}/quizzes/${quizId}/questions`, { method: 'POST', body: payload }),
+
+  // ---- Teaching Plans & Weekly Summaries ----
+  getTeachingPlans: () => apiRequest(`${BASE}/teaching-plans`),
+  createTeachingPlan: (payload) => apiRequest(`${BASE}/teaching-plans`, { method: 'POST', body: payload }),
+  getWeeklySummaries: () => apiRequest(`${BASE}/weekly-summaries`),
+  createWeeklySummary: (payload) => apiRequest(`${BASE}/weekly-summaries`, { method: 'POST', body: payload }),
 
   // ---- Materials ----
   getMaterials: () => apiRequest(`${BASE}/materials`),

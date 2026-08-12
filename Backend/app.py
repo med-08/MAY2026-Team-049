@@ -60,6 +60,9 @@ def create_app():
 
     db.init_app(app)
 
+    with app.app_context():
+        db.create_all()
+
     # Keep the existing real database intact while applying only the
     # additive compatibility fix needed by the current SQLAlchemy models.
     ensure_database_compatibility(DB_PATH)

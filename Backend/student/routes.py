@@ -6,7 +6,7 @@ from models import (
     Student, Parent, Tutor, Subject, StudentSubject, Session, SessionUpdate,
     SessionBooking, Quiz, QuizQuestion, QuizAttempt, Assignment,
     AssignmentSubmission, StudyTip, StudyResource, FAQ, LearningProgress,
-    MeetingRequest, Notification, Doubt
+    MeetingRequest, Notification, Doubt, FlashcardDeck, FlashcardItem
 )
 from decorators import student_required
 from utils import decode_jwt_token
@@ -144,12 +144,30 @@ def dashboard():
     recent = sorted([a for a in attempts if a.attempted_at], key=lambda x: x.attempted_at, reverse=True)[:6]
     weekly = {"labels": [f"Quiz {i + 1}" for i in range(len(recent))][::-1], "data": [round(float(a.score)) for a in recent if a.score is not None][::-1]}
     subject_scores = {}
+    topic_scores = {}
     for attempt in attempts:
         if attempt.score is None:
             continue
         quiz = db.session.get(Quiz, attempt.quiz_id)
         if quiz:
-            subject_scores.setdefault(subject_name(quiz.subject_id), []).append(float(attempt.score))
+            s_name = subject_name(quiz.subject_id)
+            subject_scores.setdefault(s_name, []).append(float(attempt.score))
+            t_name = (quiz.title or "").replace("AI Practice Quiz — ", "").replace("AI Practice Quiz - ", "").replace("Quiz — ", "").strip()
+            if not t_name:
+                t_name = s_name
+            topic_scores.setdefault(t_name, []).append(float(attempt.score))
+
+    topic_performance = {k: round(sum(v) / len(v)) for k, v in topic_scores.items()}
+    weak_topic_alert = None
+    weak_candidates = [(k, v) for k, v in topic_performance.items() if v < 70]
+    if weak_candidates:
+        weak_candidates.sort(key=lambda x: x[1])
+        w_topic, w_score = weak_candidates[0]
+        weak_topic_alert = {
+            "topic": w_topic,
+            "score": w_score,
+            "message": f"Your performance in {w_topic} is low ({w_score}%). Try the recommended 5-question practice quiz."
+        }
 
     next_booking = sorted(upcoming, key=lambda row: (row[1].session_date, row[1].start_time))[0] if upcoming else None
     next_session = session_json(next_booking[1], next_booking[0].booking_status) if next_booking else {}
@@ -179,6 +197,8 @@ def dashboard():
         ],
         "weeklyQuizProgress": weekly,
         "subjectQuizScores": {"labels": list(subject_scores), "data": [round(sum(v) / len(v)) for v in subject_scores.values()]},
+        "topicPerformance": topic_performance,
+        "weakTopicAlert": weak_topic_alert,
         "nextSession": next_session,
         "todaysTasks": tasks,
         "meetings": meetings,
@@ -648,3 +668,118 @@ def change_password():
     if len(new)<8: return fail('New password must contain at least 8 characters')
     if new!=confirm: return fail('New passwords do not match')
     student.password_hash=generate_password_hash(new);db.session.commit();return ok(message='Password changed successfully')
+
+
+# ==================== STUDENT AI FEATURES ====================
+@student_bp.route('/quizzes/generate', methods=['POST'])
+@student_required
+def generate_ai_quiz():
+    student = current_student()
+    data = request.get_json(silent=True) or {}
+    topic = data.get("topic") or data.get("topicName") or "Quadratic Equations"
+
+    try:
+        from student.ai import generate_quiz_questions
+        questions = generate_quiz_questions(topic)
+    except Exception:
+        questions = [
+            {"question": f"Practice Q1 on {topic}", "options": ["Option A", "Option B", "Option C", "Option D"], "correct_option": "A", "explanation": "Basic concept explanation."},
+            {"question": f"Practice Q2 on {topic}", "options": ["Option A", "Option B", "Option C", "Option D"], "correct_option": "B", "explanation": "Basic concept explanation."}
+        ]
+
+    return ok({
+        "topic": topic,
+        "title": f"AI Practice Quiz — {topic}",
+        "questions": questions
+    })
+
+
+@student_bp.route('/flashcards/decks', methods=['GET'])
+@student_required
+def get_flashcard_decks():
+    student = current_student()
+    decks = FlashcardDeck.query.filter_by(student_id=student.student_id).order_by(FlashcardDeck.created_at.desc()).all()
+    result = []
+    for d in decks:
+        cards = FlashcardItem.query.filter_by(deck_id=d.deck_id).all()
+        result.append({
+            "deck_id": d.deck_id,
+            "topic": d.topic,
+            "card_count": len(cards),
+            "cards": [{"card_id": c.card_id, "front": c.front, "back": c.back} for c in cards]
+        })
+    return ok({"decks": result})
+
+
+@student_bp.route('/flashcards', methods=['POST'])
+@student_required
+def create_flashcards():
+    student = current_student()
+    data = request.get_json(silent=True) or {}
+    topic = (data.get("topic") or "General Knowledge").strip()
+
+    try:
+        from student.ai import generate_flashcards
+        cards = generate_flashcards(topic)
+    except Exception:
+        cards = [
+            {"front": f"Core concept of {topic}?", "back": "Key principle definition and formula."},
+            {"front": f"Important application of {topic}?", "back": "Solving structured domain problems."}
+        ]
+
+    deck = FlashcardDeck(student_id=student.student_id, topic=topic)
+    db.session.add(deck)
+    db.session.commit()
+
+    saved = []
+    for c in cards:
+        item = FlashcardItem(deck_id=deck.deck_id, front=c.get("front", ""), back=c.get("back", ""))
+        db.session.add(item)
+        saved.append(item)
+    db.session.commit()
+
+    return ok({
+        "deck_id": deck.deck_id,
+        "topic": topic,
+        "cards": [{"card_id": c.card_id, "front": c.front, "back": c.back} for c in saved]
+    }, message="Flashcards created successfully")
+
+
+@student_bp.route('/flashcards/decks/<int:deck_id>', methods=['DELETE'])
+@student_required
+def delete_flashcard_deck(deck_id):
+    student = current_student()
+    deck = FlashcardDeck.query.filter_by(deck_id=deck_id, student_id=student.student_id).first()
+    if not deck:
+        return fail("Deck not found", 404)
+    db.session.delete(deck)
+    db.session.commit()
+    return ok(message="Deck deleted")
+
+
+@student_bp.route('/flashcards/items/<int:card_id>', methods=['DELETE'])
+@student_required
+def delete_flashcard_item(card_id):
+    card = db.session.get(FlashcardItem, card_id)
+    if card:
+        db.session.delete(card)
+        db.session.commit()
+    return ok(message="Card deleted")
+
+
+@student_bp.route('/faq-chat', methods=['POST'])
+@student_required
+def faq_chat():
+    data = request.get_json(silent=True) or {}
+    question = (data.get("question") or "").strip()
+    if not question:
+        return fail("Question is required", 400)
+
+    try:
+        from student.ai import answer_faq_question
+        ans = answer_faq_question(question)
+    except Exception:
+        ans = "For platform queries, check our FAQ section or submit a doubt to your tutor!"
+
+    return ok({"question": question, "answer": ans})
+

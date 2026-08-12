@@ -24,6 +24,9 @@ export const parentApi = {
   getChildCurriculum: (studentId) =>
     apiRequest(`${BASE}/curriculum/${studentId}`),
 
+  generateWeeklyReport: (studentId) =>
+    apiRequest(`${BASE}/generate-report/${studentId}`, { method: 'POST' }),
+
   getSchedule: (parentId) => apiRequest(`${BASE}/schedule/${parentId}`),
   getMessages: (parentId) => apiRequest(`${BASE}/messages/${parentId}`),
   getNotifications: (parentId) => apiRequest(`${BASE}/notifications/${parentId}`)

@@ -163,6 +163,20 @@ export function useParentPortal() {
 
   const latestSummary = computed(() => overview.value?.latest_summary || null)
 
+  async function generateWeeklyReport(studentId) {
+    loading.value = true
+    error.value = ''
+    try {
+      const res = await parentApi.generateWeeklyReport(studentId)
+      return res
+    } catch (err) {
+      error.value = err.message || 'Failed to generate progress report'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     user,
     parentId,
@@ -181,6 +195,7 @@ export function useParentPortal() {
     loadChildProgress,
     loadCurriculum,
     updateProfile,
-    submitMeetingRequest
+    submitMeetingRequest,
+    generateWeeklyReport
   }
 }

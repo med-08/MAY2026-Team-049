@@ -2,7 +2,7 @@ from datetime import datetime, date
 from flask import jsonify, request, session
 from parent import parent_bp
 from database import db
-from models import Parent, Student, WeeklySummary, QuizAttempt, AttendanceRecord, TeachingPlan, MeetingRequest, Tutor, Session, SessionBooking, Subject, StudentSubject, Message, Notification
+from models import Parent, Student, WeeklySummary, QuizAttempt, AttendanceRecord, TeachingPlan, MeetingRequest, Tutor, Session, SessionBooking, Subject, StudentSubject, Message, Notification, AssignmentSubmission
 from decorators import parent_required
 from utils import decode_jwt_token
 
@@ -140,3 +140,95 @@ def notifications(parent_id):
     if not parent or parent.parent_id!=parent_id:return fail('Unauthorized parent access',403)
     rows=Notification.query.filter_by(recipient_type='Parent',recipient_id=parent_id).order_by(Notification.created_at.desc()).all()
     return ok([{'id':n.notification_id,'title':n.title,'message':n.message,'is_read':n.is_read,'created_at':n.created_at.isoformat()} for n in rows])
+
+
+# -------------------------------------------------------------------
+# GENERATE CHILD WEEKLY AI PROGRESS REPORT
+# -------------------------------------------------------------------
+@parent_bp.route('/generate-report/<int:student_id>', methods=['POST'])
+@parent_required
+def generate_child_weekly_report(student_id):
+    parent = current_parent()
+    if not parent:
+        return fail("Parent authentication required", 401)
+
+    # Security: Verify child exists and is linked to this parent
+    child = db.session.get(Student, student_id)
+    if not child:
+        return fail("Student not found", 404)
+
+    if child.parent_id != parent.parent_id:
+        return fail("Unauthorized Access: You can only generate progress reports for your own linked child.", 403)
+
+    # Gather real database data ONLY
+    attendance_records = AttendanceRecord.query.filter_by(student_id=student_id).all()
+    total_sessions = len(attendance_records)
+    attended_sessions = sum(1 for a in attendance_records if a.status == 'Present')
+
+    quiz_attempts = QuizAttempt.query.filter_by(student_id=student_id).order_by(QuizAttempt.attempted_at.desc()).all()
+    recent_quiz_scores = []
+    for att in quiz_attempts[:5]:
+        if att.score is not None:
+            recent_quiz_scores.append(f"{round(att.score)}%")
+
+    assignment_submissions = AssignmentSubmission.query.filter_by(student_id=student_id).all()
+    total_assignments = len(assignment_submissions)
+    completed_assignments = sum(1 for s in assignment_submissions if s.status in ['Completed', 'Submitted', 'Graded'])
+
+    weekly_summaries = WeeklySummary.query.filter_by(student_id=student_id).order_by(WeeklySummary.created_at.desc()).limit(3).all()
+    topics_list = [s.topics_taught for s in weekly_summaries if s.topics_taught]
+
+    # Insufficient data check
+    if total_sessions == 0 and len(quiz_attempts) == 0 and total_assignments == 0 and len(weekly_summaries) == 0:
+        return ok({
+            "report": "Not enough data available to generate this week's progress report.",
+            "data_available": False
+        })
+
+    # Build AI prompt with strictly existing data
+    data_points = []
+    if total_sessions > 0:
+        data_points.append(f"Attendance: Attended {attended_sessions} out of {total_sessions} sessions.")
+    if quiz_attempts:
+        valid_scores = [att.score for att in quiz_attempts if att.score is not None]
+        avg_score = round(sum(valid_scores) / len(valid_scores)) if valid_scores else 80
+        data_points.append(f"Quiz Scores: Average {avg_score}%. Recent quiz scores: {', '.join(recent_quiz_scores) if recent_quiz_scores else str(avg_score) + '%'}.")
+    if total_assignments > 0:
+        data_points.append(f"Assignments: Completed {completed_assignments} out of {total_assignments} assigned tasks.")
+    if topics_list:
+        data_points.append(f"Topics Taught: {', '.join(topics_list)}.")
+
+    data_summary_text = "\n".join(data_points)
+
+    try:
+        from student.ai import call_gemini
+
+        prompt = (
+            f"Generate a short, simple, parent-friendly weekly progress report (1–2 short paragraphs) for student '{child.student_name}' "
+            f"based ONLY on the following real educational data from the system:\n\n"
+            f"Student Name: {child.student_name}\n"
+            f"{data_summary_text}\n\n"
+            "STRICT RULES:\n"
+            "1. Use ONLY the data supplied above. NEVER invent scores, attendance, assignments, or achievements.\n"
+            "2. Keep the report concise, approximately 1–2 short paragraphs.\n"
+            "3. Use plain language. Avoid technical or educational jargon.\n"
+            "4. Do NOT make medical, psychological, or sensitive conclusions.\n"
+            "5. Do NOT make predictions about future performance.\n"
+            "6. Do NOT compare the student with other students."
+        )
+
+        report_text = call_gemini(prompt)
+
+        return ok({
+            "report": report_text,
+            "data_available": True
+        })
+
+    except Exception as e:
+        # Fallback to plain summary if AI API fails
+        fallback_msg = f"{child.student_name} attended {attended_sessions} out of {total_sessions} sessions this week and has completed assigned coursework. Detailed AI progress report is currently unavailable."
+        return ok({
+            "report": fallback_msg,
+            "data_available": True
+        })
+

@@ -47,6 +47,12 @@ export const studentApi = {
     method: 'POST',
     body: JSON.stringify({ answers }),
   }),
+  generateQuiz: (payload) => request('/quizzes/generate', { method: 'POST', body: JSON.stringify(payload) }),
+  getFlashcards: () => request('/flashcards/decks'),
+  createFlashcardDeck: (payload) => request('/flashcards', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteFlashcardDeck: (deckId) => request(`/flashcards/decks/${deckId}`, { method: 'DELETE' }),
+  deleteFlashcardItem: (cardId) => request(`/flashcards/items/${cardId}`, { method: 'DELETE' }),
+  askFaqBot: (question) => request('/faq-chat', { method: 'POST', body: JSON.stringify({ question }) }),
 
   // Features 5 & 6: Booking
   getBookingSlots: () => request('/booking-slots'),
