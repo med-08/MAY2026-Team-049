@@ -1,0 +1,1744 @@
+openapi: 3.0.3
+info:
+  title: LearnAtHome - Platform REST API (Admin, Student, Parent, Tutor)
+  description: >
+    APIs powering the LearnAtHome platform including Admin, Student, Parent,
+    and Tutor Dashboards. Covers platform overview, scheduling, attendance,
+    assignments, study materials, Q&A, doubts, earnings, and profile.
+  version: "2.0.0"
+
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Login/logout (shared across all roles, not admin-only)
+  - name: Dashboard
+    description: Overview stats and analytics
+  - name: Students
+    description: Student management
+  - name: Parents
+    description: Parent management
+  - name: Tutors
+    description: Tutor management
+  - name: Tutor Dashboard
+    description: Tutor Portal endpoints (Schedule, Students, Attendance, Assignments, Materials, Q&A, Doubts, Messages, Earnings, Profile)
+  - name: Approvals
+    description: Pending registration approvals
+  - name: Profile
+    description: The logged-in admin's own profile
+  - name: Parent Dashboard
+    description: Parent Portal endpoints (Health, Profile, Overview, Meetings, Child Progress, Curriculum)
+
+security:
+  - sessionAuth: []
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: >
+        Flask session cookie set by a successful POST /login as an Admin
+        account. All /admin/* routes are gated by the @admin_required
+        decorator, which checks session['role'] == 'Admin'.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Student with id 9999 not found."
+        errors:
+          nullable: true
+
+    SuccessEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          nullable: true
+        data: {}
+        meta:
+          type: object
+          nullable: true
+
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        per_page: { type: integer, example: 8 }
+        total: { type: integer, example: 25 }
+        total_pages: { type: integer, example: 4 }
+
+    DashboardStats:
+      type: object
+      properties:
+        total_students: { type: integer }
+        total_tutors: { type: integer }
+        total_parents: { type: integer }
+        blocked_users: { type: integer }
+        pending_approvals: { type: integer }
+        total_subjects: { type: integer }
+
+    SubjectCount:
+      type: object
+      properties:
+        subject: { type: string }
+        count: { type: integer }
+
+    MonthlyRegistration:
+      type: object
+      properties:
+        month: { type: string, example: "Jul" }
+        year: { type: integer, example: 2026 }
+        count: { type: integer }
+
+    StatusBreakdown:
+      type: object
+      properties:
+        type: { type: string, example: "Students" }
+        active: { type: integer }
+        blocked: { type: integer }
+        pending: { type: integer }
+
+    SearchResultItem:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+
+    SearchResults:
+      type: object
+      properties:
+        students: { type: array, items: { $ref: '#/components/schemas/SearchResultItem' } }
+        tutors: { type: array, items: { $ref: '#/components/schemas/SearchResultItem' } }
+        parents: { type: array, items: { $ref: '#/components/schemas/SearchResultItem' } }
+
+    Student:
+      type: object
+      properties:
+        student_id: { type: integer }
+        student_name: { type: string }
+        email: { type: string }
+        phone_no: { type: string, nullable: true }
+        school: { type: string, nullable: true }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+        parent_id: { type: integer, nullable: true }
+        parent_name: { type: string, nullable: true }
+        subjects: { type: array, items: { type: string } }
+        registered_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+    Parent:
+      type: object
+      properties:
+        parent_id: { type: integer }
+        parent_name: { type: string }
+        email: { type: string }
+        phone_no: { type: string, nullable: true }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+        children:
+          type: array
+          items:
+            type: object
+            properties:
+              student_id: { type: integer }
+              student_name: { type: string }
+        registered_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+    Tutor:
+      type: object
+      properties:
+        tutor_id: { type: integer }
+        tutor_name: { type: string }
+        email: { type: string }
+        phone_no: { type: string, nullable: true }
+        experience_years: { type: integer, nullable: true }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+        subjects: { type: array, items: { type: string } }
+        registered_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+    ApprovalEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [Student, Tutor, Parent] }
+        name: { type: string }
+        email: { type: string }
+        status: { type: string, enum: [Active, Blocked, Pending, Rejected] }
+        registration_date: { type: string, format: date-time, nullable: true }
+
+    AdminProfile:
+      type: object
+      properties:
+        admin_id: { type: integer }
+        username: { type: string }
+        admin_name: { type: string }
+        email: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        registered_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+  parameters:
+    pageParam:
+      name: page
+      in: query
+      schema: { type: integer, default: 1, minimum: 1 }
+    perPageParam:
+      name: per_page
+      in: query
+      schema: { type: integer, default: 8, minimum: 1, maximum: 100 }
+    searchParam:
+      name: search
+      in: query
+      schema: { type: string }
+      description: Case-insensitive partial match across name and email fields
+    orderParam:
+      name: order
+      in: query
+      schema: { type: string, enum: [asc, desc], default: asc }
+
+  responses:
+    Unauthorized:
+      description: Not logged in (no valid session)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Logged in, but not as an Admin
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+paths:
+  # ==================== AUTH (not admin-only; included for context) ====================
+  /auth/subjects:
+    get:
+      tags: [Auth]
+      summary: List all subjects (used to populate the registration subject picker)
+      security: []
+      responses:
+        '200':
+          description: List of subjects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        subject_id: { type: integer }
+                        subject_name: { type: string }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in (any role) and start a session
+      description: >
+        Validates identifier + password against Admin, Tutor, Student, and
+        Parent tables (in that order). On success, clears any stale
+        session, stores user_id/username/role in the Flask session cookie,
+        updates last_login_at, and returns a signed JWT for API clients
+        that prefer bearer-token auth over the cookie.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string, description: "username or email" }
+                password: { type: string }
+                remember:
+                  type: boolean
+                  default: false
+                  description: If true, session cookie persists beyond the browser session
+            example:
+              identifier: "aarav.mehta@learnmail.com"
+              password: "Student@123"
+              remember: false
+      responses:
+        '200':
+          description: Login successful; sets a session cookie and returns a JWT
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: "Login Successful!" }
+                  token: { type: string, description: "Signed JWT (HS256), 24h expiry" }
+                  role: { type: string, enum: [Admin, Tutor, Student, Parent] }
+                  username: { type: string, description: "Display name of the logged-in user" }
+                  redirect_url: { type: string, example: "/student" }
+        '400':
+          description: Missing identifier/password
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Account is Pending approval or Blocked/Inactive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/check-parent-email:
+    get:
+      tags: [Auth]
+      summary: Look up a Parent account by email (used while filling the registration form)
+      description: >
+        Used by the combined Student + Parent registration form as the
+        Parent Email field is filled in, so the UI can either confirm the
+        existing parent account (and hide the "new parent" fields) or
+        reveal the fields needed to create a new Parent. This is a
+        best-effort UI hint only; POST /auth/register performs its own
+        authoritative lookup in the same transaction as account creation.
+      security: []
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema: { type: string, format: email }
+      responses:
+        '200':
+          description: Lookup completed (whether or not a match was found)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  exists: { type: boolean }
+                  parent:
+                    type: object
+                    nullable: true
+                    description: Present only when exists=true
+                    properties:
+                      parent_id: { type: integer }
+                      parent_name: { type: string }
+                      email: { type: string }
+        '400':
+          description: Missing or invalid email
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new Student (with linked Parent), or a new Tutor account
+      description: >
+        Self-service sign-up. Supports two request shapes:
+
+        1. **Combined Student + Parent** (current registration form) - body
+        contains a nested `student` object and a `parent` object. The
+        Parent's email is looked up first: if a Parent with that email
+        already exists, the new Student is linked to it via
+        `student.parent_id` and no new Parent row is created; otherwise a
+        new Parent is created from the supplied `parent` fields and the
+        Student is linked to its new `parent_id`. Parent creation (when
+        needed) and Student creation happen in a single DB transaction, so
+        a Student is never left pointing at an invalid/partially-created
+        Parent.
+
+        2. **Legacy flat single-role body** (`name`/`email`/`password`/
+        `confirm_password`/`role`) - now only accepts `role: "Tutor"`.
+        Standalone Parent registration and flat (unlinked) Student
+        registration have been removed; Student accounts must go through
+        the combined shape above so every Student is linked to a Parent.
+
+        In both cases, if the caller already has an active session, the
+        request short-circuits and returns a redirect for their existing
+        role instead of creating a new account.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [student, parent]
+                  properties:
+                    student:
+                      type: object
+                      required: [name, email, password, confirm_password, subject_ids]
+                      properties:
+                        name: { type: string, minLength: 2 }
+                        email: { type: string, format: email }
+                        password: { type: string, minLength: 6 }
+                        confirm_password: { type: string, minLength: 6 }
+                        phone_no: { type: string, nullable: true }
+                        school: { type: string, nullable: true }
+                        subject_ids:
+                          type: array
+                          minItems: 1
+                          description: "Required - at least one subject must be selected"
+                          items: { type: integer }
+                    parent:
+                      type: object
+                      required: [email]
+                      description: >
+                        Only `email` is required if the Parent already
+                        exists. `name`/`password`/`confirm_password` are
+                        required when the Parent email is new (i.e. no
+                        existing Parent account was found for it).
+                      properties:
+                        email: { type: string, format: email }
+                        name: { type: string, minLength: 2 }
+                        password: { type: string, minLength: 6 }
+                        confirm_password: { type: string, minLength: 6 }
+                        phone_no: { type: string, nullable: true }
+                - type: object
+                  required: [name, email, password, confirm_password, role]
+                  properties:
+                    name: { type: string, minLength: 2, description: "Full name" }
+                    email: { type: string, format: email }
+                    password: { type: string, minLength: 6 }
+                    confirm_password: { type: string, minLength: 6 }
+                    role:
+                      type: string
+                      enum: [Tutor]
+            examples:
+              student_with_existing_parent:
+                summary: Student registration, Parent email already exists
+                value:
+                  student:
+                    name: "New Student"
+                    email: "new.student@learnmail.com"
+                    password: "Passw0rd!"
+                    confirm_password: "Passw0rd!"
+                  parent:
+                    email: "ravi@gmail.com"
+              student_with_new_parent:
+                summary: Student registration, Parent email is new
+                value:
+                  student:
+                    name: "New Student"
+                    email: "new.student2@learnmail.com"
+                    password: "Passw0rd!"
+                    confirm_password: "Passw0rd!"
+                  parent:
+                    email: "new.parent@parentmail.com"
+                    name: "New Parent"
+                    password: "ParentPass1!"
+                    confirm_password: "ParentPass1!"
+                    phone_no: "+1 200 555 2000"
+              tutor_legacy_flat:
+                summary: Tutor registration (legacy flat shape)
+                value:
+                  name: "New Tutor"
+                  email: "new.tutor@learnmail.com"
+                  password: "Passw0rd!"
+                  confirm_password: "Passw0rd!"
+                  role: "Tutor"
+      responses:
+        '200':
+          description: >
+            Caller was already logged in - no new account is created and a
+            redirect_url for their existing role is returned instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  redirect_url: { type: string }
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: "Registration Successful! Please log in." }
+                  parent:
+                    type: object
+                    nullable: true
+                    description: Only present for the combined Student + Parent shape
+                    properties:
+                      parent_id: { type: integer }
+                      parent_name: { type: string }
+                      email: { type: string }
+                      newly_created:
+                        type: boolean
+                        description: true if a new Parent row was created, false if an existing one was reused
+        '400':
+          description: >
+            Validation failed - e.g. name too short, invalid email,
+            password too short, password/confirm_password mismatch,
+            Student or Parent email already registered, missing Parent
+            details when the Parent email is new, or role not in [Tutor]
+            for the legacy flat shape
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          description: Unexpected error while creating the account(s) (transaction rolled back)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Clear the current session (also accepts GET)
+      responses:
+        '200':
+          description: Logged out
+
+  # ==================== DASHBOARD ====================
+  /admin/dashboard/stats:
+    get:
+      tags: [Dashboard]
+      summary: Get platform-wide overview statistics
+      description: >
+        User Story: snapshot of total students/tutors/parents, blocked
+        students, pending approvals, and subjects. Powers Dashboard.vue.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/DashboardStats' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard/analytics/students-per-subject:
+    get:
+      tags: [Dashboard]
+      summary: Student enrollment count grouped by subject
+      description: Powers the Analytics.vue doughnut chart.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/SubjectCount' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard/analytics/monthly-registrations:
+    get:
+      tags: [Dashboard]
+      summary: Monthly registration trend (students+tutors+parents combined)
+      description: Powers the Analytics.vue line chart.
+      parameters:
+        - name: months
+          in: query
+          schema: { type: integer, default: 7, minimum: 1, maximum: 24 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/MonthlyRegistration' } } }
+        '400': { description: Invalid 'months' parameter, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard/analytics/tutors-per-subject:
+    get:
+      tags: [Dashboard]
+      summary: Tutor supply count grouped by subject
+      description: >
+        Powers the Analytics.vue "Tutors Per Subject" bar chart. Meant to
+        be read alongside students-per-subject to spot subjects that are
+        short on tutors relative to enrolled students. Subjects taught are
+        derived from distinct subjects across a tutor's scheduled Sessions
+        (there is no direct Tutor<->Subject table).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/SubjectCount' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard/analytics/status-breakdown:
+    get:
+      tags: [Dashboard]
+      summary: Active/Blocked/Pending counts per entity type
+      description: Powers the Analytics.vue stacked "Account Status Breakdown" bar chart.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/StatusBreakdown' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Legacy dashboard summary (kept for backward compatibility)
+      description: Predates /admin/dashboard/stats; returns a differently-shaped payload ({success, stats}).
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/search:
+    get:
+      tags: [Dashboard]
+      summary: Dashboard-wide quick search across students, tutors & parents
+      description: >
+        Powers the navbar's Quick Search (Ctrl/Cmd+K) command palette so an
+        admin can jump to any user record from anywhere in the dashboard,
+        not just from within that entity's own list page. Matches name or
+        email, any status, and returns up to 6 results per entity type.
+        Queries under 2 characters return an empty result set rather than
+        an error.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SearchResults' }
+                      meta:
+                        type: object
+                        properties:
+                          query: { type: string }
+                          total: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== STUDENTS ====================
+  /admin/students:
+    get:
+      tags: [Students]
+      summary: List/search/sort/filter students
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/orderParam'
+        - name: status
+          in: query
+          schema: { type: string, enum: [All, Active, Blocked, Pending], default: All }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [student_id, student_name, email, school, status, registered_at], default: student_id }
+      responses:
+        '200':
+          description: Paginated list of students
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Student' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '400': { description: Invalid query parameters, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/students/{student_id}:
+    get:
+      tags: [Students]
+      summary: Get a single student's detail
+      parameters: [{ name: student_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Students]
+      summary: Delete a student
+      parameters: [{ name: student_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Deleted }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/students/{student_id}/status:
+    patch:
+      tags: [Students]
+      summary: Block or unblock a student
+      parameters: [{ name: student_id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: { status: { type: string, enum: [Active, Blocked] } }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Missing/invalid status }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== PARENTS ====================
+  /admin/parents:
+    get:
+      tags: [Parents]
+      summary: List/search/sort/filter parents
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/orderParam'
+        - name: status
+          in: query
+          schema: { type: string, enum: [All, Active, Blocked, Pending], default: All }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [parent_id, parent_name, email, status, registered_at], default: parent_id }
+      responses:
+        '200':
+          description: Paginated list of parents
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Parent' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '400': { description: Invalid query parameters }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/parents/{parent_id}:
+    get:
+      tags: [Parents]
+      summary: Get a single parent's detail (including linked children)
+      parameters: [{ name: parent_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Parents]
+      summary: Delete a parent (nulls parent_id on linked students)
+      parameters: [{ name: parent_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Deleted }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/parents/{parent_id}/status:
+    patch:
+      tags: [Parents]
+      summary: Block or unblock a parent
+      parameters: [{ name: parent_id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: { status: { type: string, enum: [Active, Blocked] } }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Missing/invalid status }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== TUTORS ====================
+  /admin/tutors:
+    get:
+      tags: [Tutors]
+      summary: List/search/sort/filter tutors
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/orderParam'
+        - name: status
+          in: query
+          schema: { type: string, enum: [All, Active, Blocked, Pending], default: All }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [tutor_id, tutor_name, email, experience_years, status, registered_at], default: tutor_id }
+      responses:
+        '200':
+          description: Paginated list of tutors
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Tutor' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '400': { description: Invalid query parameters }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/tutors/{tutor_id}:
+    get:
+      tags: [Tutors]
+      summary: Get a single tutor's detail
+      parameters: [{ name: tutor_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Tutors]
+      summary: Delete a tutor (bonus endpoint - not yet wired into Tutors.vue's read-only UI)
+      parameters: [{ name: tutor_id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Deleted }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/tutors/{tutor_id}/status:
+    patch:
+      tags: [Tutors]
+      summary: Block or unblock a tutor (bonus endpoint - schema parity)
+      parameters: [{ name: tutor_id, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties: { status: { type: string, enum: [Active, Blocked] } }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Missing/invalid status }
+        '404': { description: Not found }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== APPROVALS ====================
+  /admin/approvals:
+    get:
+      tags: [Approvals]
+      summary: List pending (or other status) registrations across all roles
+      description: Powers PendingApprovals.vue.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [All, Pending, Active, Blocked, Rejected], default: Pending }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { type: array, items: { $ref: '#/components/schemas/ApprovalEntry' } } }
+        '400': { description: Invalid status filter }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/approvals/{entity_type}/{entity_id}/approve:
+    patch:
+      tags: [Approvals]
+      summary: Approve a pending registration (sets status to Active)
+      parameters:
+        - name: entity_type
+          in: path
+          required: true
+          schema: { type: string, enum: [student, tutor, parent] }
+        - name: entity_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Approved }
+        '400': { description: Invalid entity_type }
+        '404': { description: Not found }
+        '409': { description: Entity is not currently Pending }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/approvals/{entity_type}/{entity_id}/reject:
+    patch:
+      tags: [Approvals]
+      summary: Reject a pending registration (sets status to Rejected)
+      parameters:
+        - name: entity_type
+          in: path
+          required: true
+          schema: { type: string, enum: [student, tutor, parent] }
+        - name: entity_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Rejected }
+        '400': { description: Invalid entity_type }
+        '404': { description: Not found }
+        '409': { description: Entity is not currently Pending }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ==================== PROFILE (self-service) ====================
+  /admin/profile/me:
+    get:
+      tags: [Profile]
+      summary: Get the logged-in admin's own profile
+      description: >
+        Uses the session's admin id, not a URL parameter -- avoids the
+        IDOR risk of a path like /admin/profile/{id} now that real auth
+        exists.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/AdminProfile' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Profile]
+      summary: Update the logged-in admin's display name and/or email
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                admin_name: { type: string }
+                email: { type: string }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Invalid body }
+        '409': { description: Email already in use }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/profile/me/password:
+    put:
+      tags: [Profile]
+      summary: Change the logged-in admin's own password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password, confirm_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 6 }
+                confirm_password: { type: string }
+      responses:
+        '200': { description: Password changed }
+        '400': { description: Missing fields, mismatch, or too short }
+        '401': { description: Current password incorrect, or not logged in }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+# =========Student Dashboard and Progress APIs========= #
+  /student/dashboard:
+    get:
+      tags: [Student Dashboard]
+      summary: Get student dashboard
+      responses:
+        '200':
+          description: Dashboard payload with summaryStats
+  /student/progress:
+    get:
+      tags: [Student Dashboard]
+      summary: Get student progress
+      responses:
+        '200':
+          description: Growth metrics and completed topics
+  /student/faqs:
+    get:
+      tags: [Student Dashboard]
+      summary: Get FAQ list
+      responses:
+        '200':
+          description: FAQ list
+  /student/quizzes:
+    get:
+      tags: [Student Dashboard]
+      summary: Get quiz list
+      responses:
+        '200':
+          description: Quiz list
+  /student/quizzes/{id}:
+    get:
+      tags: [Student Dashboard]
+      summary: Get specific quiz by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 5 question payload
+  /student/quizzes/{id}/submit:
+    post:
+      tags: [Student Dashboard]
+      summary: Submit quiz answers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Valid answers payload
+      responses:
+        '200':
+          description: Scoring data
+  /student/booking-slots:
+    get:
+      tags: [Student Dashboard]
+      summary: Get booking slots
+      responses:
+        '200':
+          description: Regular and one-to-one slots
+  /student/book-session:
+    post:
+      tags: [Student Dashboard]
+      summary: Book a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+      responses:
+        '200':
+          description: Booking success
+        '400':
+          description: Bad Request (invalid or missing session_id)
+  /student/upcoming-sessions:
+    get:
+      tags: [Student Dashboard]
+      summary: Get upcoming sessions
+      responses:
+        '200':
+          description: Upcoming sessions list
+  /student/study-tips:
+    get:
+      tags: [Student Dashboard]
+      summary: Get study tips
+      responses:
+        '200':
+          description: Study tips list
+  /student/assignments:
+    get:
+      tags: [Student Dashboard]
+      summary: Get assignments list
+      responses:
+        '200':
+          description: Assignments list
+  /student/assignments/{id}/update-progress:
+    post:
+      tags: [Student Dashboard]
+      summary: Update assignment progress
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Valid progress payload
+      responses:
+        '200':
+          description: Progress updated
+  /student/assignments/{id}/complete:
+    post:
+      tags: [Student Dashboard]
+      summary: Mark homework as completed - sets homeworkStatus to "Done"
+      description: >
+        Homework has exactly four possible `homeworkStatus` values: Pending,
+        Due Today, Due Passed, Done. No 100%-progress requirement - this
+        endpoint is the only way a student moves an assignment to Done.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Homework marked as completed (homeworkStatus is now "Done")
+        '403':
+          description: Assignment is not available to this student
+        '404':
+          description: Assignment not found
+  /student/tutors:
+    get:
+      tags: [Student Dashboard]
+      summary: Get tutors relevant to the student (used by Ask Doubt)
+      responses:
+        '200':
+          description: List of tutors and enrolled subjects
+  /student/doubts:
+    get:
+      tags: [Student Dashboard]
+      summary: Get the student's own submitted doubts, including tutor replies
+      responses:
+        '200':
+          description: List of doubts with status and answer
+    post:
+      tags: [Student Dashboard]
+      summary: Submit a new doubt to a tutor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                subject:
+                  type: string
+                tutor_id:
+                  type: integer
+      responses:
+        '201':
+          description: Doubt submitted, tutor notified
+        '400':
+          description: Bad Request (missing question)
+        '404':
+          description: Selected tutor not available / no tutor available
+
+# =========Tutor Dashboard APIs========= #
+  /tutor/dashboard:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch overview statistics, today's schedule, activities, and leaderboard for tutor
+      responses:
+        '200':
+          description: Tutor dashboard overview data
+
+  /tutor/schedule:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch tutor schedule matrix and calendar events
+      responses:
+        '200':
+          description: Weekly schedule and calendar events
+
+  /tutor/schedule/class:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Schedule a new live class
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                subject:
+                  type: string
+                date:
+                  type: string
+                time:
+                  type: string
+                duration:
+                  type: string
+      responses:
+        '201':
+          description: Class scheduled successfully
+
+  /tutor/students:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: List all assigned students and parent contact information
+      responses:
+        '200':
+          description: List of assigned students
+
+  /tutor/students/{student_id}:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch detailed student progress drawer data
+      parameters:
+        - name: student_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Student profile and learning progress analytics
+
+  /tutor/attendance:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch attendance records and attendance analytics
+      responses:
+        '200':
+          description: Attendance records and analytics
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Submit or update student attendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                student_id:
+                  type: integer
+                session_id:
+                  type: integer
+                status:
+                  type: string
+      responses:
+        '200':
+          description: Attendance updated successfully
+
+  /tutor/session-update:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Log session update (topics covered, homework, remarks)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: integer
+                student_id:
+                  type: integer
+                topics_covered:
+                  type: string
+                homework_assigned:
+                  type: string
+      responses:
+        '201':
+          description: Session update recorded successfully
+
+  /tutor/assignments:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch list of assignments created by tutor
+      responses:
+        '200':
+          description: List of assignments
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Create a new assignment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                subject:
+                  type: string
+                due_date:
+                  type: string
+                total_marks:
+                  type: integer
+      responses:
+        '201':
+          description: Assignment created successfully
+
+  /tutor/assignments/ai-generate:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Generate AI Quiz / practice test questions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject:
+                  type: string
+                topic:
+                  type: string
+                difficulty:
+                  type: string
+                question_count:
+                  type: integer
+      responses:
+        '201':
+          description: AI Quiz generated successfully
+
+  /tutor/materials:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch study resources uploaded by tutor
+      responses:
+        '200':
+          description: List of study resources
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Upload a new study material resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                subject:
+                  type: string
+                type:
+                  type: string
+                file_url:
+                  type: string
+      responses:
+        '201':
+          description: Study resource uploaded successfully
+
+  /tutor/qa:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch shared Q&A board entries
+      responses:
+        '200':
+          description: List of Q&A board items
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Publish new Q&A entry to board
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                answer:
+                  type: string
+                subject:
+                  type: string
+      responses:
+        '201':
+          description: Q&A entry published successfully
+
+  /tutor/qa/{faq_id}:
+    delete:
+      tags:
+        - Tutor Dashboard
+      summary: Delete a Q&A board entry
+      parameters:
+        - name: faq_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Q&A entry deleted
+        '404':
+          description: Q&A entry not found
+
+  /tutor/doubts:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch student doubts list
+      responses:
+        '200':
+          description: List of student doubts
+
+  /tutor/doubts/{doubt_id}/reply:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Reply to a student doubt
+      parameters:
+        - name: doubt_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answer:
+                  type: string
+      responses:
+        '200':
+          description: Reply recorded successfully
+
+  /tutor/messages/conversations:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch message threads and chat conversations
+      responses:
+        '200':
+          description: Conversation threads and message list
+
+  /tutor/messages/send:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Send a message to student or parent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                receiver_id:
+                  type: integer
+                content:
+                  type: string
+      responses:
+        '201':
+          description: Message sent successfully
+
+  /tutor/meetings/request:
+    post:
+      tags:
+        - Tutor Dashboard
+      summary: Request a virtual 1-on-1 meeting with parent/student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                student_id:
+                  type: integer
+                requested_time:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        '201':
+          description: Meeting requested successfully
+
+  /tutor/earnings:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch tutor payout history and monthly earnings summary
+      responses:
+        '200':
+          description: Earnings summary and payout table
+
+  /tutor/profile:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch logged-in tutor profile information
+      responses:
+        '200':
+          description: Tutor profile data
+    put:
+      tags:
+        - Tutor Dashboard
+      summary: Update tutor profile information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bio:
+                  type: string
+                subjects:
+                  type: array
+                  items:
+                    type: string
+                experience_years:
+                  type: integer
+                education:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated successfully
+
+  /tutor/notifications:
+    get:
+      tags:
+        - Tutor Dashboard
+      summary: Fetch tutor notifications list
+      responses:
+        '200':
+          description: List of notifications
+
+  /tutor/notifications/{notification_id}/read:
+    patch:
+      tags:
+        - Tutor Dashboard
+      summary: Mark a notification as read
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification marked as read
+
+# ==================== PARENT DASHBOARD ====================
+  /api/parent/health:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Health check
+      description: Verifies Parent API blueprint status.
+      responses:
+        '200':
+          description: Blueprint is functional.
+
+  /api/parent/profile/{parent_id}:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Get parent profile
+      description: Retrieves details of a parent and their linked children.
+      parameters:
+        - name: parent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Profile retrieved successfully.
+        '404':
+          description: Parent not found.
+    put:
+      tags:
+        - Parent Dashboard
+      summary: Update parent profile
+      description: Updates parent's full name or phone number.
+      parameters:
+        - name: parent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_name:
+                  type: string
+                phone_no:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated successfully.
+        '404':
+          description: Parent not found.
+
+  /api/parent/overview/{parent_id}:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Get parent dashboard overview
+      description: Returns total linked children, summary stats, and recent academic updates.
+      parameters:
+        - name: parent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Overview data retrieved successfully.
+
+  /api/parent/meeting-request:
+    post:
+      tags:
+        - Parent Dashboard
+      summary: Request tutor meeting
+      description: Submits a virtual/in-person meeting request with a tutor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - parent_id
+                - tutor_id
+                - student_id
+                - preferred_date
+                - preferred_time
+              properties:
+                parent_id:
+                  type: integer
+                tutor_id:
+                  type: integer
+                student_id:
+                  type: integer
+                preferred_date:
+                  type: string
+                  format: date
+                preferred_time:
+                  type: string
+                meeting_type:
+                  type: string
+                  enum: [Virtual, In-Person]
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Meeting request created successfully.
+
+  /api/parent/child-progress/{parent_id}/{student_id}:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Get child academic progress
+      description: Fetches attendance rates, quiz scores, and tutor remarks for a specific child.
+      parameters:
+        - name: parent_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: student_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Child progress retrieved successfully.
+
+  /api/parent/curriculum/{student_id}:
+    get:
+      tags:
+        - Parent Dashboard
+      summary: Get child curriculum plan
+      description: Fetches monthly planned syllabus topics set by tutors.
+      parameters:
+        - name: student_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Curriculum plan retrieved successfully.
+

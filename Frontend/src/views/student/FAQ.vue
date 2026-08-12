@@ -1,0 +1,5 @@
+<script setup>
+import {ref,computed,onMounted} from 'vue';import PageHeader from '../../components/student/PageHeader.vue';import {studentApi} from '../../services/studentApi'
+const faqs=ref([]),q=ref(''),open=ref(null),loading=ref(true);onMounted(async()=>{try{const r=await studentApi.getFaqs();faqs.value=r.data?.faqs||[]}finally{loading.value=false}});const filtered=computed(()=>{const x=q.value.toLowerCase();return faqs.value.filter(f=>!x||f.q.toLowerCase().includes(x)||f.a.toLowerCase().includes(x))})
+</script>
+<template><div><PageHeader title="Frequently Asked Questions" subtitle="Answers published by your tutor."/><input v-model="q" class="w-full max-w-2xl p-3 rounded-xl border mb-5" placeholder="Search FAQs..."><p v-if="loading">Loading FAQs...</p><div v-else-if="!filtered.length" class="card p-8 text-slate-500">No FAQs available.</div><div v-else class="max-w-3xl space-y-3"><div v-for="f in filtered" :key="f.id" class="card overflow-hidden"><button class="w-full p-5 text-left font-semibold" @click="open=open===f.id?null:f.id">{{f.q}}</button><p v-if="open===f.id" class="px-5 pb-5 text-sm text-slate-500">{{f.a}}</p></div></div></div></template>
