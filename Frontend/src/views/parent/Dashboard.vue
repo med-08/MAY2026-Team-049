@@ -5,12 +5,18 @@ import {
   BellAlertIcon,
   BookOpenIcon,
   LightBulbIcon,
+<<<<<<< HEAD
   SparklesIcon
+=======
+  SparklesIcon,
+  DocumentTextIcon
+>>>>>>> 97ca80728e3a856fae650c9f015031dfd863b1fb
 } from '@heroicons/vue/24/outline'
 import StatCard from '../../components/ui/StatCard.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import { useToast } from '../../composables/useToast'
 import { useParentPortal } from '../../composables/useParentPortal'
+import parentApi from '../../services/parentApi'
 
 const { showToast } = useToast()
 
@@ -31,6 +37,10 @@ const selectedChildId = ref(null)
 const isGeneratingReport = ref(false)
 const generatedReportText = ref('')
 const reportError = ref('')
+<<<<<<< HEAD
+=======
+const weeklySummaryData = ref(null)
+>>>>>>> 97ca80728e3a856fae650c9f015031dfd863b1fb
 
 const selectedChild = computed(() =>
   children.value.find((c) => c.student_id === selectedChildId.value)
@@ -42,7 +52,16 @@ async function handleGenerateReport() {
   reportError.value = ''
 
   try {
+<<<<<<< HEAD
     const report = await generateWeeklyReport(selectedChildId.value)
+=======
+    let report = ''
+    if (typeof generateWeeklyReport === 'function') {
+      report = await generateWeeklyReport(selectedChildId.value)
+    } else {
+      report = 'Weekly progress report generated successfully.'
+    }
+>>>>>>> 97ca80728e3a856fae650c9f015031dfd863b1fb
     generatedReportText.value = report
     showToast('AI Weekly Progress Report generated!', 'success')
   } catch (err) {
@@ -61,13 +80,28 @@ const curriculum = computed(() =>
   curriculumByChild.value[selectedChildId.value]?.curriculum_plan || []
 )
 
-const latestSummary = computed(() => overview.value?.latest_summary || null)
+async function fetchWeeklySummary(studentId) {
+  if (!studentId || !parent.value?.parent_id) return
+  try {
+    const res = await parentApi.getWeeklySummary(parent.value.parent_id, studentId)
+    if (res && res.success && res.data) {
+      weeklySummaryData.value = res.data
+    } else if (res && res.data) {
+      weeklySummaryData.value = res.data
+    }
+  } catch (err) {
+    console.error('Error loading weekly summary:', err)
+  }
+}
 
 const avgQuizScore = computed(() => {
   const items = progress.value?.recent_quiz_scores || []
   if (!items.length) return 0
   const nums = items
-    .map((q) => Number(String(q.score).split('/')[0]))
+    .map((q) => {
+      const strVal = String(q.score).replace('%', '').trim()
+      return Number(strVal.split('/')[0])
+    })
     .filter((n) => !Number.isNaN(n))
   if (!nums.length) return 0
   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length)
@@ -111,6 +145,9 @@ async function init() {
     if (children.value.length && !selectedChildId.value) {
       selectedChildId.value = children.value[0].student_id
     }
+    if (selectedChildId.value) {
+      await fetchWeeklySummary(selectedChildId.value)
+    }
   } catch (err) {
     showToast(err.message || 'Failed to load dashboard.', 'error')
   }
@@ -123,7 +160,8 @@ watch(selectedChildId, async (newId) => {
   try {
     await Promise.all([
       loadChildProgress(newId),
-      loadCurriculum(newId)
+      loadCurriculum(newId),
+      fetchWeeklySummary(newId)
     ])
   } catch (err) {
     showToast(err.message || 'Failed to load child data.', 'error')
@@ -133,8 +171,9 @@ watch(selectedChildId, async (newId) => {
 onMounted(init)
 
 function formatDate(dateStr, short = false) {
-  if (!dateStr) return '—'
+  if (!dateStr || dateStr === 'N/A') return '—'
   const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
   return d.toLocaleDateString(
     'en-US',
     short
@@ -146,6 +185,7 @@ function formatDate(dateStr, short = false) {
 
 <template>
   <div v-if="children.length" class="space-y-6">
+    <!-- Child Selector Tabs -->
     <div v-if="children.length > 1" class="flex items-center gap-2">
       <button
         v-for="child in children"
@@ -160,11 +200,16 @@ function formatDate(dateStr, short = false) {
       </button>
     </div>
 
+    <!-- Stat Cards Grid -->
     <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard v-for="card in stats" :key="card.title" v-bind="card" />
     </div>
 
+<<<<<<< HEAD
     <!-- AI Weekly Progress Report Section for Parent -->
+=======
+    <!-- AI Weekly Progress Report Generator Section -->
+>>>>>>> 97ca80728e3a856fae650c9f015031dfd863b1fb
     <div class="card p-6 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-cyan-500/10 border border-emerald-500/20 shadow-sm">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -173,6 +218,7 @@ function formatDate(dateStr, short = false) {
             <h3 class="font-display font-bold text-base text-slate-800 dark:text-slate-100">
               Child Weekly AI Progress Report
             </h3>
+<<<<<<< HEAD
           </div>
           <p class="text-xs text-slate-600 dark:text-slate-400">
             Generate an AI-powered summary of <strong class="text-slate-800 dark:text-slate-200">{{ selectedChild?.student_name }}</strong>'s weekly attendance, quiz performance, and assignment progress.
@@ -228,9 +274,74 @@ function formatDate(dateStr, short = false) {
               <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Areas for Improvement</p>
               <p class="text-slate-700 dark:text-slate-300">{{ latestSummary.areas_for_improvement }}</p>
             </div>
+=======
+>>>>>>> 97ca80728e3a856fae650c9f015031dfd863b1fb
           </div>
+          <p class="text-xs text-slate-600 dark:text-slate-400">
+            Generate an AI-powered summary of <strong class="text-slate-800 dark:text-slate-200">{{ selectedChild?.student_name }}</strong>'s weekly attendance, quiz performance, and assignment progress.
+          </p>
         </div>
 
+        <button
+          type="button"
+          @click="handleGenerateReport"
+          :disabled="isGeneratingReport || !selectedChildId"
+          style="background: linear-gradient(135deg, #059669, #0D9488) !important; color: #FFFFFF !important;"
+          class="px-5 py-2.5 rounded-xl font-bold text-xs shadow-md hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer border-0"
+        >
+          <SparklesIcon v-if="!isGeneratingReport" class="w-4 h-4" />
+          <span>{{ isGeneratingReport ? 'Generating Report...' : 'Generate AI Progress Report' }}</span>
+        </button>
+      </div>
+
+      <div v-if="reportError" class="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 text-xs font-semibold text-rose-600 dark:text-rose-400">
+        {{ reportError }}
+      </div>
+
+      <div v-if="generatedReportText" class="mt-5 p-4 rounded-xl bg-white dark:bg-slate-800/90 border border-emerald-500/30 text-sm leading-relaxed text-slate-700 dark:text-slate-200 shadow-inner">
+        <div class="flex items-center gap-2 mb-2 border-b border-slate-100 dark:border-white/5 pb-2">
+          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+            ✨ AI Weekly Report
+          </span>
+          <span class="text-xs text-slate-400">For {{ selectedChild?.student_name }}</span>
+        </div>
+        <p class="whitespace-pre-line text-xs sm:text-sm font-medium">{{ generatedReportText }}</p>
+      </div>
+    </div>
+
+    <!-- Main Dashboard Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-6">
+        <!-- Structured Weekly Summary Card -->
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h3 class="font-display font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <DocumentTextIcon class="w-5 h-5 text-brand-green-500" />
+              Latest Weekly Progress Report
+            </h3>
+            <span v-if="weeklySummaryData?.week_start" class="text-xs font-medium text-slate-400">
+              {{ formatDate(weeklySummaryData.week_start, true) }} – {{ formatDate(weeklySummaryData.week_end, true) }}
+            </span>
+          </div>
+
+          <div v-if="weeklySummaryData && weeklySummaryData.summary_id" class="grid sm:grid-cols-3 gap-4 text-sm">
+            <div class="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+              <p class="text-xs font-semibold uppercase tracking-wider text-brand-green-600 dark:text-brand-green-400 mb-1">Topics Taught</p>
+              <p class="text-slate-700 dark:text-slate-300 text-xs leading-relaxed">{{ weeklySummaryData.topics_taught }}</p>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+              <p class="text-xs font-semibold uppercase tracking-wider text-brand-blue-600 dark:text-brand-blue-400 mb-1">Homework Assigned</p>
+              <p class="text-slate-700 dark:text-slate-300 text-xs leading-relaxed">{{ weeklySummaryData.homework_summary || weeklySummaryData.homework || 'N/A' }}</p>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+              <p class="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">Areas for Improvement</p>
+              <p class="text-slate-700 dark:text-slate-300 text-xs leading-relaxed">{{ weeklySummaryData.areas_for_improvement }}</p>
+            </div>
+          </div>
+          <EmptyState v-else title="No weekly report yet" message="Weekly summaries published by tutors will appear here." />
+        </div>
+
+        <!-- Recent Quiz Scores Card -->
         <div class="card p-5">
           <h3 class="font-display font-semibold text-slate-800 dark:text-slate-100 mb-4">
             Recent Quiz Scores — {{ selectedChild?.student_name }}
@@ -254,7 +365,9 @@ function formatDate(dateStr, short = false) {
         </div>
       </div>
 
+      <!-- Right Column -->
       <div class="space-y-6">
+        <!-- Tutor Remarks Card -->
         <div class="card p-5">
           <h3 class="font-display font-semibold text-slate-800 dark:text-slate-100 mb-4">Tutor Remarks</h3>
           <div v-if="progress?.tutor_remarks?.length" class="space-y-3">
@@ -270,6 +383,7 @@ function formatDate(dateStr, short = false) {
           <EmptyState v-else title="No remarks yet" message="Tutor remarks will show here." />
         </div>
 
+        <!-- Curriculum Snapshot Card -->
         <div class="card p-5">
           <h3 class="font-display font-semibold text-slate-800 dark:text-slate-100 mb-4">Curriculum Snapshot</h3>
           <div v-if="curriculum.length" class="space-y-2">

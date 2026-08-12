@@ -119,40 +119,47 @@ with app.app_context():
         parent_objs[pdata['email']] = p
 
     # 7. Students
+    # Seeded students are always repaired to the intended parent account.
+    # This also fixes older databases where a student row existed but
+    # parent_id was left NULL.
     students_data = [
         {
             'name': 'Aarav Sharma',
             'email': 'aarav@example.com',
             'school': 'Class 10',
-            'parent': parent_objs['sharma.parent@example.com'].parent_id
+            'parent_email': 'sharma.parent@example.com'
         },
         {
             'name': 'Diya Rao',
             'email': 'diya@example.com',
             'school': 'Class 9',
-            'parent': parent_objs['rao.parent@example.com'].parent_id
+            'parent_email': 'rao.parent@example.com'
         },
         {
             'name': 'Kabir Joshi',
             'email': 'kabir@example.com',
             'school': 'Class 11',
-            'parent': parent_objs['joshi.parent@example.com'].parent_id
+            'parent_email': 'joshi.parent@example.com'
         },
         {
             'name': 'Demo Student',
             'email': 'student@gmail.com',
             'school': 'Class 10',
-            'parent': parent_objs['parent@gmail.com'].parent_id
+            'parent_email': 'parent@gmail.com'
         }
     ]
 
     student_objs = {}
+
     for sdata in students_data:
+        parent_obj = parent_objs[sdata['parent_email']]
+
         s = Student.query.filter_by(email=sdata['email']).first()
+
         if not s:
             s = Student(
                 role_id=student_role.role_id,
-                parent_id=sdata['parent'],
+                parent_id=parent_obj.parent_id,
                 student_name=sdata['name'],
                 email=sdata['email'],
                 school=sdata['school'],
@@ -161,6 +168,26 @@ with app.app_context():
             )
             db.session.add(s)
             db.session.commit()
+        else:
+            # IMPORTANT: repair the parent relationship on existing seeded
+            # students instead of only setting it during INSERT.
+            changed = False
+
+            if s.parent_id != parent_obj.parent_id:
+                s.parent_id = parent_obj.parent_id
+                changed = True
+
+            if not s.school:
+                s.school = sdata['school']
+                changed = True
+
+            if s.status in (None, '', 'Pending'):
+                s.status = 'Active'
+                changed = True
+
+            if changed:
+                db.session.commit()
+
         student_objs[sdata['name']] = s
 
     # 8. Student subjects
@@ -238,19 +265,80 @@ with app.app_context():
     all_sessions = Session.query.filter_by(tutor_id=tutor_user.tutor_id).all()
 
     # 10. Session bookings
-    if demo_student and all_sessions:
-        for sess in all_sessions[:2]:
-            exists = SessionBooking.query.filter_by(
-                session_id=sess.session_id,
-                student_id=demo_student.student_id
-            ).first()
-            if not exists:
-                db.session.add(SessionBooking(
+    # There is no direct Tutor <-> Parent foreign key in the current schema.
+    # The real relationship is Tutor -> Session -> SessionBooking -> Student
+    # -> Parent. These bookings make the Tutor/Student/Parent chain visible
+    # throughout the dashboards and communication APIs.
+    #
+    # Book each seeded student into a suitable tutor session. Existing
+    # bookings are preserved; missing links are added.
+    if all_sessions:
+        student_subject_preferences = {
+            'Aarav Sharma': ['Mathematics'],
+            'Diya Rao': ['Physics'],
+            'Kabir Joshi': ['Science'],
+            'Demo Student': ['Mathematics', 'Science'],
+        }
+
+        for student_name, preferred_subjects in student_subject_preferences.items():
+            student_obj = student_objs.get(student_name)
+
+            if not student_obj:
+                continue
+
+            student_subject_ids = {
+                subjects[name].subject_id
+                for name in preferred_subjects
+                if name in subjects
+            }
+
+            matching_sessions = [
+                sess for sess in all_sessions
+                if sess.subject_id in student_subject_ids
+            ]
+
+            # Always give the student at least one tutor relationship.
+            if not matching_sessions:
+                matching_sessions = all_sessions[:1]
+
+            for sess in matching_sessions[:2]:
+                exists = SessionBooking.query.filter_by(
                     session_id=sess.session_id,
-                    student_id=demo_student.student_id,
-                    booking_status='Confirmed'
-                ))
+                    student_id=student_obj.student_id
+                ).first()
+
+                if not exists:
+                    db.session.add(SessionBooking(
+                        session_id=sess.session_id,
+                        student_id=student_obj.student_id,
+                        booking_status='Confirmed'
+                    ))
+
         db.session.commit()
+
+    # Explicit relationship verification for the seeded accounts.
+    # This does not create a new schema/table: it confirms that every
+    # seeded student has both a parent and a tutor session connection.
+    for student_name, student_obj in student_objs.items():
+        if not student_obj.parent_id:
+            raise RuntimeError(
+                f"Seed relationship error: {student_name} has no parent_id"
+            )
+
+        has_tutor_link = (
+            db.session.query(SessionBooking)
+            .join(Session, Session.session_id == SessionBooking.session_id)
+            .filter(
+                SessionBooking.student_id == student_obj.student_id,
+                Session.tutor_id == tutor_user.tutor_id
+            )
+            .first()
+        )
+
+        if not has_tutor_link:
+            raise RuntimeError(
+                f"Seed relationship error: {student_name} has no tutor session link"
+            )
 
     # 11. Session updates
     completed_session = Session.query.filter_by(status='Completed').first()
@@ -500,17 +588,84 @@ with app.app_context():
         ))
         db.session.commit()
 
-    # 25. Meeting request
-    demo_parent = parent_objs.get('parent@gmail.com')
-    if demo_parent and demo_student and not MeetingRequest.query.filter_by(parent_id=demo_parent.parent_id).first():
-        db.session.add(MeetingRequest(
+    # 25. Meeting requests / Tutor <-> Parent communication
+    # There is intentionally no direct tutor_id/parent_id relationship
+    # table in the current model. A MeetingRequest links the tutor, student
+    # and that student's parent, which is the application's real
+    # Tutor -> Student -> Parent relationship.
+    for student_name, student_obj in student_objs.items():
+        if not student_obj.parent_id:
+            continue
+
+        existing_meeting = MeetingRequest.query.filter_by(
             tutor_id=tutor_user.tutor_id,
-            student_id=demo_student.student_id,
-            parent_id=demo_parent.parent_id,
-            meeting_date=datetime.utcnow(),
-            meeting_reason='Discuss progress and next steps',
-            status='Scheduled'
-        ))
-        db.session.commit()
+            student_id=student_obj.student_id,
+            parent_id=student_obj.parent_id
+        ).first()
+
+        if not existing_meeting:
+            db.session.add(MeetingRequest(
+                tutor_id=tutor_user.tutor_id,
+                student_id=student_obj.student_id,
+                parent_id=student_obj.parent_id,
+                meeting_date=datetime.utcnow(),
+                meeting_link=None,
+                meeting_reason='Discuss progress and next steps',
+                status='Scheduled'
+            ))
+
+    db.session.commit()
+
+    # Seed a parent <-> tutor message for the demo parent. This is useful
+    # for verifying the tutor Messages screen against real DB data.
+    demo_parent = parent_objs.get('parent@gmail.com')
+
+    if demo_parent:
+        existing_message = Message.query.filter_by(
+            sender_type='Parent',
+            sender_id=demo_parent.parent_id,
+            receiver_type='Tutor',
+            receiver_id=tutor_user.tutor_id
+        ).first()
+
+        if not existing_message:
+            db.session.add(Message(
+                sender_type='Parent',
+                sender_id=demo_parent.parent_id,
+                receiver_type='Tutor',
+                receiver_id=tutor_user.tutor_id,
+                subject='Student progress',
+                message='Can we discuss the student progress and next steps?',
+                reply_message='Yes — a progress discussion meeting has been scheduled.',
+                sent_at=datetime.utcnow(),
+                replied_at=datetime.utcnow()
+            ))
+            db.session.commit()
+
+    # Tutor-specific notification for the demo parent/student relationship.
+    # Do not duplicate it if the seed is run again.
+    demo_student = student_objs.get('Demo Student')
+
+    if demo_student and demo_parent:
+        notification_exists = Notification.query.filter_by(
+            recipient_type='Tutor',
+            recipient_id=tutor_user.tutor_id,
+            notification_type='Meeting'
+        ).first()
+
+        if not notification_exists:
+            db.session.add(Notification(
+                recipient_type='Tutor',
+                recipient_id=tutor_user.tutor_id,
+                title='One-on-one meeting scheduled',
+                message=(
+                    f'One-on-one meeting scheduled for '
+                    f'{demo_student.student_name} with their parent.'
+                ),
+                notification_type='Meeting',
+                is_read=False
+            ))
+            db.session.commit()
+
 
     print("Database successfully created and seeded!")

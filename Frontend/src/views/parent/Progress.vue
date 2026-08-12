@@ -1,6 +1,10 @@
 <script setup>
 import { computed, ref, onMounted, watch } from 'vue'
+<<<<<<< HEAD
 import { SparklesIcon } from '@heroicons/vue/24/outline'
+=======
+import { SparklesIcon, AcademicCapIcon } from '@heroicons/vue/24/outline'
+>>>>>>> 97ca80728e3a856fae650c9f015031dfd863b1fb
 import EmptyState from '../../components/ui/EmptyState.vue'
 import { useToast } from '../../composables/useToast'
 import { useParentPortal } from '../../composables/useParentPortal'
@@ -68,6 +72,7 @@ onMounted(init)
 
 <template>
   <div v-if="selectedChild" class="space-y-6">
+    <!-- Child Selection Tabs -->
     <div v-if="children.length > 1" class="flex items-center gap-2">
       <button
         v-for="child in children"
@@ -124,12 +129,17 @@ onMounted(init)
       </div>
     </div>
 
+<<<<<<< HEAD
+=======
+    <!-- Child Performance Overview -->
+>>>>>>> 97ca80728e3a856fae650c9f015031dfd863b1fb
     <div class="card p-5">
       <h3 class="font-display font-semibold text-slate-800 dark:text-slate-100 mb-4">
         Child Performance Overview
       </h3>
 
       <div v-if="progress" class="space-y-6">
+        <!-- Summary Stats -->
         <div class="grid sm:grid-cols-2 gap-4">
           <div class="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4">
             <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Student Name</p>
@@ -142,6 +152,52 @@ onMounted(init)
           </div>
         </div>
 
+        <!-- Real-Time Session Learning Pace Logs -->
+        <div class="card p-5 border border-slate-100 dark:border-slate-800">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <AcademicCapIcon class="w-5 h-5 text-brand-green-500" />
+              Per-Session Learning Pace & Status
+            </h4>
+          </div>
+          <div v-if="progress.session_logs?.length" class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead>
+                <tr class="border-b border-slate-100 dark:border-slate-800">
+                  <th class="table-th">Date</th>
+                  <th class="table-th">Status</th>
+                  <th class="table-th">Learning Pace</th>
+                  <th class="table-th">Tutor Observations</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                <tr v-for="log in progress.session_logs" :key="log.session_id">
+                  <td class="table-td text-xs font-medium">{{ log.date }}</td>
+                  <td class="table-td">
+                    <span 
+                      class="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                      :class="log.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'"
+                    >
+                      {{ log.status }}
+                    </span>
+                  </td>
+                  <td class="table-td">
+                    <span 
+                      class="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                      :class="log.learning_pace === 'Fast' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : log.learning_pace === 'Needs Practice' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-slate-500/10 text-slate-600 dark:text-slate-400'"
+                    >
+                      {{ log.learning_pace }}
+                    </span>
+                  </td>
+                  <td class="table-td text-xs text-slate-600 dark:text-slate-300">{{ log.remarks }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <EmptyState v-else title="No session pace records yet" message="Session logs recorded by tutors will appear here." />
+        </div>
+
+        <!-- Recent Quiz Scores -->
         <div class="card p-5 border border-slate-100 dark:border-slate-800">
           <h4 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">Recent Quiz Scores</h4>
           <div v-if="progress.recent_quiz_scores?.length" class="overflow-x-auto">
@@ -158,7 +214,7 @@ onMounted(init)
                 <tr v-for="quiz in progress.recent_quiz_scores" :key="`${quiz.subject}-${quiz.date}-${quiz.score}`">
                   <td class="table-td">{{ quiz.subject }}</td>
                   <td class="table-td">{{ quiz.topic }}</td>
-                  <td class="table-td">{{ quiz.score }}</td>
+                  <td class="table-td font-bold text-brand-green-500">{{ quiz.score }}</td>
                   <td class="table-td">{{ quiz.date }}</td>
                 </tr>
               </tbody>
@@ -167,13 +223,14 @@ onMounted(init)
           <EmptyState v-else title="No quizzes yet" message="Quiz performance will appear here." />
         </div>
 
+        <!-- Tutor Remarks & Weekly Summaries -->
         <div class="card p-5 border border-slate-100 dark:border-slate-800">
-          <h4 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">Tutor Remarks</h4>
+          <h4 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">Tutor Remarks & Weekly Reports</h4>
           <div v-if="progress.tutor_remarks?.length" class="space-y-3">
             <div
               v-for="remark in progress.tutor_remarks"
               :key="`${remark.date}-${remark.remark}`"
-              class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60"
+              class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800"
             >
               <div class="flex items-center justify-between gap-3">
                 <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ remark.subject }}</p>
