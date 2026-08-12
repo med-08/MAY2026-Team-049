@@ -22,8 +22,7 @@ function toggleSubject(id) {
 
 onMounted(async () => {
   try {
-    const res = await fetch("http://127.0.0.1:5000/auth/subjects")
-    const data = await res.json()
+    const data = await authApi.getSubjects()
     subjects.value = data.data || []
   } catch {
     subjects.value = []

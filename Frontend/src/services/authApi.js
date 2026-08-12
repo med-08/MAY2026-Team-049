@@ -19,6 +19,11 @@ export const authApi = {
       params: { email }
     }),
 
+  getSubjects: () =>
+    apiRequest('/auth/subjects', {
+      method: 'GET'
+    }),
+
   logout: () =>
     apiRequest('/auth/logout', {
       method: 'POST'

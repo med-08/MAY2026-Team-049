@@ -153,13 +153,6 @@ def login():
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
-        if session.get('user_id') and session.get('role'):
-            role = session.get('role')
-            return jsonify({
-                'success': True,
-                'redirect_url': f'/{role.lower()}'
-            }), 200
-
         data = request.get_json(silent=True) or request.form or {}
 
         # Combined Student + Parent registration: the request body carries a
@@ -277,7 +270,7 @@ def _register_student_with_parent(data):
                 phone_no=parent_data.get('phone_no') or parent_data.get('phone'),
                 password_hash=generate_password_hash(parent_data.get('password', '')),
                 role_id=parent_role_id,
-                status='Pending'
+                status='Active'
             )
             # flush (not commit) so parent_obj.parent_id is generated but the
             # row is only made durable together with the Student below.
@@ -296,7 +289,7 @@ def _register_student_with_parent(data):
             phone_no=student_phone,
             school=student_school,
             parent_id=resolved_parent.parent_id,
-            status='Pending'
+            status='Active'
         )
         db.session.add(new_student)
         db.session.flush()
@@ -322,13 +315,10 @@ def _register_student_with_parent(data):
             'message': f'An error occurred during registration: {str(e)}'
         }), 500
 
-    pending_message = (
-        'Registration Successful! Your account is pending admin approval. '
-        'You will be able to log in once an administrator approves it.'
-    )
+    success_message = 'Registration Successful! You can now log in with your credentials.'
     return jsonify({
         'success': True,
-        'message': pending_message,
+        'message': success_message,
         'parent': {
             'parent_id': resolved_parent.parent_id,
             'parent_name': resolved_parent.parent_name,
