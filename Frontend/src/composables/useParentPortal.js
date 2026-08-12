@@ -163,10 +163,6 @@ export function useParentPortal() {
 
   const latestSummary = computed(() => overview.value?.latest_summary || null)
 
-  return {
-    user,
-    parentId,
-    loading,
   async function generateWeeklyReport(studentId) {
     loading.value = true
     error.value = ''

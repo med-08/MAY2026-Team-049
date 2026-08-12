@@ -1513,10 +1513,7 @@ def create_and_assign_quiz():
         tutor_id=t_id,
         subject_id=subj.subject_id if subj else 1,
         title=title,
-        class_name=class_name,
-        topic_name=topic_name,
-        time_limit=time_limit,
-        max_attempts=max_attempts,
+        week_number=1,
         created_at=datetime.utcnow()
     )
     db.session.add(new_quiz)
@@ -1530,9 +1527,7 @@ def create_and_assign_quiz():
             option_b=q.get("option_b", "B"),
             option_c=q.get("option_c", "C"),
             option_d=q.get("option_d", "D"),
-            correct_option=str(q.get("correct_option", "A")).upper(),
-            explanation=q.get("explanation", ""),
-            topic_name=topic_name
+            correct_option=str(q.get("correct_option", "A")).upper()
         )
         db.session.add(qq)
     db.session.commit()

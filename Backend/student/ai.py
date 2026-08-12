@@ -6,7 +6,16 @@ from student import student_bp
 from database import db
 from models import Quiz, QuizQuestion, FAQ, Tutor, Subject, FlashcardDeck, FlashcardItem
 from decorators import student_required
-from student.routes import student_response, student_error, get_current_student
+from student.routes import current_student, ok, fail
+
+def student_response(data=None, message="Success", code=200):
+    return ok(data=data, message=message, code=code)
+
+def student_error(message="Error", code=400):
+    return fail(message=message, code=code)
+
+def get_current_student():
+    return current_student()
 
 def call_gemini(prompt, system_instruction=None):
     """

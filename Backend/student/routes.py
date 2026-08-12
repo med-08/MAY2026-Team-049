@@ -6,7 +6,7 @@ from models import (
     Student, Parent, Tutor, Subject, StudentSubject, Session, SessionUpdate,
     SessionBooking, Quiz, QuizQuestion, QuizAttempt, Assignment,
     AssignmentSubmission, StudyTip, StudyResource, FAQ, LearningProgress,
-    MeetingRequest, Notification, Doubt
+    MeetingRequest, Notification, Doubt, FlashcardDeck, FlashcardItem
 )
 from decorators import student_required
 from utils import decode_jwt_token

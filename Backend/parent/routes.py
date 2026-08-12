@@ -2,7 +2,7 @@ from datetime import datetime, date
 from flask import jsonify, request, session
 from parent import parent_bp
 from database import db
-from models import Parent, Student, WeeklySummary, QuizAttempt, AttendanceRecord, TeachingPlan, MeetingRequest, Tutor, Session, SessionBooking, Subject, StudentSubject, Message, Notification
+from models import Parent, Student, WeeklySummary, QuizAttempt, AttendanceRecord, TeachingPlan, MeetingRequest, Tutor, Session, SessionBooking, Subject, StudentSubject, Message, Notification, AssignmentSubmission
 from decorators import parent_required
 from utils import decode_jwt_token
 

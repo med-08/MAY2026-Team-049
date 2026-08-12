@@ -307,3 +307,17 @@ class AttendanceRecord(db.Model):
     status = db.Column(db.String(20), default='Present', nullable=False) # Present, Absent, Late
     date = db.Column(db.Date, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class FlashcardDeck(db.Model):
+    __tablename__ = 'flashcard_deck'
+    deck_id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.student_id'), nullable=False)
+    topic = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class FlashcardItem(db.Model):
+    __tablename__ = 'flashcard_item'
+    card_id = db.Column(db.Integer, primary_key=True)
+    deck_id = db.Column(db.Integer, db.ForeignKey('flashcard_deck.deck_id'), nullable=False)
+    front = db.Column(db.Text, nullable=False)
+    back = db.Column(db.Text, nullable=False)
