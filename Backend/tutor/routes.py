@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 
 from flask import jsonify, request, session, current_app, send_from_directory
 from werkzeug.utils import secure_filename
@@ -30,6 +30,8 @@ from models import (
     LearningProgress,
     StudentSubject,
     SessionBooking,
+    TeachingPlan,
+    WeeklySummary,
 )
 from utils import decode_jwt_token
 from google_meet import create_meeting_space, GoogleMeetNotConfigured
@@ -1444,6 +1446,217 @@ def delete_assignment(
     return ok(
         message="Assignment deleted"
     )
+
+
+@tutor_bp.route("/assignments/submissions", methods=["GET"])
+@tutor_required
+def get_tutor_assignment_submissions():
+    tutor = current_tutor()
+    if not tutor:
+        return fail("Tutor not found", 404)
+
+    tutor_sessions = Session.query.filter_by(tutor_id=tutor.tutor_id).all()
+    session_ids = [s.session_id for s in tutor_sessions]
+    tutor_assignments = Assignment.query.filter(Assignment.session_id.in_(session_ids)).all() if session_ids else []
+    assignment_map = {a.assignment_id: a for a in tutor_assignments}
+    assignment_ids = list(assignment_map.keys())
+
+    if not assignment_ids:
+        return ok({"submissions": []})
+
+    submissions = AssignmentSubmission.query.filter(AssignmentSubmission.assignment_id.in_(assignment_ids)).order_by(AssignmentSubmission.submission_date.desc()).all()
+    result = []
+    for sub in submissions:
+        student = db.session.get(Student, sub.student_id)
+        assign = assignment_map.get(sub.assignment_id)
+        result.append({
+            "submission_id": sub.submission_id,
+            "assignment_id": sub.assignment_id,
+            "assignment_title": assign.title if assign else "Assignment",
+            "student_id": sub.student_id,
+            "student_name": student.student_name if student else "Student",
+            "submission_date": sub.submission_date.strftime("%d %b %Y, %I:%M %p") if sub.submission_date else "",
+            "status": sub.status,
+            "score": sub.progress_percentage or 0,
+            "tutor_feedback": sub.tutor_feedback or ""
+        })
+
+    return ok({"submissions": result})
+
+
+@tutor_bp.route("/assignments/submissions/<int:submission_id>/grade", methods=["POST"])
+@tutor_required
+def grade_assignment_submission(submission_id):
+    tutor = current_tutor()
+    sub = db.session.get(AssignmentSubmission, submission_id)
+    if not sub:
+        return fail("Submission not found", 404)
+
+    assign = db.session.get(Assignment, sub.assignment_id)
+    if not assign:
+        return fail("Associated assignment not found", 404)
+
+    sess = db.session.get(Session, assign.session_id)
+    if not sess or sess.tutor_id != tutor.tutor_id:
+        return fail("Unauthorized to grade this submission", 403)
+
+    data = request.get_json(silent=True) or {}
+    score = int(data.get("score") or data.get("progress_percentage") or 0)
+    feedback = (data.get("feedback") or data.get("tutor_feedback") or "").strip()
+    status = data.get("status") or "Completed"
+
+    sub.progress_percentage = max(0, min(100, score))
+    sub.tutor_feedback = feedback
+    sub.status = status
+    db.session.commit()
+
+    return ok({
+        "submission_id": sub.submission_id,
+        "score": sub.progress_percentage,
+        "feedback": sub.tutor_feedback,
+        "status": sub.status
+    }, message="Submission graded successfully")
+
+
+@tutor_bp.route("/teaching-plans", methods=["GET", "POST"])
+@tutor_required
+def tutor_teaching_plans():
+    tutor = current_tutor()
+    if not tutor:
+        return fail("Tutor not found", 404)
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        subject_id = int(data.get("subject_id") or 1)
+        month = (data.get("month") or "August 2026").strip()
+        topic_name = (data.get("topic_name") or data.get("topic") or "").strip()
+        planned_date_str = data.get("planned_date")
+
+        if not topic_name:
+            return fail("Topic name is required", 400)
+
+        planned_date = None
+        if planned_date_str:
+            try:
+                planned_date = datetime.strptime(planned_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                planned_date = date.today()
+        else:
+            planned_date = date.today()
+
+        plan = TeachingPlan(
+            tutor_id=tutor.tutor_id,
+            subject_id=subject_id,
+            month=month,
+            topic_name=topic_name,
+            planned_date=planned_date
+        )
+        db.session.add(plan)
+        db.session.commit()
+
+        return ok({
+            "plan_id": plan.plan_id,
+            "month": plan.month,
+            "topic_name": plan.topic_name,
+            "planned_date": plan.planned_date.isoformat() if plan.planned_date else ""
+        }, message="Teaching plan created and published successfully!")
+
+    plans = TeachingPlan.query.filter_by(tutor_id=tutor.tutor_id).order_by(TeachingPlan.planned_date.asc()).all()
+    result = []
+    for p in plans:
+        subj = db.session.get(Subject, p.subject_id)
+        result.append({
+            "plan_id": p.plan_id,
+            "subject_id": p.subject_id,
+            "subject_name": subj.subject_name if subj else "Subject",
+            "month": p.month,
+            "topic_name": p.topic_name,
+            "planned_date": p.planned_date.isoformat() if p.planned_date else ""
+        })
+
+    return ok({"plans": result})
+
+
+@tutor_bp.route("/weekly-summaries", methods=["GET", "POST"])
+@tutor_required
+def tutor_weekly_summaries():
+    tutor = current_tutor()
+    if not tutor:
+        return fail("Tutor not found", 404)
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        student_id = int(data.get("student_id") or 0)
+        if not student_id:
+            return fail("student_id is required", 400)
+
+        student = db.session.get(Student, student_id)
+        if not student:
+            return fail("Student not found", 404)
+
+        topics_taught = (data.get("topics_taught") or "").strip()
+        homework_summary = (data.get("homework_summary") or "").strip()
+        areas_for_improvement = (data.get("areas_for_improvement") or "").strip()
+
+        week_start_str = data.get("week_start")
+        week_end_str = data.get("week_end")
+
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+
+        if week_start_str:
+            try:
+                week_start = datetime.strptime(week_start_str, "%Y-%m-%d").date()
+            except ValueError:
+                pass
+        if week_end_str:
+            try:
+                week_end = datetime.strptime(week_end_str, "%Y-%m-%d").date()
+            except ValueError:
+                pass
+
+        summary = WeeklySummary(
+            tutor_id=tutor.tutor_id,
+            student_id=student_id,
+            week_start=week_start,
+            week_end=week_end,
+            topics_taught=topics_taught,
+            homework_summary=homework_summary,
+            areas_for_improvement=areas_for_improvement,
+            created_at=datetime.utcnow()
+        )
+        db.session.add(summary)
+        db.session.commit()
+
+        return ok({
+            "summary_id": summary.summary_id,
+            "student_id": summary.student_id,
+            "student_name": student.student_name,
+            "week_start": summary.week_start.isoformat(),
+            "week_end": summary.week_end.isoformat(),
+            "topics_taught": summary.topics_taught,
+            "homework_summary": summary.homework_summary,
+            "areas_for_improvement": summary.areas_for_improvement
+        }, message="Weekly summary created and published for parents successfully!")
+
+    summaries = WeeklySummary.query.filter_by(tutor_id=tutor.tutor_id).order_by(WeeklySummary.created_at.desc()).all()
+    result = []
+    for s in summaries:
+        student = db.session.get(Student, s.student_id)
+        result.append({
+            "summary_id": s.summary_id,
+            "student_id": s.student_id,
+            "student_name": student.student_name if student else "Student",
+            "week_start": s.week_start.isoformat() if s.week_start else "",
+            "week_end": s.week_end.isoformat() if s.week_end else "",
+            "topics_taught": s.topics_taught,
+            "homework_summary": s.homework_summary,
+            "areas_for_improvement": s.areas_for_improvement,
+            "created_at": s.created_at.strftime("%d %b %Y") if s.created_at else ""
+        })
+
+    return ok({"summaries": result})
 
 
 @tutor_bp.route("/assignments/ai-generate", methods=["POST"])

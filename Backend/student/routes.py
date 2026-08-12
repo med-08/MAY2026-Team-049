@@ -144,12 +144,30 @@ def dashboard():
     recent = sorted([a for a in attempts if a.attempted_at], key=lambda x: x.attempted_at, reverse=True)[:6]
     weekly = {"labels": [f"Quiz {i + 1}" for i in range(len(recent))][::-1], "data": [round(float(a.score)) for a in recent if a.score is not None][::-1]}
     subject_scores = {}
+    topic_scores = {}
     for attempt in attempts:
         if attempt.score is None:
             continue
         quiz = db.session.get(Quiz, attempt.quiz_id)
         if quiz:
-            subject_scores.setdefault(subject_name(quiz.subject_id), []).append(float(attempt.score))
+            s_name = subject_name(quiz.subject_id)
+            subject_scores.setdefault(s_name, []).append(float(attempt.score))
+            t_name = (quiz.title or "").replace("AI Practice Quiz — ", "").replace("AI Practice Quiz - ", "").replace("Quiz — ", "").strip()
+            if not t_name:
+                t_name = s_name
+            topic_scores.setdefault(t_name, []).append(float(attempt.score))
+
+    topic_performance = {k: round(sum(v) / len(v)) for k, v in topic_scores.items()}
+    weak_topic_alert = None
+    weak_candidates = [(k, v) for k, v in topic_performance.items() if v < 70]
+    if weak_candidates:
+        weak_candidates.sort(key=lambda x: x[1])
+        w_topic, w_score = weak_candidates[0]
+        weak_topic_alert = {
+            "topic": w_topic,
+            "score": w_score,
+            "message": f"Your performance in {w_topic} is low ({w_score}%). Try the recommended 5-question practice quiz."
+        }
 
     next_booking = sorted(upcoming, key=lambda row: (row[1].session_date, row[1].start_time))[0] if upcoming else None
     next_session = session_json(next_booking[1], next_booking[0].booking_status) if next_booking else {}
@@ -179,6 +197,8 @@ def dashboard():
         ],
         "weeklyQuizProgress": weekly,
         "subjectQuizScores": {"labels": list(subject_scores), "data": [round(sum(v) / len(v)) for v in subject_scores.values()]},
+        "topicPerformance": topic_performance,
+        "weakTopicAlert": weak_topic_alert,
         "nextSession": next_session,
         "todaysTasks": tasks,
         "meetings": meetings,

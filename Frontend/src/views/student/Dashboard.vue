@@ -13,17 +13,8 @@ const router = useRouter()
 const student = ref(null)
 const summaryStats = ref([])
 const weeklyQuizProgress = ref({ labels: [], data: [] })
-const topicPerformance = ref({
-  "Quadratic Equations": 85,
-  "Factorisation": 58,
-  "Trigonometry": 91,
-  "Polynomials": 76
-})
-const weakTopicAlert = ref({
-  topic: "Factorisation",
-  score: 58,
-  message: "Your performance in Factorisation is low (58%). Try the recommended 5-question practice quiz."
-})
+const topicPerformance = ref({})
+const weakTopicAlert = ref(null)
 const nextSession = ref({})
 const todaysTasks = ref([])
 
@@ -38,9 +29,9 @@ onMounted(async () => {
       const d = res.data
       student.value = d.student || null
       summaryStats.value = d.summaryStats || []
-      weeklyQuizProgress.value = d.weeklyQuizProgress || { labels: ["W1", "W2", "W3", "W4", "W5", "W6"], data: [75, 80, 85, 78, 88, 82] }
-      if (d.topicPerformance) topicPerformance.value = d.topicPerformance
-      if (d.weakTopicAlert) weakTopicAlert.value = d.weakTopicAlert
+      weeklyQuizProgress.value = d.weeklyQuizProgress || { labels: [], data: [] }
+      topicPerformance.value = d.topicPerformance || {}
+      weakTopicAlert.value = d.weakTopicAlert || null
       nextSession.value = d.nextSession || {}
       todaysTasks.value = d.todaysTasks || []
       error.value = ""
