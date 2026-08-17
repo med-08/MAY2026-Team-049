@@ -21,6 +21,8 @@ const form = ref({
   password: ""
 })
 
+const rememberMe = ref(false)
+
 const login = async () => {
   authError.value = ""
 
@@ -30,7 +32,7 @@ const login = async () => {
   }
 
   try {
-    const data = await authApi.login(form.value.email, form.value.password)
+    const data = await authApi.login(form.value.email, form.value.password, rememberMe.value)
 
     if (!data || !data.success) {
       authError.value = data?.message || "Login failed"
@@ -149,16 +151,9 @@ const login = async () => {
 
           <div class="flex justify-between items-center text-sm">
             <label class="flex items-center text-slate-600 dark:text-slate-400">
-              <input type="checkbox" class="mr-2 accent-emerald-500" />
+              <input v-model="rememberMe" type="checkbox" class="mr-2 accent-emerald-500" />
               Remember Me
             </label>
-
-            <a
-              href="#"
-              class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-medium"
-            >
-              Forgot Password?
-            </a>
           </div>
 
           <button

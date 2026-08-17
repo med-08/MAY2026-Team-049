@@ -373,8 +373,9 @@ paths:
         the combined shape above so every Student is linked to a Parent.
 
         In both cases, if the caller already has an active session, the
-        request short-circuits and returns a redirect for their existing
-        role instead of creating a new account.
+        request is rejected with 409 Conflict (no account is created) and
+        the response tells them which account they're already logged in
+        as, along with a redirect_url for that existing role.
       security: []
       requestBody:
         required: true
@@ -394,7 +395,7 @@ paths:
                         password: { type: string, minLength: 6 }
                         confirm_password: { type: string, minLength: 6 }
                         phone_no: { type: string, nullable: true }
-                        school: { type: string, nullable: true }
+                        school: { type: string, nullable: true, description: "Optional" }
                         subject_ids:
                           type: array
                           minItems: 1
@@ -458,17 +459,6 @@ paths:
                   confirm_password: "Passw0rd!"
                   role: "Tutor"
       responses:
-        '200':
-          description: >
-            Caller was already logged in - no new account is created and a
-            redirect_url for their existing role is returned instead.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success: { type: boolean, example: true }
-                  redirect_url: { type: string }
         '201':
           description: Registration successful
           content:
@@ -499,6 +489,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: >
+            Caller already has an active session (logged in as a
+            different, or the same, account) - no account is created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: false }
+                  already_logged_in: { type: boolean, example: true }
+                  message: { type: string, example: "You're already logged in as Aarav Mehta (Student). Please log out before creating a new account." }
+                  role: { type: string }
+                  redirect_url: { type: string, example: "/student" }
         '500':
           description: Unexpected error while creating the account(s) (transaction rolled back)
           content:

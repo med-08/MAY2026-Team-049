@@ -155,10 +155,22 @@ def register():
     try:
         if session.get('user_id') and session.get('role'):
             role = session.get('role')
+            username = session.get('username', 'a user')
+            # Previously this silently returned success:true with no
+            # account created, which the frontend displayed as "Registration
+            # Successful!" even though nothing was actually registered.
+            # Return an explicit, honest error instead so the user knows
+            # they need to log out before creating a different account.
             return jsonify({
-                'success': True,
+                'success': False,
+                'already_logged_in': True,
+                'message': (
+                    f"You're already logged in as {username} ({role}). "
+                    "Please log out before creating a new account."
+                ),
+                'role': role,
                 'redirect_url': f'/{role.lower()}'
-            }), 200
+            }), 409
 
         data = request.get_json(silent=True) or request.form or {}
 
@@ -347,17 +359,3 @@ def logout():
     }), 200
 
 
-@auth_bp.route('/forgot-password', methods=['POST'])
-def forgot_password():
-    return jsonify({
-        'success': True,
-        'message': 'Password reset instructions have been logged if account exists.'
-    }), 200
-
-
-@auth_bp.route('/reset-password', methods=['POST'])
-def reset_password():
-    return jsonify({
-        'success': True,
-        'message': 'Password reset processed.'
-    }), 200

@@ -58,6 +58,8 @@ async function openNotification(n) {
   notificationsOpen.value = false
   if (n.type === "Doubt") {
     router.push("/student/ask-doubt")
+  } else if (n.type === "Class Started") {
+    router.push("/student/sessions")
   }
 }
 

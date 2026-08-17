@@ -1311,7 +1311,7 @@ box-shadow:0 0 0 rgba(59,130,246,.25);
 
 }
 
-section:last-of-type .rounded-$$40px$${
+section:last-of-type .rounded-\[40px\]{
 
 animation:pulseGlow 5s infinite;
 

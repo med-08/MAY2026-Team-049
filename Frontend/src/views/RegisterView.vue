@@ -13,6 +13,8 @@ const selectedSubjectIds = ref([])
 const authError = ref("")
 const authSuccess = ref("")
 const submitting = ref(false)
+const showLogoutPrompt = ref(false)
+const loggingOut = ref(false)
 
 function toggleSubject(id) {
   const idx = selectedSubjectIds.value.indexOf(id)
@@ -22,8 +24,11 @@ function toggleSubject(id) {
 
 onMounted(async () => {
   try {
-    const res = await fetch("http://127.0.0.1:5000/auth/subjects")
-    const data = await res.json()
+    // Use the shared authApi/apiClient helper (which respects
+    // VITE_API_BASE_URL) instead of a hardcoded localhost URL, so the
+    // subject picker still works when the frontend is not being served
+    // from 127.0.0.1 (e.g. staging/production, or Docker service names).
+    const data = await authApi.getSubjects()
     subjects.value = data.data || []
   } catch {
     subjects.value = []
@@ -105,6 +110,7 @@ async function checkParentEmail() {
 const register = async () => {
   authError.value = ""
   authSuccess.value = ""
+  showLogoutPrompt.value = false
 
   if (
     !form.value.fullName ||
@@ -224,9 +230,39 @@ const register = async () => {
       authError.value = data.message || "Registration failed."
     }
   } catch (err) {
-    authError.value = err.message || "Registration failed. Please try again."
+    if (err.status === 409) {
+      // The browser already holds an active session for a different
+      // account. Give the person a direct way to clear it instead of
+      // just telling them "already logged in" with no next step.
+      authError.value = err.message || "You're already logged in. Please log out before creating a new account."
+      showLogoutPrompt.value = true
+    } else {
+      authError.value = err.message || "Registration failed. Please try again."
+    }
   } finally {
     submitting.value = false
+  }
+}
+
+async function logOutAndRetry() {
+  loggingOut.value = true
+  try {
+    await authApi.logout()
+  } catch {
+    // Best-effort - clear local state below regardless of API result.
+  } finally {
+    localStorage.removeItem('user')
+    localStorage.removeItem('token')
+    localStorage.removeItem('role')
+    localStorage.removeItem('user_id')
+    localStorage.removeItem('username')
+    localStorage.removeItem('parent_id')
+    localStorage.removeItem('student_id')
+    localStorage.removeItem('tutor_id')
+
+    showLogoutPrompt.value = false
+    authError.value = ""
+    loggingOut.value = false
   }
 }
 </script>
@@ -489,6 +525,16 @@ const register = async () => {
           <p v-if="authError" class="text-center text-sm text-rose-600 dark:text-rose-400 font-medium">
             {{ authError }}
           </p>
+
+          <button
+            v-if="showLogoutPrompt"
+            type="button"
+            :disabled="loggingOut"
+            @click="logOutAndRetry"
+            class="w-full py-2.5 rounded-xl border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-400 font-semibold hover:bg-rose-50 dark:hover:bg-rose-900/20 transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {{ loggingOut ? 'Logging out…' : 'Log Out & Try Again' }}
+          </button>
 
           <p v-if="authSuccess" class="text-center text-sm text-emerald-600 dark:text-emerald-400 font-medium">
             {{ authSuccess }}

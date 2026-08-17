@@ -1,3 +1,4 @@
+import calendar
 from datetime import date, datetime
 from flask import jsonify, request, session, send_from_directory, current_app
 from student import student_bp
@@ -469,17 +470,60 @@ def submit_assignment(assignment_id):
 @student_bp.route('/timetable', methods=['GET'])
 @student_required
 def timetable():
-    student = current_student(); days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    classes = {d: [] for d in days}
+    """Returns the student's booked sessions for a single calendar month,
+    keyed by their real ISO date (YYYY-MM-DD) - not just weekday name - so
+    the frontend can render a proper month calendar where every session
+    lands under its correct date instead of being merged across months.
+
+    Accepts optional ?year=YYYY&month=MM (1-12) query params; defaults to
+    the current year/month if not provided or invalid.
+    """
+    student = current_student()
+
+    today = date.today()
+    try:
+        year = int(request.args.get('year', today.year))
+    except (TypeError, ValueError):
+        year = today.year
+    try:
+        month = int(request.args.get('month', today.month))
+    except (TypeError, ValueError):
+        month = today.month
+    if month < 1 or month > 12:
+        month = today.month
+
+    days_in_month = calendar.monthrange(year, month)[1]
+
+    days_map = {}
+    for d in range(1, days_in_month + 1):
+        iso = date(year, month, d).isoformat()
+        days_map[iso] = []
+
     bookings = SessionBooking.query.filter_by(student_id=student.student_id).join(Session).all()
     for b in bookings:
         s = db.session.get(Session, b.session_id)
-        if not s:
+        if not s or not s.session_date:
             continue
-        day = s.session_date.strftime("%A")
-        if day in classes:
-            classes[day].append({"subject": subject_name(s.subject_id), "time": f"{s.start_time.strftime('%I:%M %p')} – {s.end_time.strftime('%I:%M %p')}", "tutor": db.session.get(Tutor, s.tutor_id).tutor_name if db.session.get(Tutor, s.tutor_id) else "Tutor", "status": s.status, "session_id": s.session_id})
-    return ok({"days": days, "classes": classes})
+        if s.session_date.year != year or s.session_date.month != month:
+            continue
+        iso = s.session_date.isoformat()
+        tutor = db.session.get(Tutor, s.tutor_id)
+        days_map[iso].append({
+            "subject": subject_name(s.subject_id),
+            "time": f"{s.start_time.strftime('%I:%M %p')} – {s.end_time.strftime('%I:%M %p')}",
+            "tutor": tutor.tutor_name if tutor else "Tutor",
+            "status": s.status,
+            "session_id": s.session_id,
+            "date": iso,
+        })
+
+    return ok({
+        "year": year,
+        "month": month,
+        "daysInMonth": days_in_month,
+        "firstWeekday": date(year, month, 1).weekday(),  # 0=Monday ... 6=Sunday
+        "days": days_map,
+    })
 
 
 @student_bp.route('/resources', methods=['GET'])

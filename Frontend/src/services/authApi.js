@@ -7,6 +7,11 @@ export const authApi = {
       body: { email, password, remember }
     }),
 
+  getSubjects: () =>
+    apiRequest('/auth/subjects', {
+      method: 'GET'
+    }),
+
   register: (payload) =>
     apiRequest('/auth/register', {
       method: 'POST',

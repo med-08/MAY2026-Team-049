@@ -119,9 +119,9 @@ def validate_student_with_parent_registration(student_data, parent_data, existin
     if student_password != student_confirm:
         errors.append("Student passwords do not match.")
 
-    if not student_school:
-        errors.append("Please enter the Student's School.")
-
+    # School is optional (the registration form labels it as such) - do not
+    # block registration on it being blank. It's still stored on the
+    # Student row if supplied.
     # Subjects are now mandatory: a student must pick at least one subject
     # at registration time rather than leaving it for later from the
     # profile page.
@@ -271,3 +271,5 @@ def decode_jwt_token(token):
         return payload
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
+
+

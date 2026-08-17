@@ -90,7 +90,13 @@ export const studentApi = {
   getDoubtTutors: () => request('/tutors'),
 
   // Additional
-  getTimetable: () => request('/timetable'),
+  getTimetable: (year, month) => {
+    const params = new URLSearchParams();
+    if (year) params.set('year', year);
+    if (month) params.set('month', month);
+    const qs = params.toString();
+    return request(`/timetable${qs ? `?${qs}` : ''}`);
+  },
   getResources: () => request('/resources'),
   getProfile: () => request('/profile'),
   updateProfile: (data) => request('/profile', { method: 'PUT', body: JSON.stringify(data) }),

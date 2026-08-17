@@ -898,6 +898,28 @@ def start_class(session_id):
 
         s.meeting_url = create_meeting_space()
 
+        subject = db.session.get(Subject, s.subject_id)
+        subject_name = subject.subject_name if subject else "your"
+
+        bookings = SessionBooking.query.filter_by(
+            session_id=s.session_id,
+            booking_status="Confirmed",
+        ).all()
+
+        for booking in bookings:
+            db.session.add(
+                Notification(
+                    recipient_type="Student",
+                    recipient_id=booking.student_id,
+                    title="Class started",
+                    message=(
+                        f"{tutor.tutor_name} has started the "
+                        f"{subject_name} class. Join now."
+                    ),
+                    notification_type="Class Started",
+                )
+            )
+
         db.session.commit()
 
     except GoogleMeetNotConfigured as exc:

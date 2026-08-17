@@ -38,6 +38,7 @@ from admin.helpers import (
     error_response, success_response, parse_pagination_args,
     apply_search, apply_sort, paginate, pagination_meta,
 )
+from utils import decode_jwt_token
 
 
 # ==================== DASHBOARD: STATS & ANALYTICS ====================
@@ -772,10 +773,28 @@ def reject_entity(entity_type, entity_id):
 # ==================== ADMIN PROFILE (self-service) ====================
 
 def _current_admin_or_none():
+    """Resolve the logged-in Admin from either a Bearer JWT (used when a
+    request comes from a different app/device that doesn't share the
+    server's session cookie) or the Flask session cookie (same-browser
+    login). Checking the JWT first matches the pattern already used by
+    current_student()/current_tutor()/current_parent() elsewhere, so an
+    Admin authenticated via JWT no longer gets "Admin session not found"
+    from these self-service profile endpoints even though @admin_required
+    already accepted the request.
+    """
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        payload = decode_jwt_token(auth.split(" ", 1)[1])
+        if payload and payload.get("role") == "Admin":
+            admin = db.session.get(Admin, payload.get("user_id"))
+            if admin:
+                return admin
+
     admin_id = session.get('user_id')
-    if not admin_id or session.get('role') != 'Admin':
-        return None
-    return Admin.query.get(admin_id)
+    if admin_id and session.get('role') == 'Admin':
+        return db.session.get(Admin, admin_id)
+
+    return None
 
 
 def _serialize_admin(admin):

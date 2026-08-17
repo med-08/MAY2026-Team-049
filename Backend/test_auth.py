@@ -14,7 +14,7 @@ Test cases for /login and /register (Backend/auth/routes.py)
 | POST /auth/register | empty body | 400 Bad Request | 400 Bad Request | Success |
 | POST /auth/register | student password < 6 chars | 400 Bad Request | 400 Bad Request | Success |
 | POST /auth/register | student password != confirm_password | 400 Bad Request | 400 Bad Request | Success |
-| POST /auth/register | student missing school | 400 Bad Request | 400 Bad Request | Success |
+| POST /auth/register | student missing school (now optional) | 201 Created | 201 Created | Success |
 | POST /auth/register | student missing subject_ids | 400 Bad Request | 400 Bad Request | Success |
 | POST /auth/register | invalid student email format | 400 Bad Request | 400 Bad Request | Success |
 | POST /auth/register | invalid parent email format | 400 Bad Request | 400 Bad Request | Success |
@@ -25,7 +25,7 @@ Test cases for /login and /register (Backend/auth/routes.py)
 | POST /auth/register | student + existing parent email | 201, Student linked to existing parent_id, no duplicate Parent row | 201, Student linked to existing parent_id, no duplicate Parent row | Success |
 | POST /auth/register | student + new parent email | 201, new Parent row created, Student.parent_id == new parent's id | 201, new Parent row created, Student.parent_id == new parent's id | Success |
 | POST /auth/register | legacy flat valid Tutor payload | 201, Tutor row created (status Pending) | 201, Tutor row created (status Pending) | Success |
-| POST /auth/register | already logged in (existing session) | 200, redirect_url for current role, no new row | 200, redirect_url for current role, no new row | Success |
+| POST /auth/register | already logged in (existing session) | 409 Conflict, no new row | 409 Conflict, no new row | Success |
 | GET /auth/check-parent-email | existing parent email | 200, exists=true, parent info returned | 200, exists=true, parent info returned | Success |
 | GET /auth/check-parent-email | unknown parent email | 200, exists=false | 200, exists=false | Success |
 | GET /auth/check-parent-email | invalid/missing email | 400 Bad Request | 400 Bad Request | Success |
@@ -266,14 +266,15 @@ def test_register_student_password_mismatch(client, seed_roles):
     assert resp.status_code == 400
 
 
-def test_register_student_missing_school(client, seed_roles, seed_subjects):
+def test_register_student_missing_school_is_allowed(client, seed_roles, seed_subjects):
+    # School is an optional field on the registration form - registration
+    # should succeed even when it's left blank.
     payload = _student_parent_payload(
         student_overrides={'school': ''},
         subject_ids=[seed_subjects['Mathematics'].subject_id],
     )
     resp = client.post('/auth/register', json=payload)
-    assert resp.status_code == 400
-    assert 'school' in resp.get_json()['message'].lower()
+    assert resp.status_code == 201
 
 
 def test_register_student_missing_subjects(client, seed_roles):
@@ -398,7 +399,7 @@ def test_register_tutor_legacy_flat_success(client, seed_roles):
     assert created.password_hash != 'Passw0rd!'  # must be hashed
 
 
-def test_register_already_logged_in_short_circuits(client, seed_students):
+def test_register_already_logged_in_is_rejected_not_silently_succeeded(client, seed_students):
     student = seed_students[0]
     login_resp = client.post('/auth/login', json={'identifier': student.email, 'password': 'Student@123'})
     assert login_resp.status_code == 200
@@ -406,12 +407,17 @@ def test_register_already_logged_in_short_circuits(client, seed_students):
     before_count = Student.query.count()
     payload = _student_parent_payload(student_overrides={'email': 'should.not.be.created@learnmail.com'})
     resp = client.post('/auth/register', json=payload)
-    assert resp.status_code == 200
+
+    # Must be an honest error, not a fabricated success - the caller has an
+    # active session and no new account is created for their request.
+    assert resp.status_code == 409
     data = resp.get_json()
-    assert data['success'] is True
+    assert data['success'] is False
+    assert data['already_logged_in'] is True
+    assert 'already logged in' in data['message'].lower()
     assert data['redirect_url'] == '/student'
 
-    # no new row should have been created since registration short-circuited
+    # no new row should have been created since registration was rejected
     assert Student.query.count() == before_count
 
 
@@ -444,7 +450,5 @@ def test_check_parent_email_invalid(client, seed_roles):
 def test_check_parent_email_missing(client, seed_roles):
     resp = client.get('/auth/check-parent-email')
     assert resp.status_code == 400
-
-
 
 
