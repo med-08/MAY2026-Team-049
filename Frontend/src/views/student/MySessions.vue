@@ -3,7 +3,263 @@ import { ref, onMounted } from 'vue'
 import PageHeader from '../../components/student/PageHeader.vue'
 import StatusBadge from '../../components/student/StatusBadge.vue'
 import { studentApi } from '../../services/studentApi'
-const data=ref({upcoming:[],completed:[]}); const loading=ref(true); const error=ref('')
-onMounted(async()=>{try{const r=await studentApi.getSessions();data.value=r.data||data.value}catch(e){error.value=e.message}finally{loading.value=false}})
+
+const data = ref({
+  upcoming: [],
+  completed: []
+})
+
+const loading = ref(true)
+const error = ref('')
+
+async function loadSessions() {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const r = await studentApi.getSessions()
+
+    data.value = r.data || {
+      upcoming: [],
+      completed: []
+    }
+  } catch (e) {
+    error.value = e?.message || 'Unable to load sessions.'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadSessions)
 </script>
-<template><div><PageHeader title="My Sessions" subtitle="Your real booked tuition sessions."/><p v-if="loading" class="text-slate-500">Loading sessions...</p><p v-else-if="error" class="text-red-500">{{error}}</p><template v-else><section class="mb-8"><h3 class="font-display font-bold mb-3">Upcoming Sessions</h3><div v-if="!data.upcoming.length" class="card p-6 text-slate-500">No upcoming sessions booked.</div><div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"><div v-for="s in data.upcoming" :key="s.id" class="card card-hover p-5"><div class="flex justify-between mb-3"><h4 class="font-display font-bold">{{s.subject}}</h4><StatusBadge :status="s.status"/></div><div class="space-y-2 text-sm text-ink-soft dark:text-slate-300"><p>{{s.tutor}}</p><p>{{s.type}}</p><p>{{s.date}} · {{s.time}}</p><p>{{s.duration}}</p><a v-if="s.meeting_url || s.meetingUrl" :href="s.meeting_url || s.meetingUrl" target="_blank" rel="noopener noreferrer" class="btn grad sm inline-flex items-center justify-center mt-3">Join Meeting</a></div></div></div></section><section><h3 class="font-display font-bold mb-3">Completed Sessions</h3><div v-if="!data.completed.length" class="card p-6 text-slate-500">No completed sessions yet.</div><div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"><div v-for="s in data.completed" :key="s.id" class="card p-5"><div class="flex justify-between mb-3"><h4 class="font-display font-bold">{{s.subject}}</h4><StatusBadge :status="s.status"/></div><div class="space-y-2 text-sm text-ink-soft dark:text-slate-300"><p>{{s.tutor}}</p><p>{{s.date}} · {{s.time}}</p><p v-if="s.topics.length">Topics: {{s.topics.join(', ')}}</p><p v-if="s.homework">Homework: {{s.homework}}</p></div></div></div></section></template></div></template>
+
+<template>
+  <div>
+
+    <!-- Header -->
+    <PageHeader
+      title="My Sessions"
+      subtitle="View your booked tuition sessions."
+    />
+
+    <!-- Loading -->
+    <div
+      v-if="loading"
+      class="py-10 text-center text-sm text-slate-500"
+    >
+      Loading sessions...
+    </div>
+
+    <!-- Error -->
+    <div
+      v-else-if="error"
+      class="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600"
+    >
+      {{ error }}
+
+      <button
+        class="ml-2 font-semibold underline"
+        @click="loadSessions"
+      >
+        Retry
+      </button>
+    </div>
+
+    <template v-else>
+
+      <!-- Upcoming -->
+      <section class="mb-7">
+
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <h3 class="font-display text-lg font-bold text-slate-800 dark:text-white">
+              Upcoming Sessions
+            </h3>
+
+            <p class="text-xs text-slate-500">
+              Your scheduled tuition sessions
+            </p>
+          </div>
+
+          <span
+            v-if="data.upcoming.length"
+            class="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700"
+          >
+            {{ data.upcoming.length }}
+            {{ data.upcoming.length === 1 ? 'session' : 'sessions' }}
+          </span>
+        </div>
+
+        <!-- No upcoming -->
+        <div
+          v-if="!data.upcoming.length"
+          class="card px-5 py-5 text-sm text-slate-500"
+        >
+          No upcoming sessions booked.
+        </div>
+
+        <!-- Upcoming list -->
+        <div
+          v-else
+          class="space-y-2.5"
+        >
+
+          <div
+            v-for="s in data.upcoming"
+            :key="s.id"
+            class="group flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-teal-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
+          >
+
+            <!-- Subject -->
+            <div
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-teal-500 text-sm font-bold text-white"
+            >
+              {{ s.subject?.charAt(0)?.toUpperCase() || '?' }}
+            </div>
+
+            <!-- Main -->
+            <div class="min-w-0 flex-1">
+
+              <div class="flex flex-wrap items-center gap-2">
+
+                <h4 class="font-display font-bold text-slate-800 dark:text-white">
+                  {{ s.subject }}
+                </h4>
+
+                <StatusBadge :status="s.status" />
+
+              </div>
+
+              <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+
+                <span>
+                  👨‍🏫 {{ s.tutor }}
+                </span>
+
+                <span>
+                  📅 {{ s.date }}
+                </span>
+
+                <span>
+                  🕐 {{ s.time }}
+                </span>
+
+                <span v-if="s.duration">
+                  ⏱ {{ s.duration }}
+                </span>
+
+                <span v-if="s.type">
+                  {{ s.type }}
+                </span>
+
+              </div>
+
+            </div>
+
+            <!-- Join -->
+            <a
+              v-if="s.meeting_url || s.meetingUrl"
+              :href="s.meeting_url || s.meetingUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="shrink-0 rounded-lg bg-gradient-to-r from-teal-500 to-blue-500 px-4 py-2 text-xs font-bold text-white transition hover:opacity-90"
+            >
+              Join
+            </a>
+
+          </div>
+
+        </div>
+      </section>
+
+
+      <!-- Completed -->
+      <section>
+
+        <div class="mb-3">
+          <h3 class="font-display text-lg font-bold text-slate-800 dark:text-white">
+            Completed Sessions
+          </h3>
+
+          <p class="text-xs text-slate-500">
+            Your previous tuition sessions
+          </p>
+        </div>
+
+        <!-- No completed -->
+        <div
+          v-if="!data.completed.length"
+          class="card px-5 py-5 text-sm text-slate-500"
+        >
+          No completed sessions yet.
+        </div>
+
+        <!-- Completed list -->
+        <div
+          v-else
+          class="space-y-2"
+        >
+
+          <div
+            v-for="s in data.completed"
+            :key="s.id"
+            class="flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900"
+          >
+
+            <!-- Subject -->
+            <div
+              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            >
+              {{ s.subject?.charAt(0)?.toUpperCase() || '?' }}
+            </div>
+
+            <!-- Info -->
+            <div class="min-w-0 flex-1">
+
+              <div class="flex flex-wrap items-center gap-2">
+
+                <h4 class="font-semibold text-slate-800 dark:text-white">
+                  {{ s.subject }}
+                </h4>
+
+                <StatusBadge :status="s.status" />
+
+              </div>
+
+              <div class="mt-1 flex flex-wrap gap-x-4 text-xs text-slate-500">
+
+                <span>
+                  👨‍🏫 {{ s.tutor }}
+                </span>
+
+                <span>
+                  📅 {{ s.date }} · {{ s.time }}
+                </span>
+
+              </div>
+
+              <div
+                v-if="s.topics?.length || s.homework"
+                class="mt-1 text-xs text-slate-400"
+              >
+                <span v-if="s.topics?.length">
+                  Topics: {{ s.topics.join(', ') }}
+                </span>
+
+                <span v-if="s.homework" class="ml-3">
+                  Homework: {{ s.homework }}
+                </span>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+    </template>
+
+  </div>
+</template>
