@@ -49,12 +49,16 @@ def subject_name(subject_id):
 
 
 def enrolled_subject_ids(student_id):
-    """Return the exact subjects selected by this student at registration."""
+    """
+    Return the subject IDs selected by the student during registration.
+    A student may only access sessions belonging to these subjects.
+    """
     return {
         row.subject_id
-        for row in StudentSubject.query.filter_by(student_id=student_id).all()
+        for row in StudentSubject.query.filter_by(
+            student_id=student_id
+        ).all()
     }
-
 
 def session_json(sess, booking_status=None):
     tutor = db.session.get(Tutor, sess.tutor_id)
@@ -133,15 +137,25 @@ def dashboard():
     if not student:
         return fail("Student not found or not logged in", 404)
     sid = student.student_id
+
+# Subjects selected by the student during registration
     enrolled_subjects = enrolled_subject_ids(sid)
 
-    bookings = SessionBooking.query.filter_by(student_id=sid).join(Session).all()
-    # SessionBooking does not define a SQLAlchemy relationship named `session`,
-    # so always resolve the linked Session explicitly by its foreign key.
-    booking_rows = [(b, db.session.get(Session, b.session_id)) for b in bookings]
+    bookings = SessionBooking.query.filter_by(
+        student_id=sid
+    ).join(Session).all()
+
     booking_rows = [
-        (b, sess) for b, sess in booking_rows
-        if sess is not None and sess.subject_id in enrolled_subjects
+        (b, db.session.get(Session, b.session_id))
+        for b in bookings
+    ]
+
+    # Only keep sessions belonging to the student's registered subjects
+    booking_rows = [
+        (b, sess)
+        for b, sess in booking_rows
+        if sess is not None
+        and sess.subject_id in enrolled_subjects
     ]
     upcoming = [(b, sess) for b, sess in booking_rows if sess.status in ("Scheduled", "Rescheduled") and sess.session_date >= date.today()]
     completed = [(b, sess) for b, sess in booking_rows if sess.status == "Completed"]
@@ -324,9 +338,19 @@ def book_session():
     except (TypeError, ValueError):
         return fail("session_id is required", 400)
     sess = db.session.get(Session, session_id)
+
+    if not sess:
+        return fail("Session not found", 404)
+
     enrolled_subjects = enrolled_subject_ids(student.student_id)
-    if not sess or sess.subject_id not in enrolled_subjects:
-        return fail("You are not enrolled in this session's subject", 403)
+
+    # Security check: a student may only book a session whose subject
+    # was selected during registration.
+    if sess.subject_id not in enrolled_subjects:
+        return fail(
+            "You are not enrolled in this session's subject",
+            403
+        )
     if sess.status not in ("Scheduled", "Rescheduled") or sess.session_date < date.today():
         return fail("Session is not available for booking", 400)
     existing = SessionBooking.query.filter_by(session_id=session_id, student_id=student.student_id).first()
@@ -350,14 +374,33 @@ def reschedule_session():
         current_id = int(data.get("current_session_id")); target_id = int(data.get("target_session_id"))
     except (TypeError, ValueError):
         return fail("current_session_id and target_session_id are required")
-    current = SessionBooking.query.filter_by(session_id=current_id, student_id=student.student_id).first()
+    current = SessionBooking.query.filter_by(
+        session_id=current_id,
+        student_id=student.student_id
+    ).first()
+
     target = db.session.get(Session, target_id)
-    enrolled_subjects = enrolled_subject_ids(student.student_id)
-    if target and target.subject_id not in enrolled_subjects:
-        return fail("You are not enrolled in the target session's subject", 403)
+
     if not current or current.booking_status == "Cancelled":
         return fail("Current booking not found", 404)
-    if not target or target.status not in ("Scheduled", "Rescheduled") or target.session_date < date.today():
+
+    if not target:
+        return fail("Target session not found", 404)
+
+    enrolled_subjects = enrolled_subject_ids(student.student_id)
+
+    # Security check: a student may only reschedule into a session
+    # whose subject was selected during registration.
+    if target.subject_id not in enrolled_subjects:
+        return fail(
+            "You are not enrolled in the target session's subject",
+            403
+        )
+
+    if (
+        target.status not in ("Scheduled", "Rescheduled")
+        or target.session_date < date.today()
+    ):
         return fail("Target session is not available", 400)
     if SessionBooking.query.filter_by(session_id=target_id, student_id=student.student_id).first():
         return fail("Target session is already booked", 409)
@@ -395,6 +438,10 @@ def upcoming_sessions():
 
 def _student_upcoming():
     student = current_student()
+
+    if not student:
+        return [], None, []
+
     enrolled_subjects = enrolled_subject_ids(student.student_id)
     bookings = SessionBooking.query.filter_by(student_id=student.student_id).join(Session).all()
     items = []
