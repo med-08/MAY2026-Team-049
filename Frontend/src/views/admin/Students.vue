@@ -6,7 +6,8 @@ import {
   TrashIcon,
   ChevronUpDownIcon,
   ArrowUpIcon,
-  ArrowDownIcon
+  ArrowDownIcon,
+  UserCircleIcon
 } from '@heroicons/vue/24/outline'
 
 import { adminApi } from '../../services/adminApi'
@@ -20,12 +21,9 @@ import LoadingRows from '../../components/ui/LoadingRows.vue'
 
 const { showToast } = useToast()
 
-// Transform the backend's Student shape into the field names this view's
-// template already uses (id/name/subject/parentName instead of
-// student_id/student_name/subjects[]/parent_name). Keeping the template
-// untouched this way limits the blast radius of the mock->API migration.
 async function fetchStudents(params) {
   const res = await adminApi.listStudents(params)
+
   return {
     meta: res.meta,
     data: res.data.map((s) => ({
@@ -33,10 +31,10 @@ async function fetchStudents(params) {
       name: s.student_name,
       email: s.email,
       school: s.school || '—',
-      // NOTE (assumption): the schema models subjects as a many-to-many
-      // relationship, while this table has one "Subject" column. We join
-      // every enrolled subject with a comma rather than dropping data.
-      subject: s.subjects && s.subjects.length ? s.subjects.join(', ') : '—',
+      subject:
+        s.subjects && s.subjects.length
+          ? s.subjects.join(', ')
+          : '—',
       parentName: s.parent_name || '—',
       status: s.status
     }))
@@ -63,8 +61,6 @@ const {
     email: 'email',
     school: 'school',
     status: 'status',
-    // These have no single backend column (many-to-many / joined field);
-    // fall back to default ordering rather than sending an invalid sort_by.
     subject: null,
     parentName: null
   }
@@ -77,17 +73,34 @@ const targetStudent = ref(null)
 const actionInFlight = ref(false)
 
 async function toggleBlock(student) {
-  const newStatus = student.status === 'Active' ? 'Blocked' : 'Active'
+  const newStatus =
+    student.status === 'Active'
+      ? 'Blocked'
+      : 'Active'
+
   actionInFlight.value = true
+
   try {
-    await adminApi.updateStudentStatus(student.id, newStatus)
+    await adminApi.updateStudentStatus(
+      student.id,
+      newStatus
+    )
+
     showToast(
-      `${student.name} has been ${newStatus === 'Blocked' ? 'blocked' : 'unblocked'}.`,
+      `${student.name} has been ${
+        newStatus === 'Blocked'
+          ? 'blocked'
+          : 'unblocked'
+      }.`,
       'success'
     )
+
     await reload()
   } catch (e) {
-    showToast(e.message || 'Failed to update student status.', 'error')
+    showToast(
+      e.message || 'Failed to update student status.',
+      'error'
+    )
   } finally {
     actionInFlight.value = false
   }
@@ -100,15 +113,25 @@ function askDelete(student) {
 
 async function confirmDelete() {
   const student = targetStudent.value
+
   confirmOpen.value = false
+
   if (!student) return
 
   try {
     await adminApi.deleteStudent(student.id)
-    showToast(`${student.name} was deleted.`, 'success')
+
+    showToast(
+      `${student.name} was deleted.`,
+      'success'
+    )
+
     await reload()
   } catch (e) {
-    showToast(e.message || 'Failed to delete student.', 'error')
+    showToast(
+      e.message || 'Failed to delete student.',
+      'error'
+    )
   } finally {
     targetStudent.value = null
   }
@@ -126,45 +149,68 @@ const columns = [
 </script>
 
 <template>
-  <div>
+  <div class="space-y-6">
+
+    <!-- Header -->
     <div
-      class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5"
+      class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"
     >
       <div>
-        <h2
-          class="text-xl font-display font-bold text-slate-800 dark:text-slate-100"
+        <div class="flex items-center gap-2">
+          <div
+            class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+          >
+            <UserCircleIcon class="h-5 w-5" />
+          </div>
+
+          <div>
+            <p
+              class="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400"
+            >
+              User Management
+            </p>
+
+            <h2
+              class="text-2xl font-display font-bold tracking-tight text-slate-800 dark:text-slate-100"
+            >
+              Students
+            </h2>
+          </div>
+        </div>
+
+        <p
+          class="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400"
         >
-          Students
-        </h2>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-          Manage every student enrolled on the platform.
+          Manage student accounts, enrollment information,
+          status, and associated parent details.
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
+      <!-- Filters -->
+      <div
+        class="flex w-full items-center rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-800 sm:w-auto"
+      >
         <button
           v-for="f in filters"
           :key="f"
-          class="pill-filter"
-          :class="[
+          class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200"
+          :class="
             statusFilter === f
               ? {
-                  'bg-sky-500 text-white border-transparent shadow-soft':
+                  'bg-sky-500 text-white shadow-sm':
                     f === 'All',
-                  'bg-emerald-500 text-white border-transparent shadow-soft':
+
+                  'bg-emerald-500 text-white shadow-sm':
                     f === 'Active',
-                  'bg-red-500 text-white border-transparent shadow-soft':
+
+                  'bg-red-500 text-white shadow-sm':
                     f === 'Blocked'
                 }
               : {
-                  'bg-sky-100 text-sky-700 border-sky-200 hover:bg-sky-200':
-                    f === 'All',
-                  'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200':
-                    f === 'Active',
-                  'bg-red-100 text-red-700 border-red-200 hover:bg-red-200':
-                    f === 'Blocked'
+                  'text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200':
+                    true
                 }
-          ]"
+          "
           @click="statusFilter = f"
         >
           {{ f }}
@@ -172,144 +218,281 @@ const columns = [
       </div>
     </div>
 
+    <!-- Error -->
     <EmptyState
       v-if="error"
       title="Couldn't load students"
       :message="error"
     />
 
+    <!-- Table -->
     <div
       v-else
-      class="card overflow-hidden"
+      class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800"
     >
+
+      <!-- Table Header -->
+      <div
+        class="flex flex-col gap-1 border-b border-slate-100 px-5 py-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div>
+          <h3
+            class="font-display text-base font-semibold text-slate-800 dark:text-slate-100"
+          >
+            Student Directory
+          </h3>
+
+          <p
+            class="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+          >
+            View and manage all registered students.
+          </p>
+        </div>
+
+        <div
+          v-if="!loading"
+          class="text-xs font-medium text-slate-400 dark:text-slate-500"
+        >
+          {{ total }} {{ total === 1 ? 'student' : 'students' }}
+        </div>
+      </div>
+
+      <!-- Responsive Table -->
       <div class="overflow-x-auto">
-        <table class="w-full">
-          <thead class="border-b border-slate-100 dark:border-slate-800">
-            <tr>
+        <table class="w-full min-w-[1050px]">
+
+          <!-- Table Head -->
+          <thead
+            class="bg-slate-50/80 dark:bg-slate-800/80"
+          >
+            <tr
+              class="border-b border-slate-100 dark:border-slate-700"
+            >
               <th
                 v-for="c in columns"
                 :key="c.key"
-                class="table-th cursor-pointer select-none"
+                class="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                :class="{
+                  'cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200':
+                    c.key
+                }"
                 @click="toggleSort(c.key)"
               >
-                <span class="inline-flex items-center gap-1">
+                <span
+                  class="inline-flex items-center gap-1.5"
+                >
                   {{ c.label }}
 
                   <ArrowUpIcon
-                    v-if="sortKey === c.key && sortAsc"
-                    class="w-3 h-3"
+                    v-if="
+                      sortKey === c.key &&
+                      sortAsc
+                    "
+                    class="h-3.5 w-3.5"
                   />
 
                   <ArrowDownIcon
-                    v-else-if="sortKey === c.key && !sortAsc"
-                    class="w-3 h-3"
+                    v-else-if="
+                      sortKey === c.key &&
+                      !sortAsc
+                    "
+                    class="h-3.5 w-3.5"
                   />
 
                   <ChevronUpDownIcon
                     v-else
-                    class="w-3 h-3 opacity-40"
+                    class="h-3.5 w-3.5 opacity-30"
                   />
                 </span>
               </th>
 
-              <th class="table-th text-right">
+              <th
+                class="px-5 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+              >
                 Actions
               </th>
             </tr>
           </thead>
 
-          <tbody class="divide-y divide-slate-50 dark:divide-slate-800/60">
+          <!-- Table Body -->
+          <tbody
+            class="divide-y divide-slate-100 dark:divide-slate-700/70"
+          >
+
+            <!-- Loading -->
             <LoadingRows
               v-if="loading"
               :rows="6"
               :cols="8"
             />
 
-            <tr
-              v-else
-              v-for="s in pageItems"
-              :key="s.id"
-              class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
-            >
-              <td class="table-td font-mono text-xs">
-                {{ s.id }}
-              </td>
+            <!-- Students -->
+            <template v-else>
+              <tr
+                v-for="s in pageItems"
+                :key="s.id"
+                class="group transition-colors duration-150 hover:bg-slate-50/80 dark:hover:bg-slate-700/20"
+              >
 
-              <td class="table-td font-medium text-slate-800 dark:text-slate-100">
-                {{ s.name }}
-              </td>
-
-              <td class="table-td">
-                {{ s.email }}
-              </td>
-
-              <td class="table-td">
-                {{ s.school }}
-              </td>
-
-              <td class="table-td">
-                {{ s.subject }}
-              </td>
-
-              <td class="table-td">
-                {{ s.parentName }}
-              </td>
-
-              <td class="table-td">
-                <span
-                  class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
-                  :class="
-                    s.status === 'Active'
-                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-                      : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300'
-                  "
-                >
-                  {{ s.status }}
-                </span>
-              </td>
-
-              <td class="table-td">
-                <div class="flex items-center justify-end gap-1.5">
-                  <button
-                    class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-                    :title="s.status === 'Active'
-                      ? 'Block student'
-                      : 'Unblock student'"
-                    @click="toggleBlock(s)"
+                <!-- ID -->
+                <td class="px-5 py-4">
+                  <span
+                    class="rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300"
                   >
-                    <LockClosedIcon
-                      v-if="s.status === 'Active'"
-                      class="w-4 h-4"
+                    {{ s.id }}
+                  </span>
+                </td>
+
+                <!-- Name -->
+                <td class="px-5 py-4">
+                  <div class="flex items-center gap-3">
+                    <div
+                      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                    >
+                      <UserCircleIcon
+                        class="h-5 w-5"
+                      />
+                    </div>
+
+                    <div class="min-w-0">
+                      <p
+                        class="truncate text-sm font-semibold text-slate-800 dark:text-slate-100"
+                      >
+                        {{ s.name }}
+                      </p>
+
+                      <p
+                        class="text-[11px] text-slate-400"
+                      >
+                        Student
+                      </p>
+                    </div>
+                  </div>
+                </td>
+
+                <!-- Email -->
+                <td class="px-5 py-4">
+                  <span
+                    class="text-sm text-slate-600 dark:text-slate-300"
+                  >
+                    {{ s.email }}
+                  </span>
+                </td>
+
+                <!-- School -->
+                <td class="px-5 py-4">
+                  <span
+                    class="text-sm text-slate-600 dark:text-slate-300"
+                  >
+                    {{ s.school }}
+                  </span>
+                </td>
+
+                <!-- Subject -->
+                <td class="max-w-[220px] px-5 py-4">
+                  <span
+                    class="block truncate text-sm text-slate-600 dark:text-slate-300"
+                    :title="s.subject"
+                  >
+                    {{ s.subject }}
+                  </span>
+                </td>
+
+                <!-- Parent -->
+                <td class="px-5 py-4">
+                  <span
+                    class="text-sm text-slate-600 dark:text-slate-300"
+                  >
+                    {{ s.parentName }}
+                  </span>
+                </td>
+
+                <!-- Status -->
+                <td class="px-5 py-4">
+                  <span
+                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+                    :class="
+                      s.status === 'Active'
+                        ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20'
+                        : 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20'
+                    "
+                  >
+                    <span
+                      class="h-1.5 w-1.5 rounded-full"
+                      :class="
+                        s.status === 'Active'
+                          ? 'bg-emerald-500'
+                          : 'bg-red-500'
+                      "
                     />
 
-                    <LockOpenIcon
-                      v-else
-                      class="w-4 h-4"
-                    />
-                  </button>
-                                    <button
-                    class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 text-rose-500 transition-colors"
-                    title="Delete student"
-                    @click="askDelete(s)"
+                    {{ s.status }}
+                  </span>
+                </td>
+
+                <!-- Actions -->
+                <td class="px-5 py-4">
+                  <div
+                    class="flex items-center justify-end gap-1.5"
                   >
-                    <TrashIcon class="w-4 h-4" />
-                  </button>
-                </div>
-              </td>
-            </tr>
+                    <button
+                      class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                      :class="{
+                        'pointer-events-none opacity-50':
+                          actionInFlight
+                      }"
+                      :title="
+                        s.status === 'Active'
+                          ? 'Block student'
+                          : 'Unblock student'
+                      "
+                      @click="toggleBlock(s)"
+                    >
+                      <LockClosedIcon
+                        v-if="s.status === 'Active'"
+                        class="h-4 w-4"
+                      />
+
+                      <LockOpenIcon
+                        v-else
+                        class="h-4 w-4"
+                      />
+                    </button>
+
+                    <button
+                      class="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition-all hover:bg-rose-50 hover:text-rose-600 dark:text-rose-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+                      title="Delete student"
+                      @click="askDelete(s)"
+                    >
+                      <TrashIcon class="h-4 w-4" />
+                    </button>
+                  </div>
+                </td>
+
+              </tr>
+            </template>
+
           </tbody>
         </table>
 
-        <EmptyState
+        <!-- Empty -->
+        <div
           v-if="!loading && pageItems.length === 0"
-          title="No students found"
-          message="Try a different name, email, or filter."
-        />
+          class="px-6 py-10"
+        >
+          <EmptyState
+            title="No students found"
+            message="Try a different name, email, or filter."
+          />
+        </div>
       </div>
 
-      <div class="border-t border-slate-100 dark:border-slate-800 px-2">
+      <!-- Pagination -->
+      <div
+        v-if="!loading && total > 0"
+        class="border-t border-slate-100 bg-slate-50/50 px-3 dark:border-slate-700 dark:bg-slate-800/50"
+      >
         <Pagination
-          v-if="!loading && total > 0"
           :page="page"
           :per-page="perPage"
           :total="total"
@@ -318,6 +501,7 @@ const columns = [
       </div>
     </div>
 
+    <!-- Delete Confirmation -->
     <ConfirmModal
       :open="confirmOpen"
       title="Delete this student?"
@@ -326,5 +510,6 @@ const columns = [
       @confirm="confirmDelete"
       @cancel="confirmOpen = false"
     />
+
   </div>
 </template>

@@ -20,8 +20,10 @@ const stats = ref([])
 async function loadStats() {
   loading.value = true
   error.value = null
+
   try {
     const { data } = await adminApi.getStats()
+
     stats.value = [
       {
         title: 'Total Students',
@@ -47,7 +49,7 @@ async function loadStats() {
       {
         title: 'Blocked Users',
         value: data.blocked_users,
-        subtitle: 'Blocked students, tutors & parents',
+        subtitle: 'Students, tutors & parents',
         color: 'red',
         icon: NoSymbolIcon
       },
@@ -67,7 +69,8 @@ async function loadStats() {
       }
     ]
   } catch (e) {
-    error.value = e.message || 'Failed to load dashboard statistics.'
+    error.value =
+      e.message || 'Failed to load dashboard statistics.'
   } finally {
     loading.value = false
   }
@@ -78,48 +81,91 @@ onMounted(loadStats)
 
 <template>
   <div class="space-y-8">
-    <!-- Header -->
-    <div>
-      <h2
-        class="text-2xl font-display font-bold text-slate-800 dark:text-slate-100"
-      >
-        Overview
-      </h2>
 
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        A snapshot of everything happening on LearnAtHome today.
-      </p>
+    <!-- Header -->
+    <div
+      class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"
+    >
+      <div>
+        <p
+          class="mb-1 text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400"
+        >
+          Admin Dashboard
+        </p>
+
+        <h2
+          class="text-2xl font-display font-bold tracking-tight text-slate-800 dark:text-slate-100 sm:text-3xl"
+        >
+          Overview
+        </h2>
+
+        <p class="mt-1.5 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+          A snapshot of everything happening on LearnAtHome today.
+        </p>
+      </div>
     </div>
 
+    <!-- Error State -->
     <EmptyState
       v-if="error"
       title="Couldn't load the dashboard"
       :message="error"
     />
 
-    <!-- Dashboard Cards -->
-    <div
-      v-else
-      class="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"
-    >
-      <template v-if="loading">
-        <div
-          v-for="n in 6"
-          :key="n"
-          class="card h-28 animate-pulse"
-        />
-      </template>
+    <!-- Dashboard -->
+    <div v-else>
 
-      <StatCard
-        v-else
-        v-for="card in stats"
-        :key="card.title"
-        :title="card.title"
-        :value="card.value"
-        :subtitle="card.subtitle"
-        :color="card.color"
-        :icon="card.icon"
-      />
+      <!-- Stats Grid -->
+      <div
+        class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3"
+      >
+
+        <!-- Loading Skeleton -->
+        <template v-if="loading">
+          <div
+            v-for="n in 6"
+            :key="n"
+            class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+          >
+            <div class="flex items-start justify-between">
+              <div
+                class="h-11 w-11 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700"
+              />
+
+              <div
+                class="h-4 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700"
+              />
+            </div>
+
+            <div
+              class="mt-5 h-8 w-24 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-700"
+            />
+
+            <div
+              class="mt-3 h-4 w-36 animate-pulse rounded bg-slate-200 dark:bg-slate-700"
+            />
+          </div>
+        </template>
+
+        <!-- Stat Cards -->
+        <template v-else>
+          <div
+            v-for="card in stats"
+            :key="card.title"
+            class="transition duration-200 hover:-translate-y-0.5"
+          >
+            <StatCard
+              :title="card.title"
+              :value="card.value"
+              :subtitle="card.subtitle"
+              :color="card.color"
+              :icon="card.icon"
+            />
+          </div>
+        </template>
+
+      </div>
+
     </div>
   </div>
 </template>
