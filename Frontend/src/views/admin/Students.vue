@@ -157,15 +157,16 @@ const columns = [
     >
       <div>
         <div class="flex items-center gap-2">
+
           <div
-            class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+            class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
           >
             <UserCircleIcon class="h-5 w-5" />
           </div>
 
           <div>
             <p
-              class="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400"
+              class="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-600 dark:text-emerald-400"
             >
               User Management
             </p>
@@ -176,10 +177,11 @@ const columns = [
               Students
             </h2>
           </div>
+
         </div>
 
         <p
-          class="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400"
+          class="mt-2 max-w-2xl text-sm leading-5 text-slate-500 dark:text-slate-400"
         >
           Manage student accounts, enrollment information,
           status, and associated parent details.
@@ -193,7 +195,7 @@ const columns = [
         <button
           v-for="f in filters"
           :key="f"
-          class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200"
+          class="rounded-lg px-4 py-1.5 text-xs font-semibold transition-all duration-200"
           :class="
             statusFilter === f
               ? {
@@ -225,22 +227,33 @@ const columns = [
       :message="error"
     />
 
-    <!-- Table -->
+    <!-- Student Directory -->
     <div
       v-else
       class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800"
     >
 
-      <!-- Table Header -->
+      <!-- Directory Header -->
       <div
-        class="flex flex-col gap-1 border-b border-slate-100 px-5 py-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between"
+        class="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 dark:border-slate-700"
       >
         <div>
-          <h3
-            class="font-display text-base font-semibold text-slate-800 dark:text-slate-100"
-          >
-            Student Directory
-          </h3>
+          <div class="flex items-center gap-2">
+
+            <h3
+              class="font-display text-base font-semibold text-slate-800 dark:text-slate-100"
+            >
+              Student Directory
+            </h3>
+
+            <span
+              v-if="!loading"
+              class="inline-flex min-w-7 items-center justify-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+            >
+              {{ total }}
+            </span>
+
+          </div>
 
           <p
             class="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
@@ -248,30 +261,24 @@ const columns = [
             View and manage all registered students.
           </p>
         </div>
-
-        <div
-          v-if="!loading"
-          class="text-xs font-medium text-slate-400 dark:text-slate-500"
-        >
-          {{ total }} {{ total === 1 ? 'student' : 'students' }}
-        </div>
       </div>
 
-      <!-- Responsive Table -->
+      <!-- Table -->
       <div class="overflow-x-auto">
         <table class="w-full min-w-[1050px]">
 
-          <!-- Table Head -->
+          <!-- Table Header -->
           <thead
-            class="bg-slate-50/80 dark:bg-slate-800/80"
+            class="bg-slate-50 dark:bg-slate-800/80"
           >
             <tr
-              class="border-b border-slate-100 dark:border-slate-700"
+              class="border-b border-slate-200 dark:border-slate-700"
             >
+
               <th
                 v-for="c in columns"
                 :key="c.key"
-                class="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                class="px-5 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400"
                 :class="{
                   'cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200':
                     c.key
@@ -279,7 +286,7 @@ const columns = [
                 @click="toggleSort(c.key)"
               >
                 <span
-                  class="inline-flex items-center gap-1.5"
+                  class="inline-flex items-center gap-1"
                 >
                   {{ c.label }}
 
@@ -288,7 +295,7 @@ const columns = [
                       sortKey === c.key &&
                       sortAsc
                     "
-                    class="h-3.5 w-3.5"
+                    class="h-3 w-3"
                   />
 
                   <ArrowDownIcon
@@ -296,27 +303,28 @@ const columns = [
                       sortKey === c.key &&
                       !sortAsc
                     "
-                    class="h-3.5 w-3.5"
+                    class="h-3 w-3"
                   />
 
                   <ChevronUpDownIcon
                     v-else
-                    class="h-3.5 w-3.5 opacity-30"
+                    class="h-3 w-3 opacity-25"
                   />
                 </span>
               </th>
 
               <th
-                class="px-5 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                class="px-5 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400"
               >
                 Actions
               </th>
+
             </tr>
           </thead>
 
           <!-- Table Body -->
           <tbody
-            class="divide-y divide-slate-100 dark:divide-slate-700/70"
+            class="divide-y divide-slate-100 dark:divide-slate-700/60"
           >
 
             <!-- Loading -->
@@ -328,33 +336,43 @@ const columns = [
 
             <!-- Students -->
             <template v-else>
+
               <tr
                 v-for="s in pageItems"
                 :key="s.id"
-                class="group transition-colors duration-150 hover:bg-slate-50/80 dark:hover:bg-slate-700/20"
+                class="group transition-colors duration-150 hover:bg-slate-50/70 dark:hover:bg-slate-700/20"
               >
 
-                <!-- ID -->
-                <td class="px-5 py-4">
+                <!-- Student ID -->
+                <td class="px-5 py-3">
                   <span
-                    class="rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                    class="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300"
                   >
                     {{ s.id }}
                   </span>
                 </td>
 
-                <!-- Name -->
-                <td class="px-5 py-4">
-                  <div class="flex items-center gap-3">
+                <!-- Student Name -->
+                <td class="px-5 py-3">
+                  <div
+                    class="flex items-center gap-2.5"
+                  >
+
                     <div
-                      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                      class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
                     >
                       <UserCircleIcon
                         class="h-5 w-5"
                       />
+
+                      <span
+                        v-if="s.status === 'Active'"
+                        class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-800"
+                      />
                     </div>
 
                     <div class="min-w-0">
+
                       <p
                         class="truncate text-sm font-semibold text-slate-800 dark:text-slate-100"
                       >
@@ -362,16 +380,17 @@ const columns = [
                       </p>
 
                       <p
-                        class="text-[11px] text-slate-400"
+                        class="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400"
                       >
                         Student
                       </p>
+
                     </div>
                   </div>
                 </td>
 
                 <!-- Email -->
-                <td class="px-5 py-4">
+                <td class="px-5 py-3">
                   <span
                     class="text-sm text-slate-600 dark:text-slate-300"
                   >
@@ -380,7 +399,7 @@ const columns = [
                 </td>
 
                 <!-- School -->
-                <td class="px-5 py-4">
+                <td class="px-5 py-3">
                   <span
                     class="text-sm text-slate-600 dark:text-slate-300"
                   >
@@ -389,7 +408,7 @@ const columns = [
                 </td>
 
                 <!-- Subject -->
-                <td class="max-w-[220px] px-5 py-4">
+                <td class="max-w-[200px] px-5 py-3">
                   <span
                     class="block truncate text-sm text-slate-600 dark:text-slate-300"
                     :title="s.subject"
@@ -399,7 +418,7 @@ const columns = [
                 </td>
 
                 <!-- Parent -->
-                <td class="px-5 py-4">
+                <td class="px-5 py-3">
                   <span
                     class="text-sm text-slate-600 dark:text-slate-300"
                   >
@@ -408,15 +427,17 @@ const columns = [
                 </td>
 
                 <!-- Status -->
-                <td class="px-5 py-4">
+                <td class="px-5 py-3">
+
                   <span
-                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
                     :class="
                       s.status === 'Active'
                         ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20'
                         : 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20'
                     "
                   >
+
                     <span
                       class="h-1.5 w-1.5 rounded-full"
                       :class="
@@ -427,29 +448,33 @@ const columns = [
                     />
 
                     {{ s.status }}
+
                   </span>
+
                 </td>
 
                 <!-- Actions -->
-                <td class="px-5 py-4">
+                <td class="px-5 py-3">
+
                   <div
-                    class="flex items-center justify-end gap-1.5"
+                    class="flex items-center justify-end gap-1"
                   >
+
+                    <!-- Block / Unblock -->
                     <button
-                      class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-                      :class="{
-                        'pointer-events-none opacity-50':
-                          actionInFlight
-                      }"
+                      class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                       :title="
                         s.status === 'Active'
                           ? 'Block student'
                           : 'Unblock student'
                       "
+                      :disabled="actionInFlight"
                       @click="toggleBlock(s)"
                     >
                       <LockClosedIcon
-                        v-if="s.status === 'Active'"
+                        v-if="
+                          s.status === 'Active'
+                        "
                         class="h-4 w-4"
                       />
 
@@ -459,17 +484,23 @@ const columns = [
                       />
                     </button>
 
+                    <!-- Delete -->
                     <button
-                      class="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition-all hover:bg-rose-50 hover:text-rose-600 dark:text-rose-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+                      class="flex h-8 w-8 items-center justify-center rounded-lg text-rose-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
                       title="Delete student"
                       @click="askDelete(s)"
                     >
-                      <TrashIcon class="h-4 w-4" />
+                      <TrashIcon
+                        class="h-4 w-4"
+                      />
                     </button>
+
                   </div>
+
                 </td>
 
               </tr>
+
             </template>
 
           </tbody>
@@ -477,8 +508,11 @@ const columns = [
 
         <!-- Empty -->
         <div
-          v-if="!loading && pageItems.length === 0"
-          class="px-6 py-10"
+          v-if="
+            !loading &&
+            pageItems.length === 0
+          "
+          class="px-6 py-8"
         >
           <EmptyState
             title="No students found"
@@ -489,7 +523,10 @@ const columns = [
 
       <!-- Pagination -->
       <div
-        v-if="!loading && total > 0"
+        v-if="
+          !loading &&
+          total > 0
+        "
         class="border-t border-slate-100 bg-slate-50/50 px-3 dark:border-slate-700 dark:bg-slate-800/50"
       >
         <Pagination
@@ -499,6 +536,7 @@ const columns = [
           @update:page="page = $event"
         />
       </div>
+
     </div>
 
     <!-- Delete Confirmation -->
