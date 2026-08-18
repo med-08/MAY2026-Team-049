@@ -176,22 +176,6 @@ async function changePassword() {
             {{ student.school || "No school added" }}
           </p>
 
-          <div class="flex flex-wrap justify-center sm:justify-start gap-2 mt-3">
-            <span
-              v-for="subject in student.subjects"
-              :key="subject"
-              class="rounded-full bg-brand-blue/10 px-3 py-1 text-xs font-semibold text-brand-blue"
-            >
-              {{ subject }}
-            </span>
-
-            <span
-              v-if="!student.subjects.length"
-              class="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-xs font-semibold text-slate-500"
-            >
-              No subjects added
-            </span>
-          </div>
         </div>
       </div>
 
@@ -217,6 +201,23 @@ async function changePassword() {
           <div>
             <p class="text-xs text-ink-soft dark:text-slate-400">School</p>
             <p class="text-sm font-semibold">{{ student.school || "No school added" }}</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3 sm:col-span-2">
+          <span class="w-5 h-5 text-brand-blue mt-0.5 shrink-0 text-center font-bold">📚</span>
+          <div>
+            <p class="text-xs text-ink-soft dark:text-slate-400">Subjects Chosen at Registration</p>
+            <div v-if="student.subjects.length" class="flex flex-wrap gap-2 mt-1">
+              <span
+                v-for="subject in student.subjects"
+                :key="subject"
+                class="rounded-full bg-brand-blue/10 px-3 py-1 text-xs font-semibold text-brand-blue"
+              >
+                {{ subject }}
+              </span>
+            </div>
+            <p v-else class="text-sm font-semibold">No subjects selected</p>
           </div>
         </div>
 

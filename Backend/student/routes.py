@@ -48,6 +48,14 @@ def subject_name(subject_id):
     return obj.subject_name if obj else "General"
 
 
+def enrolled_subject_ids(student_id):
+    """Return the exact subjects selected by this student at registration."""
+    return {
+        row.subject_id
+        for row in StudentSubject.query.filter_by(student_id=student_id).all()
+    }
+
+
 def session_json(sess, booking_status=None):
     tutor = db.session.get(Tutor, sess.tutor_id)
     subject = db.session.get(Subject, sess.subject_id)
@@ -125,12 +133,16 @@ def dashboard():
     if not student:
         return fail("Student not found or not logged in", 404)
     sid = student.student_id
+    enrolled_subjects = enrolled_subject_ids(sid)
 
     bookings = SessionBooking.query.filter_by(student_id=sid).join(Session).all()
     # SessionBooking does not define a SQLAlchemy relationship named `session`,
     # so always resolve the linked Session explicitly by its foreign key.
     booking_rows = [(b, db.session.get(Session, b.session_id)) for b in bookings]
-    booking_rows = [(b, sess) for b, sess in booking_rows if sess is not None]
+    booking_rows = [
+        (b, sess) for b, sess in booking_rows
+        if sess is not None and sess.subject_id in enrolled_subjects
+    ]
     upcoming = [(b, sess) for b, sess in booking_rows if sess.status in ("Scheduled", "Rescheduled") and sess.session_date >= date.today()]
     completed = [(b, sess) for b, sess in booking_rows if sess.status == "Completed"]
 
@@ -278,8 +290,22 @@ def submit_quiz(quiz_id):
 @student_required
 def booking_slots():
     student = current_student()
-    booked_ids = {b.session_id for b in SessionBooking.query.filter_by(student_id=student.student_id).all() if b.booking_status != "Cancelled"}
-    sessions = Session.query.filter(Session.session_date >= date.today(), Session.status.in_(["Scheduled", "Rescheduled"])).order_by(Session.session_date, Session.start_time).all()
+    enrolled_subjects = enrolled_subject_ids(student.student_id)
+    booked_ids = {
+        b.session_id
+        for b in SessionBooking.query.filter_by(student_id=student.student_id).all()
+        if b.booking_status != "Cancelled"
+    }
+    session_query = Session.query.filter(
+        Session.session_date >= date.today(),
+        Session.status.in_(["Scheduled", "Rescheduled"])
+    )
+    if enrolled_subjects:
+        session_query = session_query.filter(Session.subject_id.in_(enrolled_subjects))
+    else:
+        sessions = []
+        return ok({"bookingSlots": {"regular": [], "oneToOne": []}}, meta={"total": 0})
+    sessions = session_query.order_by(Session.session_date, Session.start_time).all()
     regular, one = [], []
     for s in sessions:
         slot = session_json(s, "Confirmed" if s.session_id in booked_ids else None)
@@ -298,7 +324,10 @@ def book_session():
     except (TypeError, ValueError):
         return fail("session_id is required", 400)
     sess = db.session.get(Session, session_id)
-    if not sess or sess.status not in ("Scheduled", "Rescheduled") or sess.session_date < date.today():
+    enrolled_subjects = enrolled_subject_ids(student.student_id)
+    if not sess or sess.subject_id not in enrolled_subjects:
+        return fail("You are not enrolled in this session's subject", 403)
+    if sess.status not in ("Scheduled", "Rescheduled") or sess.session_date < date.today():
         return fail("Session is not available for booking", 400)
     existing = SessionBooking.query.filter_by(session_id=session_id, student_id=student.student_id).first()
     if existing and existing.booking_status != "Cancelled":
@@ -323,6 +352,9 @@ def reschedule_session():
         return fail("current_session_id and target_session_id are required")
     current = SessionBooking.query.filter_by(session_id=current_id, student_id=student.student_id).first()
     target = db.session.get(Session, target_id)
+    enrolled_subjects = enrolled_subject_ids(student.student_id)
+    if target and target.subject_id not in enrolled_subjects:
+        return fail("You are not enrolled in the target session's subject", 403)
     if not current or current.booking_status == "Cancelled":
         return fail("Current booking not found", 404)
     if not target or target.status not in ("Scheduled", "Rescheduled") or target.session_date < date.today():
@@ -339,11 +371,12 @@ def reschedule_session():
 @student_required
 def sessions():
     student = current_student()
+    enrolled_subjects = enrolled_subject_ids(student.student_id)
     bookings = SessionBooking.query.filter_by(student_id=student.student_id).join(Session).order_by(Session.session_date, Session.start_time).all()
     upcoming, completed = [], []
     for b in bookings:
         sess = db.session.get(Session, b.session_id)
-        if not sess:
+        if not sess or sess.subject_id not in enrolled_subjects:
             continue
         item = session_json(sess, b.booking_status)
         if sess.status == "Completed" or sess.session_date < date.today():
@@ -362,11 +395,17 @@ def upcoming_sessions():
 
 def _student_upcoming():
     student = current_student()
+    enrolled_subjects = enrolled_subject_ids(student.student_id)
     bookings = SessionBooking.query.filter_by(student_id=student.student_id).join(Session).all()
     items = []
     for b in bookings:
         sess = db.session.get(Session, b.session_id)
-        if sess and sess.status in ("Scheduled", "Rescheduled") and sess.session_date >= date.today():
+        if (
+            sess
+            and sess.subject_id in enrolled_subjects
+            and sess.status in ("Scheduled", "Rescheduled")
+            and sess.session_date >= date.today()
+        ):
             items.append(session_json(sess, b.booking_status))
     items.sort(key=lambda x: (x["date_iso"], x["start_time"]))
     return items, student, bookings
@@ -499,10 +538,11 @@ def timetable():
         iso = date(year, month, d).isoformat()
         days_map[iso] = []
 
+    enrolled_subjects = enrolled_subject_ids(student.student_id)
     bookings = SessionBooking.query.filter_by(student_id=student.student_id).join(Session).all()
     for b in bookings:
         s = db.session.get(Session, b.session_id)
-        if not s or not s.session_date:
+        if not s or not s.session_date or s.subject_id not in enrolled_subjects:
             continue
         if s.session_date.year != year or s.session_date.month != month:
             continue
