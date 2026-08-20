@@ -68,6 +68,7 @@ def login():
         identifier = (data.get('identifier') or data.get('email') or '').strip()
         password = data.get('password', '')
         remember = data.get('remember', False)
+        requested_role = (data.get('role') or '').strip()
 
         if not identifier or not password:
             return jsonify({
@@ -89,6 +90,19 @@ def login():
                 'success': False,
                 'message': 'Wrong Password or Email/Username. Invalid credentials.'
             }), 401
+
+        # The role selected on the login screen is a safety check. The
+        # database remains authoritative, so selecting Tutor cannot turn a
+        # Student account into a Tutor account (or vice versa).
+        if requested_role and requested_role.lower() != user_info['role'].lower():
+            return jsonify({
+                'success': False,
+                'message': (
+                    f"This account is registered as {user_info['role']}. "
+                    f"Please select {user_info['role']} on the login screen."
+                ),
+                'actual_role': user_info['role']
+            }), 403
 
         user_status = user_info.get('status', 'Active')
         if user_status in ['Pending', 'pending']:

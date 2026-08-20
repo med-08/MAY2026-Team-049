@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue"
+import { ref, onMounted, onUnmounted } from "vue"
 import PageHeader from "../../components/student/PageHeader.vue"
 import StatCard from "../../components/student/StudentStatCard.vue"
 import LineChart from "../../components/student/LineChart.vue"
@@ -19,8 +19,9 @@ const meetings = ref([])
 
 const loading = ref(true)
 const error = ref("")
+let refreshTimer = null
 
-onMounted(async () => {
+async function loadDashboard() {
   try {
     const res = await studentApi.getDashboard()
 
@@ -43,6 +44,15 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+onMounted(async () => {
+  await loadDashboard()
+  refreshTimer = window.setInterval(() => loadDashboard(), 15000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) window.clearInterval(refreshTimer)
 })
 </script>
 
@@ -118,7 +128,7 @@ onMounted(async () => {
         <h3 class="font-display font-bold mb-3">Upcoming Meetings</h3>
         <div v-for="m in meetings" :key="m.id" class="flex items-center justify-between gap-3 py-2 border-b last:border-0 border-slate-100 dark:border-slate-700">
           <div><p class="text-sm font-semibold">{{ m.tutor }}</p><p class="text-xs text-slate-500">{{ new Date(m.date).toLocaleString() }} · {{ m.reason || 'Meeting' }}</p></div>
-          <a v-if="m.link" :href="m.link" target="_blank" class="btn grad sm">Join</a>
+          <span v-if="m.meeting_lifecycle === 'Awaiting Tutor Approval'" class="text-xs font-semibold text-indigo-600">Awaiting Tutor Approval</span><span v-else-if="m.meeting_lifecycle === 'Meeting Not Started'" class="text-xs font-semibold text-slate-400">Meeting Not Started</span><a v-else-if="m.can_join && m.link" :href="m.link" target="_blank" class="btn grad sm">Join</a><span v-else class="text-xs font-semibold text-slate-400">{{ m.meeting_lifecycle || 'Meeting Ended' }}</span>
         </div>
       </div>
     </div>

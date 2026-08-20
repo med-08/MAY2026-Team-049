@@ -61,6 +61,8 @@ export const studentApi = {
 
   // Feature 7: Sessions
   getSessions: () => request('/sessions'),
+  joinSession: (sessionId) => request(`/sessions/${sessionId}/join`, { method: 'POST' }),
+  completeSession: (sessionId) => request(`/sessions/${sessionId}/complete`, { method: 'POST' }),
   getUpcomingSessions: () => request('/upcoming-sessions'),
   getNextSession: () => request('/next-session'),
 
@@ -98,12 +100,17 @@ export const studentApi = {
     return request(`/timetable${qs ? `?${qs}` : ''}`);
   },
   getResources: () => request('/resources'),
+  getSubjects: () => request('/subjects'),
+  addSubject: (subjectId) => request('/subjects', { method: 'POST', body: JSON.stringify({ subject_id: subjectId }) }),
+  removeSubject: (subjectId) => request('/subjects', { method: 'DELETE', body: JSON.stringify({ subject_id: subjectId }) }),
   getProfile: () => request('/profile'),
   updateProfile: (data) => request('/profile', { method: 'PUT', body: JSON.stringify(data) }),
   changePassword: (data) => request('/profile/password', { method: 'PUT', body: JSON.stringify(data) }),
   getMeetings: () => request('/meetings'),
   getNotifications: () => request('/notifications'),
   markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'PATCH' }),
+  getMessages: () => request('/messages'),
+  sendMessage: (payload) => request('/messages', { method: 'POST', body: JSON.stringify(payload) }),
 };
 
 export default studentApi;

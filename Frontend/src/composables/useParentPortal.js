@@ -23,6 +23,7 @@ export function useParentPortal() {
   const children = ref([])
   const overview = ref(null)
   const meetings = ref([])
+  const parentNotifications = ref([])
 
   const progressByChild = ref({})
   const curriculumByChild = ref({})
@@ -148,7 +149,9 @@ export function useParentPortal() {
         student_id: payload.student_id,
         preferred_date,
         preferred_time,
-        notes: payload.reason || ''
+        preferred_end_time: (payload.preferredEndTime || '').split('T')[1] || payload.preferredEndTime || '',
+        notes: payload.reason || '',
+        include_student: payload.includeStudent !== false
       }
       const res = await parentApi.requestMeeting(body)
       await loadMeetings()
@@ -158,6 +161,34 @@ export function useParentPortal() {
       throw err
     } finally {
       loading.value = false
+    }
+  }
+
+  async function loadNotifications() {
+    if (!parentId.value) return []
+    try {
+      const res = await parentApi.getNotifications(parentId.value)
+      parentNotifications.value = res.data || []
+      return parentNotifications.value
+    } catch (err) {
+      return parentNotifications.value
+    }
+  }
+
+  const unreadNotificationCount = computed(() =>
+    parentNotifications.value.filter((n) => !n.is_read).length
+  )
+
+  async function markNotificationRead(id) {
+    await parentApi.markNotificationRead(id)
+    const item = parentNotifications.value.find((n) => n.id === id || n.notification_id === id)
+    if (item) item.is_read = true
+  }
+
+  async function markAllNotificationsRead() {
+    const unread = parentNotifications.value.filter((n) => !n.is_read)
+    for (const n of unread) {
+      try { await markNotificationRead(n.id ?? n.notification_id) } catch {}
     }
   }
 
@@ -201,6 +232,11 @@ export function useParentPortal() {
     overview,
     latestSummary,
     meetings,
+    parentNotifications,
+    unreadNotificationCount,
+    loadNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
     progressByChild,
     curriculumByChild,
     loadProfile,

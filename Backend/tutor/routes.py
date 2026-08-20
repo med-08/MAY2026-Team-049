@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, date, time
+from datetime import datetime, date, timedelta
 
 from flask import jsonify, request, session, current_app, send_from_directory
 from werkzeug.utils import secure_filename
@@ -33,7 +33,12 @@ from models import (
 )
 from utils import decode_jwt_token
 from google_meet import create_meeting_space, GoogleMeetNotConfigured
+from schedule import meeting_lifecycle, _local_now
 
+
+# =========================================================
+# CONSTANTS
+# =========================================================
 
 ALLOWED_UPLOADS = {
     "pdf",
@@ -54,28 +59,64 @@ ALLOWED_UPLOADS = {
 # AUTH / HELPERS
 # =========================================================
 
+def normalize_subject_name(value):
+    """Normalize tutor-entered subject names."""
+    value = str(value or "").strip().lower()
+
+    aliases = {
+        "maths": "mathematics",
+        "math": "mathematics",
+    }
+
+    return aliases.get(value, value)
+
+
 def current_tutor():
+    """Return the currently authenticated Tutor."""
+
     auth = request.headers.get("Authorization", "")
 
     if auth.startswith("Bearer "):
-        payload = decode_jwt_token(auth.split(" ", 1)[1])
+        payload = decode_jwt_token(
+            auth.split(" ", 1)[1]
+        )
 
         if payload and payload.get("role") == "Tutor":
-            obj = db.session.get(Tutor, payload.get("user_id"))
+            # The JWT stores the tutor's primary-key ID.  If the database was
+            # recreated/reset after the token was issued, that ID may no longer
+            # exist.  Try the username as a safe fallback before treating the
+            # token as stale.
+            tutor = db.session.get(
+                Tutor,
+                payload.get("user_id")
+            )
 
-            if obj:
-                return obj
+            if not tutor and payload.get("username"):
+                tutor = (
+                    Tutor.query
+                    .filter(db.func.lower(Tutor.tutor_name) ==
+                            str(payload.get("username")).strip().lower())
+                    .first()
+                )
+
+            if tutor:
+                return tutor
 
     uid = session.get("user_id")
 
     if uid and session.get("role") == "Tutor":
-        return db.session.get(Tutor, uid)
+        return db.session.get(
+            Tutor,
+            uid
+        )
 
     return None
 
 
 def ok(data=None, message=None, status=200):
-    payload = {"success": True}
+    payload = {
+        "success": True
+    }
 
     if message is not None:
         payload["message"] = message
@@ -94,12 +135,78 @@ def fail(message, status=400):
 
 
 def subject_name(subject_id):
-    subject = db.session.get(Subject, subject_id)
+    subject = db.session.get(
+        Subject,
+        subject_id
+    )
 
     if subject:
         return subject.subject_name
 
     return "General"
+
+
+def tutor_has_subject(tutor, subject_id):
+    """
+    Check whether the subject is assigned
+    to the tutor profile.
+    """
+
+    subject = db.session.get(
+        Subject,
+        subject_id
+    )
+
+    if not subject:
+        return False
+
+    try:
+        configured = json.loads(
+            tutor.subjects_json or "[]"
+        )
+    except (TypeError, ValueError):
+        configured = []
+
+    allowed_names = {
+        normalize_subject_name(x)
+        for x in configured
+        if str(x).strip()
+    }
+
+    return (
+        normalize_subject_name(
+            subject.subject_name
+        )
+        in allowed_names
+    )
+
+
+def get_tutor_subject_ids(tutor):
+    """Return Subject IDs assigned to tutor."""
+
+    try:
+        configured = json.loads(
+            tutor.subjects_json or "[]"
+        )
+    except (TypeError, ValueError):
+        configured = []
+
+    configured = {
+        normalize_subject_name(x)
+        for x in configured
+        if str(x).strip()
+    }
+
+    if not configured:
+        return set()
+
+    return {
+        subject.subject_id
+        for subject in Subject.query.all()
+        if normalize_subject_name(
+            subject.subject_name
+        ) in configured
+    }
 
 
 # =========================================================
@@ -108,60 +215,75 @@ def subject_name(subject_id):
 
 def session_item(s):
     subject = db.session.get(Subject, s.subject_id)
+    bookings = SessionBooking.query.filter_by(session_id=s.session_id, booking_status="Confirmed").all()
+    lifecycle = meeting_lifecycle(s)
+    meeting_request = MeetingRequest.query.filter_by(session_id=s.session_id).first()
+    if (meeting_request and meeting_request.status == "Scheduled"
+            and s.session_type == "One-to-One"
+            and s.meeting_url
+            and lifecycle["status"] == "Meeting Not Started"):
+        lifecycle = {**lifecycle, "status": "Request Accepted", "can_join": True}
 
-    bookings = SessionBooking.query.filter_by(
-        session_id=s.session_id
-    ).all()
+    # -----------------------------------------------------
+    # WHO IS ACTUALLY IN THE ONE-TO-ONE MEETING?
+    # -----------------------------------------------------
+    # MeetingRequest.parent_id / MeetingRequest.student_id are the source of
+    # truth for this: a parent-created request stores parent_id, and only
+    # stores student_id too when the parent chose to include the child
+    # (see Parent.request_meeting -> include_student). Without this, the
+    # frontend had no real signal and had to guess, which is what produced
+    # "With: Student" on requests where the parent had included the student.
+    meeting_participant_type = None
+    if meeting_request:
+        has_parent = bool(meeting_request.parent_id)
+        has_student = bool(meeting_request.student_id)
+        if has_parent and has_student:
+            meeting_participant_type = "PARENT_STUDENT"
+        elif has_parent:
+            meeting_participant_type = "PARENT"
+        elif has_student:
+            meeting_participant_type = "STUDENT"
 
+    students = []
+    for booking in bookings:
+        student = db.session.get(Student, booking.student_id)
+        if student:
+            parent = db.session.get(Parent, student.parent_id) if student.parent_id else None
+            students.append({
+                "studentId": student.student_id,
+                "name": student.student_name,
+                "parentName": parent.parent_name if parent else None,
+                "attendance": (AttendanceRecord.query.filter_by(session_id=s.session_id, student_id=student.student_id).first().status if AttendanceRecord.query.filter_by(session_id=s.session_id, student_id=student.student_id).first() else None),
+            })
     return {
         "id": s.session_id,
         "sessionId": f"sess-{s.session_id:03d}",
-
-        "subject": (
-            subject.subject_name
-            if subject
-            else "General"
-        ),
-
+        "subject": subject.subject_name if subject else "General",
         "subjectId": s.subject_id,
-
-        "classLevel": (
-            s.session_type
-            or "Regular"
-        ),
-
-        "date": s.session_date.isoformat(),
-
-        "time": s.start_time.strftime("%I:%M %p"),
-
-        "endTime": s.end_time.strftime("%I:%M %p"),
-
-        "summary": (
-            f"{len(bookings)} booked · {s.status}"
-        ),
-
-        "status": (
-            "done"
-            if s.status == "Completed"
-            else "live"
-            if s.status == "Scheduled"
-            else "done"
-        ),
-
-        "badge": (
-            "Done"
-            if s.status == "Completed"
-            else s.status
-        ),
-
-        "action": (
-            "Start class"
-            if s.status == "Scheduled"
-            else None
-        ),
-
+        "classLevel": s.session_type or "Regular",
+        "date": s.session_date.isoformat() if s.session_date else None,
+        "time": s.start_time.strftime("%I:%M %p") if s.start_time else None,
+        "endTime": s.end_time.strftime("%I:%M %p") if s.end_time else None,
+        "summary": f"{len(bookings)} booked · {s.status}",
+        "status": s.status,
+        "badge": lifecycle["status"],
+        "meeting_lifecycle": lifecycle["status"],
+        "can_join": lifecycle["can_join"],
+        "can_start": lifecycle["can_start"],
+        "can_end": lifecycle["can_end"],
+        "action": "End class" if lifecycle["can_end"] else ("Start class" if lifecycle["can_start"] else None),
         "meeting_url": s.meeting_url,
         "meetingUrl": s.meeting_url,
+        "meeting_started_at": s.meeting_started_at.isoformat() if s.meeting_started_at else None,
+        "meeting_ended_at": s.meeting_ended_at.isoformat() if s.meeting_ended_at else None,
+        "meeting_duration_seconds": s.meeting_duration_seconds or 0,
+        "students": students,
+        "meeting_request_status": meeting_request.status if meeting_request else None,
+        "meeting_id": meeting_request.meeting_id if meeting_request else None,
+        "meeting_reason": meeting_request.meeting_reason if meeting_request else None,
+        "meeting_participant_type": meeting_participant_type,
+        "meeting_requester_parent_id": meeting_request.parent_id if meeting_request else None,
+        "meeting_requester_student_id": meeting_request.student_id if meeting_request else None,
     }
 
 
@@ -170,11 +292,16 @@ def session_item(s):
 # =========================================================
 
 def student_item(st):
+
     subject_ids = {
         x.subject_id
-        for x in StudentSubject.query.filter_by(
-            student_id=st.student_id
-        ).all()
+        for x in (
+            StudentSubject.query
+            .filter_by(
+                student_id=st.student_id
+            )
+            .all()
+        )
     }
 
     tutor = current_tutor()
@@ -182,12 +309,17 @@ def student_item(st):
     if not tutor:
         return None
 
-    tutor_sessions = Session.query.filter_by(
-        tutor_id=tutor.tutor_id
-    ).all()
+    tutor_sessions = (
+        Session.query
+        .filter_by(
+            tutor_id=tutor.tutor_id
+        )
+        .all()
+    )
 
     relevant = [
-        s for s in tutor_sessions
+        s
+        for s in tutor_sessions
         if s.subject_id in subject_ids
     ]
 
@@ -197,25 +329,42 @@ def student_item(st):
     scores = []
 
     for s in relevant:
-        progress_rows = LearningProgress.query.filter_by(
-            student_id=st.student_id,
-            session_id=s.session_id
-        ).all()
+
+        progress_rows = (
+            LearningProgress.query
+            .filter_by(
+                student_id=st.student_id,
+                session_id=s.session_id
+            )
+            .all()
+        )
 
         for p in progress_rows:
-            if p.session_completion_status == "Completed":
+
+            if (
+                p.session_completion_status
+                == "Completed"
+            ):
                 scores.append(100)
 
-            elif p.session_completion_status == "Partially Completed":
+            elif (
+                p.session_completion_status
+                == "Partially Completed"
+            ):
                 scores.append(50)
 
-    attempts = QuizAttempt.query.filter_by(
-        student_id=st.student_id
-    ).all()
+    attempts = (
+        QuizAttempt.query
+        .filter_by(
+            student_id=st.student_id
+        )
+        .all()
+    )
 
     quiz_scores = []
 
     for attempt in attempts:
+
         quiz = db.session.get(
             Quiz,
             attempt.quiz_id
@@ -231,13 +380,19 @@ def student_item(st):
             )
 
     avg = (
-        round(sum(quiz_scores) / len(quiz_scores))
+        round(
+            sum(quiz_scores)
+            / len(quiz_scores)
+        )
         if quiz_scores
         else 0
     )
 
     parent = (
-        db.session.get(Parent, st.parent_id)
+        db.session.get(
+            Parent,
+            st.parent_id
+        )
         if st.parent_id
         else None
     )
@@ -275,7 +430,10 @@ def student_item(st):
 
         "progress": {
             "completedTopics": (
-                round(sum(scores) / len(scores))
+                round(
+                    sum(scores)
+                    / len(scores)
+                )
                 if scores
                 else 0
             ),
@@ -295,20 +453,28 @@ def student_item(st):
 # DASHBOARD
 # =========================================================
 
-@tutor_bp.route("/dashboard", methods=["GET"])
+@tutor_bp.route(
+    "/dashboard",
+    methods=["GET"]
+)
 @tutor_required
 def dashboard():
 
     tutor = current_tutor()
 
     if not tutor:
-        return fail("Tutor not found", 404)
+        return fail(
+            "Tutor not found",
+            404
+        )
 
     tid = tutor.tutor_id
 
     sessions = (
         Session.query
-        .filter_by(tutor_id=tid)
+        .filter_by(
+            tutor_id=tid
+        )
         .order_by(
             Session.session_date,
             Session.start_time
@@ -319,15 +485,23 @@ def dashboard():
     student_ids = {
         booking.student_id
         for s in sessions
-        for booking in SessionBooking.query.filter_by(
-            session_id=s.session_id
-        ).all()
+        for booking in (
+            SessionBooking.query
+            .filter_by(
+                session_id=s.session_id
+            )
+            .all()
+        )
     }
 
-    open_doubts = Doubt.query.filter_by(
-        tutor_id=tid,
-        status="Open"
-    ).count()
+    open_doubts = (
+        Doubt.query
+        .filter_by(
+            tutor_id=tid,
+            status="Open"
+        )
+        .count()
+    )
 
     pending = (
         AssignmentSubmission.query
@@ -336,22 +510,34 @@ def dashboard():
         .filter(
             Session.tutor_id == tid,
             AssignmentSubmission.status.in_(
-                ["Pending", "In Progress", "Late"]
+                [
+                    "Pending",
+                    "In Progress",
+                    "Late",
+                ]
             )
         )
         .count()
     )
 
-    classes_today = Session.query.filter_by(
-        tutor_id=tid,
-        session_date=date.today()
-    ).count()
+    classes_today = (
+        Session.query
+        .filter_by(
+            tutor_id=tid,
+            session_date=_local_now().date()
+        )
+        .count()
+    )
 
-    unread = Notification.query.filter_by(
-        recipient_type="Tutor",
-        recipient_id=tid,
-        is_read=False
-    ).count()
+    unread = (
+        Notification.query
+        .filter_by(
+            recipient_type="Tutor",
+            recipient_id=tid,
+            is_read=False
+        )
+        .count()
+    )
 
     stats = [
         {
@@ -388,8 +574,12 @@ def dashboard():
 
     doubts_rows = (
         Doubt.query
-        .filter_by(tutor_id=tid)
-        .order_by(Doubt.asked_at.desc())
+        .filter_by(
+            tutor_id=tid
+        )
+        .order_by(
+            Doubt.asked_at.desc()
+        )
         .limit(5)
         .all()
     )
@@ -417,8 +607,12 @@ def dashboard():
 
     meeting_rows = (
         MeetingRequest.query
-        .filter_by(tutor_id=tid)
-        .order_by(MeetingRequest.meeting_date)
+        .filter_by(
+            tutor_id=tid
+        )
+        .order_by(
+            MeetingRequest.meeting_date
+        )
         .limit(5)
         .all()
     )
@@ -427,9 +621,17 @@ def dashboard():
 
         meetings.append({
             "meetingId": f"meet-{m.meeting_id}",
-            "day": m.meeting_date.strftime("%d %b %Y"),
+            "day": (
+                m.meeting_date.strftime(
+                    "%d %b %Y"
+                )
+            ),
             "title": "Meeting",
-            "time": m.meeting_date.strftime("%I:%M %p"),
+            "time": (
+                m.meeting_date.strftime(
+                    "%I:%M %p"
+                )
+            ),
             "meta": (
                 m.meeting_reason
                 or "Student/Parent meeting"
@@ -441,8 +643,12 @@ def dashboard():
     assignment_rows = (
         Assignment.query
         .join(Session)
-        .filter(Session.tutor_id == tid)
-        .order_by(Assignment.due_date)
+        .filter(
+            Session.tutor_id == tid
+        )
+        .order_by(
+            Assignment.due_date
+        )
         .limit(5)
         .all()
     )
@@ -450,14 +656,22 @@ def dashboard():
     for a in assignment_rows:
 
         deadlines.append({
-            "deadlineId": f"a-{a.assignment_id}",
+            "deadlineId":
+                f"a-{a.assignment_id}",
+
             "day": (
-                a.due_date.strftime("%d %b %Y")
+                a.due_date.strftime(
+                    "%d %b %Y"
+                )
                 if a.due_date
                 else "No due date"
             ),
+
             "title": a.title,
-            "meta": a.description or "Assignment",
+            "meta": (
+                a.description
+                or "Assignment"
+            ),
             "badge": "warn",
         })
 
@@ -465,19 +679,25 @@ def dashboard():
 
     students = [
         student_item(s)
-        for s in Student.query.filter(
-            Student.status == "Active"
-        ).all()
+        for s in (
+            Student.query
+            .filter(
+                Student.status == "Active"
+            )
+            .all()
+        )
     ]
 
     students = [
-        x for x in students
+        x
+        for x in students
         if x
     ]
 
     students = sorted(
         students,
-        key=lambda x: x["progress"]["weeklyScore"],
+        key=lambda x:
+            x["progress"]["weeklyScore"],
         reverse=True
     )[:5]
 
@@ -487,33 +707,40 @@ def dashboard():
     ):
         leaderboard.append({
             "rank": rank,
-            "studentId": student["studentId"],
-            "name": student["name"],
-            "score": student["progress"]["weeklyScore"],
+            "studentId":
+                student["studentId"],
+            "name":
+                student["name"],
+            "score":
+                student["progress"]["weeklyScore"],
             "trend": "",
         })
 
     return ok({
+
         "stats": stats,
 
         "overview": [
             {
                 "id": "doubts",
-                "label": "Doubts requiring replies",
+                "label":
+                    "Doubts requiring replies",
                 "value": open_doubts,
                 "tone": "coral",
                 "go": "doubts",
             },
             {
                 "id": "grading",
-                "label": "Assignments pending grading",
+                "label":
+                    "Assignments pending grading",
                 "value": pending,
                 "tone": "amber",
                 "go": "assignments",
             },
             {
                 "id": "classes",
-                "label": "Classes scheduled today",
+                "label":
+                    "Classes scheduled today",
                 "value": classes_today,
                 "tone": "lime",
                 "go": "schedule",
@@ -521,15 +748,20 @@ def dashboard():
             {
                 "id": "meeting",
                 "label": "Meetings",
-                "value": MeetingRequest.query.filter_by(
-                    tutor_id=tid
-                ).count(),
+                "value": (
+                    MeetingRequest.query
+                    .filter_by(
+                        tutor_id=tid
+                    )
+                    .count()
+                ),
                 "tone": "blue",
                 "go": "messages",
             },
             {
                 "id": "homework",
-                "label": "Homework pending review",
+                "label":
+                    "Homework pending review",
                 "value": pending,
                 "tone": "purple",
                 "go": "assignments",
@@ -551,21 +783,29 @@ def dashboard():
 
 
 # =========================================================
-# SCHEDULE
+# SCHEDULE - GET
 # =========================================================
 
-@tutor_bp.route("/schedule", methods=["GET"])
+@tutor_bp.route(
+    "/schedule",
+    methods=["GET"]
+)
 @tutor_required
 def schedule():
 
     tutor = current_tutor()
 
     if not tutor:
-        return fail("Tutor not found", 404)
+        return fail(
+            "Tutor not found",
+            404
+        )
 
     sessions = (
         Session.query
-        .filter_by(tutor_id=tutor.tutor_id)
+        .filter_by(
+            tutor_id=tutor.tutor_id
+        )
         .order_by(
             Session.session_date,
             Session.start_time
@@ -573,73 +813,59 @@ def schedule():
         .all()
     )
 
-    subject_ids = set()
+    # -----------------------------------------------------
+    # SUBJECTS AVAILABLE TO THIS TUTOR
+    # -----------------------------------------------------
 
-    # Tutor profile subjects
-    try:
-        configured_subjects = json.loads(
-            tutor.subjects_json or "[]"
-        )
-    except (TypeError, ValueError):
-        configured_subjects = []
-
-    configured_subjects = {
-        str(x).strip().lower()
-        for x in configured_subjects
-        if str(x).strip()
-    }
-
-    if configured_subjects:
-
-        for subject in Subject.query.all():
-
-            if (
-                subject.subject_name.strip().lower()
-                in configured_subjects
-            ):
-                subject_ids.add(
-                    subject.subject_id
-                )
-
-    # Existing session subjects
-    if configured_subjects:
-
-        for s in sessions:
-
-            if s.subject_id:
-                subject_ids.add(
-                    s.subject_id
-                )
+    subject_ids = get_tutor_subject_ids(
+        tutor
+    )
 
     # If tutor has no configured subjects,
-    # show ALL real subjects.
-    else:
+    # return all subjects so the schedule page
+    # can still display available subjects.
+    if not subject_ids:
 
         subject_ids = {
             subject.subject_id
-            for subject in Subject.query.order_by(
-                Subject.subject_name
-            ).all()
+            for subject in (
+                Subject.query
+                .order_by(
+                    Subject.subject_name
+                )
+                .all()
+            )
         }
 
     subjects = [
         {
-            "subjectId": subject.subject_id,
-            "subject": subject.subject_name,
+            "subjectId":
+                subject.subject_id,
+            "subject":
+                subject.subject_name,
         }
         for subject in (
             Subject.query
             .filter(
-                Subject.subject_id.in_(subject_ids)
+                Subject.subject_id.in_(
+                    subject_ids
+                )
             )
-            .order_by(Subject.subject_name)
+            .order_by(
+                Subject.subject_name
+            )
             .all()
         )
     ]
 
+    # -----------------------------------------------------
+    # TIME SLOTS
+    # -----------------------------------------------------
+
     times = sorted({
         s.start_time.strftime("%H:%M")
         for s in sessions
+        if s.start_time
     })
 
     if not times:
@@ -648,6 +874,11 @@ def schedule():
             "17:30",
             "19:00",
         ]
+
+    # -----------------------------------------------------
+    # WEEKLY GRID
+    # Monday -> Saturday
+    # -----------------------------------------------------
 
     rows = []
 
@@ -662,61 +893,101 @@ def schedule():
             "days": [],
         }
 
-        for day_number in range(0, 6):
+        for day_number in range(6):
 
             found = next(
                 (
                     s
                     for s in sessions
                     if (
+                        s.session_date
+                        and
                         s.session_date.weekday()
                         == day_number
                         and
-                        s.start_time.strftime("%H:%M")
-                        == tm
+                        s.start_time
+                        and
+                        s.start_time.strftime(
+                            "%H:%M"
+                        ) == tm
                     )
                 ),
                 None,
             )
 
-            row["days"].append(
-                {
-                    "t": subject_name(
-                        found.subject_id
-                    ),
-                    "s": found.session_type,
-                }
-                if found
-                else None
-            )
+            if found:
+
+                row["days"].append({
+                    "t":
+                        subject_name(
+                            found.subject_id
+                        ),
+                    "s":
+                        found.session_type,
+                    "sessionId":
+                        found.session_id,
+                    "status":
+                        found.status,
+                })
+
+            else:
+
+                row["days"].append(None)
 
         rows.append(row)
 
+    # -----------------------------------------------------
+    # CALENDAR EVENTS
+    # -----------------------------------------------------
+
     events = [
         {
-            "eventId": s.session_id,
-            "date": s.session_date.isoformat(),
-            "title": subject_name(
-                s.subject_id
-            ),
-            "type": s.status,
+            "eventId":
+                s.session_id,
+
+            "sessionId":
+                s.session_id,
+
+            "date":
+                s.session_date.isoformat(),
+
+            "title":
+                subject_name(
+                    s.subject_id
+                ),
+
+            "type":
+                s.status,
+
+            "startTime":
+                s.start_time.strftime(
+                    "%H:%M"
+                ),
+
+            "endTime":
+                s.end_time.strftime(
+                    "%H:%M"
+                ),
         }
         for s in sessions
+        if s.session_date
     ]
 
     return ok({
         "rows": rows,
         "events": events,
+
         "sessions": [
             session_item(s)
             for s in sessions
         ],
+
         "subjects": subjects,
     })
 
 
 # =========================================================
-# ADD CLASS
+# SCHEDULE - CREATE CLASS
 # =========================================================
 
 @tutor_bp.route(
@@ -728,15 +999,25 @@ def add_class():
 
     tutor = current_tutor()
 
-    data = request.get_json(
-        silent=True
-    ) or {}
+    if not tutor:
+        return fail(
+            "Tutor not found",
+            404
+        )
+
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
 
     try:
 
         subject_id = int(
             data.get("subject_id")
         )
+        student_id = int(data.get("student_id")) if data.get("student_id") not in (None, "") else None
 
         session_date = datetime.strptime(
             data.get("session_date"),
@@ -753,26 +1034,89 @@ def add_class():
             "%H:%M"
         ).time()
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError
+    ):
 
         return fail(
             "subject_id, session_date, "
             "start_time and end_time are required"
         )
 
-    if not db.session.get(
+    # -----------------------------------------------------
+    # SUBJECT VALIDATION
+    # -----------------------------------------------------
+
+    selected_subject = db.session.get(
         Subject,
         subject_id
-    ):
+    )
+
+    if not selected_subject:
         return fail(
             "Subject not found",
             404
         )
 
+    if not tutor_has_subject(
+        tutor,
+        subject_id
+    ):
+        return fail(
+            "You can only schedule sessions "
+            "for subjects assigned to your tutor profile.",
+            403
+        )
+
+    selected_student = None
+    if student_id is not None:
+        selected_student = db.session.get(Student, student_id)
+        if not selected_student:
+            return fail("Student not found", 404)
+        if not StudentSubject.query.filter_by(student_id=student_id, subject_id=subject_id).first():
+            return fail("The selected student is not enrolled in this subject.", 403)
+
+    # -----------------------------------------------------
+    # TIME VALIDATION
+    # -----------------------------------------------------
+
     if start_time >= end_time:
+
         return fail(
             "End time must be after start time"
         )
+
+    # -----------------------------------------------------
+    # OVERLAPPING SESSION CHECK
+    # -----------------------------------------------------
+
+    existing_sessions = (
+        Session.query
+        .filter_by(
+            tutor_id=tutor.tutor_id,
+            session_date=session_date
+        )
+        .all()
+    )
+
+    for existing in existing_sessions:
+
+        if (
+            start_time < existing.end_time
+            and
+            end_time > existing.start_time
+        ):
+
+            return fail(
+                "The tutor already has another "
+                "session scheduled during this time.",
+                409
+            )
+
+    # -----------------------------------------------------
+    # CREATE SESSION
+    # -----------------------------------------------------
 
     s = Session(
         tutor_id=tutor.tutor_id,
@@ -780,23 +1124,41 @@ def add_class():
         session_date=session_date,
         start_time=start_time,
         end_time=end_time,
-        session_type=data.get(
-            "session_type",
-            "Regular"
-        ),
+        session_type="One-to-One" if student_id is not None else data.get("session_type", "Regular"),
         status="Scheduled",
     )
 
     db.session.add(s)
+    db.session.flush()
+
+    if selected_student:
+        db.session.add(SessionBooking(session_id=s.session_id, student_id=selected_student.student_id, booking_status="Confirmed"))
+        if selected_student.parent_id:
+            db.session.add(Notification(
+                recipient_type="Parent", recipient_id=selected_student.parent_id,
+                title=f"{subject_name(subject_id)} session scheduled",
+                message=f"{tutor.tutor_name} scheduled a one-on-one {subject_name(subject_id)} session with {selected_student.student_name} for {session_date.strftime('%d %b %Y')}, {start_time.strftime('%I:%M %p')}–{end_time.strftime('%I:%M %p')}.",
+                notification_type="Meeting Scheduled", action_url=f"/parent/schedule?session_id={s.session_id}"
+            ))
+        db.session.add(Notification(
+            recipient_type="Student", recipient_id=selected_student.student_id,
+            title=f"{subject_name(subject_id)} session scheduled",
+            message=f"{tutor.tutor_name} scheduled your one-on-one {subject_name(subject_id)} session for {session_date.strftime('%d %b %Y')}, {start_time.strftime('%I:%M %p')}–{end_time.strftime('%I:%M %p')}.",
+            notification_type="Meeting Scheduled", action_url=f"/student/sessions?session_id={s.session_id}"
+        ))
     db.session.commit()
 
-    # Try to create Meet, but never break
-    # scheduling if Google Meet is unavailable.
+    # -----------------------------------------------------
+    # GOOGLE MEET
+    # -----------------------------------------------------
+
     meet_message = "Session created"
 
     try:
 
-        s.meeting_url = create_meeting_space()
+        s.meeting_url = (
+            create_meeting_space()
+        )
 
         db.session.commit()
 
@@ -834,8 +1196,11 @@ def add_class():
 
     return ok(
         {
-            "session": session_item(s),
-            "meeting_url": s.meeting_url,
+            "session":
+                session_item(s),
+
+            "meeting_url":
+                s.meeting_url,
         },
         meet_message,
         201,
@@ -843,15 +1208,15 @@ def add_class():
 
 
 # =========================================================
-# START CLASS / GOOGLE MEET
+# SCHEDULE - UPDATE CLASS
 # =========================================================
 
 @tutor_bp.route(
-    "/schedule/class/<int:session_id>/start",
-    methods=["POST"]
+    "/schedule/class/<int:session_id>",
+    methods=["PUT"]
 )
 @tutor_required
-def start_class(session_id):
+def update_class(session_id):
 
     tutor = current_tutor()
 
@@ -875,52 +1240,560 @@ def start_class(session_id):
             404
         )
 
+    if s.status == "Live":
+        return fail(
+            "A live class cannot be rescheduled.",
+            400
+        )
+
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+    try:
+
+        if data.get("student_id") is not None:
+            new_student_id = int(data.get("student_id"))
+            new_student = db.session.get(Student, new_student_id)
+            if not new_student:
+                return fail("Student not found", 404)
+            if not StudentSubject.query.filter_by(student_id=new_student_id, subject_id=s.subject_id).first():
+                return fail("The selected student is not enrolled in this subject.", 403)
+            current_bookings = SessionBooking.query.filter_by(session_id=session_id).all()
+            for booking in current_bookings:
+                booking.booking_status = "Cancelled"
+            existing_booking = SessionBooking.query.filter_by(session_id=session_id, student_id=new_student_id).first()
+            if existing_booking:
+                existing_booking.booking_status = "Confirmed"
+            else:
+                db.session.add(SessionBooking(session_id=session_id, student_id=new_student_id, booking_status="Confirmed"))
+
+        if data.get("subject_id") is not None:
+
+            subject_id = int(
+                data.get("subject_id")
+            )
+
+            if not db.session.get(
+                Subject,
+                subject_id
+            ):
+                return fail(
+                    "Subject not found",
+                    404
+                )
+
+            if not tutor_has_subject(
+                tutor,
+                subject_id
+            ):
+                return fail(
+                    "You can only schedule sessions "
+                    "for subjects assigned to your tutor profile.",
+                    403
+                )
+
+            s.subject_id = subject_id
+
+        if data.get("session_date"):
+
+            s.session_date = (
+                datetime.strptime(
+                    data["session_date"],
+                    "%Y-%m-%d"
+                ).date()
+            )
+
+        if data.get("start_time"):
+
+            s.start_time = (
+                datetime.strptime(
+                    data["start_time"],
+                    "%H:%M"
+                ).time()
+            )
+
+        if data.get("end_time"):
+
+            s.end_time = (
+                datetime.strptime(
+                    data["end_time"],
+                    "%H:%M"
+                ).time()
+            )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return fail(
+            "Invalid schedule data"
+        )
+
+    if s.start_time >= s.end_time:
+
+        return fail(
+            "End time must be after start time"
+        )
+
+    # Check conflicts excluding this session.
+    conflicts = (
+        Session.query
+        .filter(
+            Session.tutor_id == tutor.tutor_id,
+            Session.session_id != session_id,
+            Session.session_date == s.session_date
+        )
+        .all()
+    )
+
+    for existing in conflicts:
+
+        if (
+            s.start_time < existing.end_time
+            and
+            s.end_time > existing.start_time
+        ):
+            return fail(
+                "The tutor already has another "
+                "session scheduled during this time.",
+                409
+            )
+
+    if data.get("session_type") is not None:
+
+        s.session_type = (
+            data.get("session_type")
+        )
+
+    s.status = "Rescheduled"
+    s.meeting_started_at = None
+    s.meeting_ended_at = None
+    s.meeting_duration_seconds = None
+    # Keep the single Session record as the source of truth and update any
+    # linked parent meeting request to the new schedule.
+    linked_meeting = MeetingRequest.query.filter_by(session_id=s.session_id).first()
+    if linked_meeting:
+        linked_meeting.meeting_date = datetime.combine(s.session_date, s.start_time)
+        linked_meeting.status = "Rescheduled"
+
+    for booking in SessionBooking.query.filter_by(session_id=s.session_id, booking_status="Confirmed").all():
+        student = db.session.get(Student, booking.student_id)
+        if student:
+            db.session.add(Notification(
+                recipient_type="Student", recipient_id=student.student_id,
+                title=f"{subject_name(s.subject_id)} schedule updated",
+                message=f"Your {subject_name(s.subject_id)} session was rescheduled to {s.session_date.strftime('%d %b %Y')} from {s.start_time.strftime('%I:%M %p')} to {s.end_time.strftime('%I:%M %p')}.",
+                notification_type="Session Updated", action_url=f"/student/sessions?session_id={s.session_id}"
+            ))
+            if student.parent_id:
+                db.session.add(Notification(
+                    recipient_type="Parent", recipient_id=student.parent_id,
+                    title=f"{subject_name(s.subject_id)} schedule updated",
+                    message=f"{student.student_name}'s session was rescheduled to {s.session_date.strftime('%d %b %Y')} from {s.start_time.strftime('%I:%M %p')} to {s.end_time.strftime('%I:%M %p')}.",
+                    notification_type="Session Updated", action_url=f"/parent/schedule?session_id={s.session_id}"
+                ))
+
+    db.session.commit()
+
+    return ok(
+        {
+            "session":
+                session_item(s)
+        },
+        "Class rescheduled"
+    )
+
+
+# =========================================================
+# SCHEDULE - DELETE/CANCEL CLASS
+# =========================================================
+
+@tutor_bp.route(
+    "/schedule/class/<int:session_id>",
+    methods=["DELETE"]
+)
+@tutor_required
+def delete_class(session_id):
+
+    tutor = current_tutor()
+
+    if not tutor:
+        return fail(
+            "Tutor not found",
+            404
+        )
+
+    s = db.session.get(
+        Session,
+        session_id
+    )
+
+    if (
+        not s
+        or s.tutor_id != tutor.tutor_id
+    ):
+        return fail(
+            "Session not found",
+            404
+        )
+
+    if s.status == "Live":
+        return fail(
+            "A live class cannot be deleted.",
+            400
+        )
+
+    # Notify booked students before deletion.
+    bookings = (
+        SessionBooking.query
+        .filter_by(
+            session_id=session_id
+        )
+        .all()
+    )
+
+    subject_label = subject_name(
+        s.subject_id
+    )
+
+    # Parent-created meetings may not have a SessionBooking (for example,
+    # a parent-only one-to-one request). Keep the linked request available
+    # until recipients have been notified.
+    linked_meeting = (
+        MeetingRequest.query
+        .filter_by(session_id=session_id)
+        .first()
+    )
+
+    for booking in bookings:
+
+        db.session.add(
+            Notification(
+                recipient_type="Student",
+                recipient_id=booking.student_id,
+                title="Class cancelled",
+                message=(
+                    f"Your {subject_label} class "
+                    "has been cancelled."
+                ),
+                notification_type="Session Update",
+            )
+        )
+
+        student = db.session.get(Student, booking.student_id)
+        if student and student.parent_id:
+            db.session.add(Notification(
+                recipient_type="Parent", recipient_id=student.parent_id,
+                title="Class cancelled",
+                message=f"{student.student_name}'s {subject_label} class has been cancelled.",
+                notification_type="Session Update",
+                action_url="/parent/schedule",
+            ))
+
+    # Also notify the direct participants of a linked parent-created
+    # meeting. Avoid duplicates when the student/parent was already notified
+    # through a confirmed SessionBooking above.
+    notified_student_ids = {booking.student_id for booking in bookings}
+    notified_parent_ids = set()
+
+    for booking in bookings:
+        booked_student = db.session.get(Student, booking.student_id)
+        if booked_student and booked_student.parent_id:
+            notified_parent_ids.add(booked_student.parent_id)
+
+    if linked_meeting:
+        if (
+            linked_meeting.student_id
+            and linked_meeting.student_id not in notified_student_ids
+        ):
+            linked_student = db.session.get(
+                Student,
+                linked_meeting.student_id
+            )
+            db.session.add(Notification(
+                recipient_type="Student",
+                recipient_id=linked_meeting.student_id,
+                title="Meeting cancelled",
+                message=f"Your {subject_label} meeting has been cancelled by the tutor.",
+                notification_type="Meeting Cancelled",
+                action_url="/student/sessions",
+            ))
+            if (
+                linked_student
+                and linked_student.parent_id
+                and linked_student.parent_id not in notified_parent_ids
+                and linked_student.parent_id != linked_meeting.parent_id
+            ):
+                db.session.add(Notification(
+                    recipient_type="Parent",
+                    recipient_id=linked_student.parent_id,
+                    title="Meeting cancelled",
+                    message=f"{linked_student.student_name}'s {subject_label} meeting has been cancelled by the tutor.",
+                    notification_type="Meeting Cancelled",
+                    action_url="/parent/meetings",
+                ))
+                notified_parent_ids.add(linked_student.parent_id)
+
+        if (
+            linked_meeting.parent_id
+            and linked_meeting.parent_id not in notified_parent_ids
+        ):
+            db.session.add(Notification(
+                recipient_type="Parent",
+                recipient_id=linked_meeting.parent_id,
+                title="Meeting cancelled",
+                message=f"The {subject_label} meeting has been cancelled by the tutor.",
+                notification_type="Meeting Cancelled",
+                action_url="/parent/meetings",
+            ))
+
+    # Remove dependent records.
+    LearningProgress.query.filter_by(
+        session_id=session_id
+    ).delete()
+
+    AttendanceRecord.query.filter_by(
+        session_id=session_id
+    ).delete()
+
+    SessionBooking.query.filter_by(
+        session_id=session_id
+    ).delete()
+
+    SessionUpdate.query.filter_by(
+        session_id=session_id
+    ).delete()
+
+    # Assignments linked to the session.
+    assignments = (
+        Assignment.query
+        .filter_by(
+            session_id=session_id
+        )
+        .all()
+    )
+
+    for assignment in assignments:
+
+        AssignmentSubmission.query.filter_by(
+            assignment_id=assignment.assignment_id
+        ).delete()
+
+        db.session.delete(
+            assignment
+        )
+
+    # Study resources linked to session.
+    resources = (
+        StudyResource.query
+        .filter_by(
+            session_id=session_id
+        )
+        .all()
+    )
+
+    for resource in resources:
+
+        if (
+            resource.resource_link
+            and resource.resource_link.startswith(
+                "/tutor/uploads/"
+            )
+        ):
+
+            path = os.path.join(
+                current_app.root_path,
+                "uploads",
+                os.path.basename(
+                    resource.resource_link
+                )
+            )
+
+            if os.path.exists(path):
+                os.remove(path)
+
+        db.session.delete(
+            resource
+        )
+
+    # Meeting requests linked to session.
+    MeetingRequest.query.filter_by(
+        session_id=session_id
+    ).delete()
+
+    db.session.delete(s)
+
+    db.session.commit()
+
+    return ok(
+        message="Class cancelled and deleted"
+    )
+
+
+# =========================================================
+# START CLASS / GOOGLE MEET
+# =========================================================
+
+@tutor_bp.route(
+    "/schedule/class/<int:session_id>/start",
+    methods=["POST"]
+)
+@tutor_required
+def start_class(session_id):
+
+    tutor = current_tutor()
+
+    s = db.session.get(
+        Session,
+        session_id
+    )
+
+    if (
+        not tutor
+        or not s
+        or s.tutor_id != tutor.tutor_id
+    ):
+        return fail(
+            "Session not found",
+            404
+        )
+
     if s.status not in (
         "Scheduled",
         "Rescheduled",
+        "Live",
     ):
         return fail(
             "This session is not available to start.",
             400
         )
 
-    if s.meeting_url:
-
-        return ok(
-            {
-                "session": session_item(s),
-                "meeting_url": s.meeting_url,
-            },
-            "Meeting ready"
-        )
+    if meeting_lifecycle(s)["status"] == "Meeting Ended":
+        return fail("This session has already ended and cannot be started.", 400)
 
     try:
 
-        s.meeting_url = create_meeting_space()
+        if not s.meeting_url:
 
-        subject = db.session.get(Subject, s.subject_id)
-        subject_name = subject.subject_name if subject else "your"
-
-        bookings = SessionBooking.query.filter_by(
-            session_id=s.session_id,
-            booking_status="Confirmed",
-        ).all()
-
-        for booking in bookings:
-            db.session.add(
-                Notification(
-                    recipient_type="Student",
-                    recipient_id=booking.student_id,
-                    title="Class started",
-                    message=(
-                        f"{tutor.tutor_name} has started the "
-                        f"{subject_name} class. Join now."
-                    ),
-                    notification_type="Class Started",
-                )
+            s.meeting_url = (
+                create_meeting_space()
             )
 
+        now = _local_now()
+
+        if s.status != "Live":
+
+            s.status = "Live"
+
+            s.meeting_started_at = now
+            s.meeting_ended_at = None
+            s.meeting_duration_seconds = None
+
+        subject = db.session.get(
+            Subject,
+            s.subject_id
+        )
+
+        subject_label = (
+            subject.subject_name
+            if subject
+            else "class"
+        )
+        meeting_type = "One-to-One" if s.session_type == "One-to-One" else "Regular"
+        display_date = s.session_date.strftime("%d %b %Y")
+        display_time = f"{s.start_time.strftime('%I:%M %p')}–{s.end_time.strftime('%I:%M %p')}"
+
+        bookings = (
+            SessionBooking.query
+            .filter_by(session_id=s.session_id, booking_status="Confirmed")
+            .all()
+        )
+
+        for booking in bookings:
+            existing = (
+                Notification.query
+                .filter_by(
+                    recipient_type="Student",
+                    recipient_id=booking.student_id,
+                    notification_type="Class Started",
+                    is_read=False,
+                )
+                .filter(Notification.action_url == f"/student/sessions?session_id={s.session_id}")
+                .first()
+            )
+            if not existing:
+                db.session.add(Notification(
+                    recipient_type="Student",
+                    recipient_id=booking.student_id,
+                    title=f"{meeting_type} {subject_label} meeting started",
+                    message=f"{tutor.tutor_name} started your {meeting_type} {subject_label} meeting on {display_date}, {display_time}. Join the meeting now: {s.meeting_url}",
+                    notification_type="Class Started",
+                    action_url=f"/student/sessions?session_id={s.session_id}",
+                ))
+
+            student = db.session.get(Student, booking.student_id)
+            if student and student.parent_id:
+                parent_existing = (
+                    Notification.query
+                    .filter_by(
+                        recipient_type="Parent",
+                        recipient_id=student.parent_id,
+                        notification_type="Class Started",
+                        is_read=False,
+                    )
+                    .filter(Notification.action_url == f"/parent/schedule?session_id={s.session_id}")
+                    .first()
+                )
+                if not parent_existing:
+                    db.session.add(Notification(
+                        recipient_type="Parent",
+                        recipient_id=student.parent_id,
+                        title=f"{subject_label} class has started",
+                        message=f"{tutor.tutor_name} has started {student.student_name}'s {subject_label} class. The meeting is now available.",
+                        notification_type="Class Started",
+                        action_url=f"/parent/schedule?session_id={s.session_id}",
+                    ))
+
+        parent_meeting = MeetingRequest.query.filter_by(session_id=s.session_id, tutor_id=tutor.tutor_id).first()
+        if parent_meeting and parent_meeting.parent_id:
+            parent_existing = Notification.query.filter_by(
+                recipient_type="Parent", recipient_id=parent_meeting.parent_id,
+                notification_type="Class Started", is_read=False
+            ).filter(Notification.action_url == f"/parent/meetings").first()
+            if not parent_existing:
+                db.session.add(Notification(
+                    recipient_type="Parent",
+                    recipient_id=parent_meeting.parent_id,
+                    title=f"{meeting_type} {subject_label} meeting started",
+                    message=f"{tutor.tutor_name} started the {meeting_type} {subject_label} meeting on {display_date}, {display_time}. Join the meeting now: {s.meeting_url}",
+                    notification_type="Class Started",
+                    action_url="/parent/meetings"
+                ))
+
         db.session.commit()
+
+        return ok(
+            {
+                "session":
+                    session_item(s),
+
+                "meeting_url":
+                    s.meeting_url,
+
+                "started_at":
+                    (
+                        s.meeting_started_at.isoformat()
+                        if s.meeting_started_at
+                        else None
+                    ),
+            },
+            "Class started. Students notified."
+        )
 
     except GoogleMeetNotConfigured as exc:
 
@@ -935,7 +1808,7 @@ def start_class(session_id):
             "Google Meet is not connected. "
             "Run setup_google_meet.py and authorize "
             "the dedicated Google account.",
-            503,
+            503
         )
 
     except Exception as exc:
@@ -948,19 +1821,330 @@ def start_class(session_id):
         )
 
         return fail(
-            "Google Meet could not be created. "
-            "Check the backend terminal for "
-            "the Google API error.",
-            502,
+            "Google Meet could not be started. "
+            "Check the backend terminal for the "
+            "Google API error.",
+            502
         )
+
+
+# =========================================================
+# END CLASS
+# =========================================================
+
+@tutor_bp.route(
+    "/schedule/class/<int:session_id>/end",
+    methods=["POST"]
+)
+@tutor_required
+def end_class(session_id):
+
+    tutor = current_tutor()
+
+    s = db.session.get(
+        Session,
+        session_id
+    )
+
+    if (
+        not tutor
+        or not s
+        or s.tutor_id != tutor.tutor_id
+    ):
+        return fail(
+            "Session not found",
+            404
+        )
+
+    if s.status != "Live":
+
+        return fail(
+            "Only a live class can be ended.",
+            400
+        )
+
+    now = _local_now()
+
+    s.status = "Completed"
+
+    s.meeting_ended_at = now
+
+    if s.meeting_started_at:
+
+        s.meeting_duration_seconds = max(
+            0,
+            int(
+                (
+                    now
+                    - s.meeting_started_at
+                ).total_seconds()
+            )
+        )
+
+    subject_label = subject_name(
+        s.subject_id
+    )
+    meeting_type = "One-to-One" if s.session_type == "One-to-One" else "Regular"
+    display_date = s.session_date.strftime("%d %b %Y")
+    display_time = f"{s.start_time.strftime('%I:%M %p')}–{s.end_time.strftime('%I:%M %p')}"
+
+    bookings = (
+        SessionBooking.query
+        .filter_by(session_id=s.session_id, booking_status="Confirmed")
+        .all()
+    )
+
+    for booking in bookings:
+        db.session.add(Notification(
+            recipient_type="Student",
+            recipient_id=booking.student_id,
+            title=f"{subject_label} class ended",
+            message=f"Your {subject_label} class has ended. If you attended, you can mark the session as completed.",
+            notification_type="Class Completed",
+            action_url=f"/student/sessions?session_id={s.session_id}",
+        ))
+        student = db.session.get(Student, booking.student_id)
+        if student and student.parent_id:
+            db.session.add(Notification(
+                recipient_type="Parent",
+                recipient_id=student.parent_id,
+                title=f"{subject_label} class ended",
+                message=f"The {subject_label} session for {student.student_name} has ended. Attendance will reflect the student's completion or tutor confirmation.",
+                notification_type="Class Completed",
+                action_url=f"/parent/schedule?session_id={s.session_id}",
+            ))
+
+    parent_meeting = MeetingRequest.query.filter_by(session_id=s.session_id, tutor_id=tutor.tutor_id).first()
+    if parent_meeting and parent_meeting.parent_id:
+        db.session.add(Notification(
+            recipient_type="Parent",
+            recipient_id=parent_meeting.parent_id,
+            title=f"{meeting_type} {subject_label} meeting completed",
+            message=f"The {meeting_type} {subject_label} meeting on {display_date}, {display_time} has been completed.",
+            notification_type="Class Completed",
+            action_url="/parent/meetings"
+        ))
+
+    db.session.commit()
 
     return ok(
         {
-            "session": session_item(s),
-            "meeting_url": s.meeting_url,
+            "session":
+                session_item(s),
+
+            "meeting_url":
+                s.meeting_url,
+
+            "ended_at":
+                s.meeting_ended_at.isoformat(),
+
+            "duration_seconds":
+                s.meeting_duration_seconds or 0,
         },
-        "Meeting ready"
+        "Class ended. Attendance remains based on student completion or tutor confirmation."
     )
+
+
+# =========================================================
+# PARENT MEETING REQUESTS / SESSION DETAILS
+# =========================================================
+
+@tutor_bp.route('/meetings/requests', methods=['GET'])
+@tutor_required
+def meeting_requests():
+    tutor = current_tutor()
+    rows = MeetingRequest.query.filter_by(tutor_id=tutor.tutor_id).order_by(MeetingRequest.meeting_date.asc()).all()
+    data = []
+    for m in rows:
+        if not m.session_id:
+            continue
+        sess = db.session.get(Session, m.session_id)
+        student = db.session.get(Student, m.student_id) if m.student_id else None
+        parent = db.session.get(Parent, m.parent_id) if m.parent_id else None
+        subject = db.session.get(Subject, sess.subject_id) if sess else None
+        data.append({
+            'meeting_id': m.meeting_id, 'session_id': m.session_id, 'status': m.status,
+            'date': sess.session_date.isoformat() if sess else m.meeting_date.date().isoformat(),
+            'start_time': sess.start_time.strftime('%H:%M') if sess else m.meeting_date.strftime('%H:%M'),
+            'end_time': sess.end_time.strftime('%H:%M') if sess else None,
+            'student_id': student.student_id if student else None, 'student_name': student.student_name if student else None,
+            'parent_id': parent.parent_id if parent else None, 'parent_name': parent.parent_name if parent else None,
+            'subject': subject.subject_name if subject else 'General', 'reason': m.meeting_reason or '',
+            'session_type': sess.session_type if sess else 'One-to-One', 'meeting_link': (sess.meeting_url if sess and sess.meeting_url else m.meeting_link),
+            'meeting_started_at': sess.meeting_started_at.isoformat() if sess and sess.meeting_started_at else None, 'meeting_ended_at': sess.meeting_ended_at.isoformat() if sess and sess.meeting_ended_at else None,
+        })
+    return ok({'requests': data})
+
+
+@tutor_bp.route('/meetings/<int:meeting_id>/decision', methods=['POST'])
+@tutor_required
+def decide_meeting(meeting_id):
+    tutor = current_tutor()
+    meeting = db.session.get(MeetingRequest, meeting_id)
+    if not meeting or meeting.tutor_id != tutor.tutor_id:
+        return fail('Meeting request not found', 404)
+    # Approval is idempotent: a repeated click returns the already accepted
+    # meeting instead of creating another Meet/session or returning an error.
+    if meeting.status == 'Scheduled':
+        sess = db.session.get(Session, meeting.session_id) if meeting.session_id else None
+        if sess and sess.meeting_url:
+            return ok({
+                'meeting_id': meeting.meeting_id,
+                'session_id': sess.session_id,
+                'status': meeting.status,
+                'meeting_url': sess.meeting_url,
+            }, 'Meeting request already accepted')
+    if meeting.status not in ('Pending Approval', 'Reschedule Requested'):
+        return fail('This meeting request has already been decided', 409)
+    data = request.get_json(silent=True) or {}
+    decision = str(data.get('decision') or '').strip().lower()
+    sess = db.session.get(Session, meeting.session_id) if meeting.session_id else None
+    if not sess:
+        return fail('Shared session not found', 404)
+    student = db.session.get(Student, meeting.student_id) if meeting.student_id else None
+    parent = db.session.get(Parent, meeting.parent_id) if meeting.parent_id else None
+    subject = db.session.get(Subject, sess.subject_id)
+    label = subject.subject_name if subject else 'session'
+    if decision == 'approve':
+        # Approval is the point at which the one-to-one becomes an official
+        # tutor session. Make sure a Meet URL exists before notifying users.
+        if not sess.meeting_url:
+            try:
+                sess.meeting_url = create_meeting_space()
+            except GoogleMeetNotConfigured as exc:
+                db.session.rollback()
+                current_app.logger.warning('Google Meet setup required for approval: %s', exc)
+                return fail('Google Meet is not connected. Please configure Google Meet before approving this request.', 503)
+            except Exception as exc:
+                db.session.rollback()
+                current_app.logger.exception('Google Meet creation failed during approval: %s', exc)
+                return fail('Google Meet link could not be created. Please try again.', 502)
+        meeting.meeting_link = sess.meeting_url
+        meeting.status = 'Scheduled'
+        sess.status = 'Scheduled'
+        meeting_type = 'One-to-One' if sess.session_type == 'One-to-One' else 'Regular'
+        message = f'Tutor {tutor.tutor_name} approved your {meeting_type} {label} meeting for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}–{sess.end_time.strftime("%I:%M %p")}. The meeting link is ready and will become joinable when the tutor starts the meeting.'
+        if student:
+            db.session.add(Notification(recipient_type='Student', recipient_id=student.student_id, title=f'{label} meeting approved', message=message, notification_type='Meeting Approved', action_url=f'/student/sessions?session_id={sess.session_id}'))
+        if parent:
+            db.session.add(Notification(recipient_type='Parent', recipient_id=parent.parent_id, title=f'{label} meeting approved', message=message, notification_type='Meeting Approved', action_url=f'/parent/schedule?session_id={sess.session_id}'))
+        db.session.add(Notification(
+            recipient_type='Tutor', recipient_id=tutor.tutor_id,
+            title=f'{meeting_type} {label} meeting approved',
+            message=f'Your {meeting_type} meeting with {parent.parent_name if parent else "the parent"} is scheduled for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}–{sess.end_time.strftime("%I:%M %p")}. Meeting link is ready.',
+            notification_type='Meeting Approved',
+            action_url=f'/tutor/schedule?session_id={sess.session_id}'
+        ))
+    elif decision in ('deny', 'decline'):
+        reason = str(data.get('reason') or '').strip() or 'No reason provided.'
+        meeting.status = 'Denied'
+        sess.status = 'Cancelled'
+        message = f'Tutor {tutor.tutor_name} denied the {label} meeting scheduled for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}. Reason: {reason}'
+        if parent:
+            db.session.add(Message(sender_type='Tutor', sender_id=tutor.tutor_id, receiver_type='Parent', receiver_id=parent.parent_id, subject=f'{label} meeting denied', message=message))
+            db.session.add(Notification(recipient_type='Parent', recipient_id=parent.parent_id, title=f'{label} meeting denied', message=message, notification_type='Meeting Denied', action_url=f'/parent/meetings'))
+        if student:
+            db.session.add(Notification(recipient_type='Student', recipient_id=student.student_id, title=f'{label} meeting cancelled', message=message, notification_type='Meeting Denied', action_url=f'/student/sessions'))
+    elif decision in ('change', 'request_change', 'reschedule'):
+        reason = str(data.get('reason') or '').strip() or 'Tutor requested a different time.'
+        proposed_date = data.get('session_date')
+        proposed_start = data.get('start_time')
+        proposed_end = data.get('end_time')
+        if proposed_date and proposed_start and proposed_end:
+            try:
+                sess.session_date = datetime.strptime(proposed_date, '%Y-%m-%d').date()
+                sess.start_time = datetime.strptime(proposed_start, '%H:%M').time()
+                sess.end_time = datetime.strptime(proposed_end, '%H:%M').time()
+            except ValueError:
+                return fail('Invalid proposed date/time')
+        meeting.status = 'Reschedule Requested'
+        sess.status = 'Rescheduled'
+        proposed = f' Preferred timing: {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}–{sess.end_time.strftime("%I:%M %p")}. ' if proposed_date and proposed_start and proposed_end else ' '
+        message = f'Tutor {tutor.tutor_name} requested a change to the {label} meeting. Reason: {reason}.{proposed}You can schedule the meeting again from Connect with Your Child.'
+        if parent:
+            db.session.add(Message(sender_type='Tutor', sender_id=tutor.tutor_id, receiver_type='Parent', receiver_id=parent.parent_id, subject=f'{label} meeting change requested', message=message))
+            db.session.add(Notification(recipient_type='Parent', recipient_id=parent.parent_id, title=f'{label} meeting change requested', message=message, notification_type='Meeting Change Requested', action_url=f'/parent/schedule?session_id={sess.session_id}'))
+        if student:
+            db.session.add(Notification(recipient_type='Student', recipient_id=student.student_id, title=f'{label} meeting change requested', message=message, notification_type='Meeting Change Requested', action_url=f'/student/sessions?session_id={sess.session_id}'))
+    else:
+        return fail('Decision must be approve, deny, or change')
+    db.session.commit()
+    return ok({'meeting_id': meeting.meeting_id, 'session_id': sess.session_id, 'status': meeting.status}, 'Meeting request updated')
+
+
+@tutor_bp.route('/session/<int:session_id>/details', methods=['GET', 'PUT'])
+@tutor_required
+def session_details(session_id):
+    tutor = current_tutor()
+    sess = db.session.get(Session, session_id)
+    if not sess or sess.tutor_id != tutor.tutor_id:
+        return fail('Session not found', 404)
+    bookings = SessionBooking.query.filter_by(session_id=session_id, booking_status='Confirmed').all()
+    if request.method == 'PUT':
+        data = request.get_json(silent=True) or {}
+        records = data.get('records', [])
+        for item in records:
+            try: student_id = int(item.get('student_id') or item.get('studentId'))
+            except (TypeError, ValueError): return fail('Invalid student_id')
+            if not SessionBooking.query.filter_by(session_id=session_id, student_id=student_id, booking_status='Confirmed').first():
+                return fail('Student is not booked for this session', 403)
+            attendance_status = item.get('attendance_status', item.get('attendanceStatus'))
+            pace = item.get('learning_pace', item.get('learningPace'))
+            observation = item.get('observation', item.get('remarks'))
+            if attendance_status not in (None, '', 'Present', 'Absent', 'Late', 'Pending'):
+                return fail('Invalid attendance status')
+            if pace not in (None, '', 'Fast', 'Average', 'Needs Practice'):
+                return fail('Invalid learning pace')
+            progress = LearningProgress.query.filter_by(session_id=session_id, student_id=student_id).first()
+            if not progress:
+                progress = LearningProgress(session_id=session_id, student_id=student_id, learning_pace=None)
+                db.session.add(progress)
+            if pace: progress.learning_pace = pace
+            if observation is not None: progress.tutor_remarks = observation.strip() or None
+            if attendance_status:
+                record = AttendanceRecord.query.filter_by(tutor_id=tutor.tutor_id, session_id=session_id, student_id=student_id).first()
+                old_status = record.status if record else None
+                if not record:
+                    record = AttendanceRecord(tutor_id=tutor.tutor_id, session_id=session_id, student_id=student_id, status=attendance_status, date=sess.session_date)
+                    db.session.add(record)
+                else:
+                    record.status = attendance_status; record.date = sess.session_date
+                if attendance_status in ('Present', 'Absent', 'Late') and old_status != attendance_status:
+                    student_obj = db.session.get(Student, student_id)
+                    subject_label = subject_name(sess.subject_id)
+                    result_label = 'attended' if attendance_status == 'Present' else ('was marked not attended' if attendance_status == 'Absent' else 'was marked late')
+                    db.session.add(Notification(recipient_type='Student', recipient_id=student_id, title=f'Attendance updated · {subject_label}', message=f'Tutor {tutor.tutor_name} confirmed that you {result_label} for the {subject_label} session on {sess.session_date.strftime("%d %b %Y")}.', notification_type='Attendance Confirmation', action_url=f'/student/sessions?session_id={session_id}'))
+                    if student_obj and student_obj.parent_id:
+                        db.session.add(Notification(recipient_type='Parent', recipient_id=student_obj.parent_id, title=f'Attendance confirmed · {subject_label}', message=f'Tutor {tutor.tutor_name} confirmed that {student_obj.student_name} {result_label} for the {subject_label} session on {sess.session_date.strftime("%d %b %Y")}.', notification_type='Attendance Confirmation', action_url=f'/parent/progress?student_id={student_id}&session_id={session_id}'))
+                if attendance_status in ('Present', 'Late'):
+                    progress.session_completion_status = 'Completed'
+                    progress.completion_source = 'Tutor'
+                    if not progress.completed_at: progress.completed_at = _local_now()
+                elif attendance_status == 'Absent':
+                    progress.session_completion_status = 'Not Attended'
+                    progress.completion_source = 'Tutor'
+                    progress.completed_at = None
+            if progress.joined_at and sess.meeting_ended_at and not progress.duration_seconds:
+                progress.duration_seconds = max(0, int((sess.meeting_ended_at - progress.joined_at).total_seconds()))
+        db.session.commit()
+        return ok(message='Session details saved and parent/student records updated')
+    data = []
+    for booking in bookings:
+        student = db.session.get(Student, booking.student_id)
+        if not student: continue
+        parent = db.session.get(Parent, student.parent_id) if student.parent_id else None
+        attendance = AttendanceRecord.query.filter_by(tutor_id=tutor.tutor_id, session_id=session_id, student_id=student.student_id).first()
+        progress = LearningProgress.query.filter_by(session_id=session_id, student_id=student.student_id).first()
+        data.append({
+            'student_id': student.student_id, 'student_name': student.student_name, 'parent_name': parent.parent_name if parent else None,
+            'attendance_status': attendance.status if attendance else None,
+            'learning_pace': progress.learning_pace if progress and progress.learning_pace else None,
+            'observation': progress.tutor_remarks if progress else None,
+            'completion_status': progress.session_completion_status if progress else None,
+            'joined_at': progress.joined_at.isoformat() if progress and progress.joined_at else None,
+            'completed_at': progress.completed_at.isoformat() if progress and progress.completed_at else None,
+        })
+    return ok({'session': session_item(sess), 'records': data})
 
 
 # =========================================================
@@ -978,9 +2162,13 @@ def students():
         x
         for x in (
             student_item(s)
-            for s in Student.query.filter_by(
-                status="Active"
-            ).all()
+            for s in (
+                Student.query
+                .filter_by(
+                    status="Active"
+                )
+                .all()
+            )
         )
         if x
     ]
@@ -1008,14 +2196,26 @@ def attendance():
         records = (
             request.get_json(
                 silent=True
-            ) or {}
-        ).get("records", [])
+            )
+            or {}
+        ).get(
+            "records",
+            []
+        )
 
         for item in records:
 
-            student_id = int(
-                item.get("studentId")
-            )
+            try:
+                student_id = int(
+                    item.get("studentId")
+                )
+            except (
+                TypeError,
+                ValueError
+            ):
+                return fail(
+                    "Invalid studentId"
+                )
 
             session_id = item.get(
                 "sessionId"
@@ -1025,6 +2225,8 @@ def attendance():
                 "status",
                 "Present"
             )
+            if status not in {"Present", "Absent", "Late", "Pending"}:
+                return fail("Invalid attendance status")
 
             existing = (
                 AttendanceRecord.query
@@ -1036,22 +2238,47 @@ def attendance():
                 .first()
             )
 
+            old_status = existing.status if existing else None
+            session_obj = db.session.get(Session, int(session_id)) if session_id else None
+            record_date = session_obj.session_date if session_obj and session_obj.session_date else date.today()
             if existing:
 
                 existing.status = status
-                existing.date = date.today()
+                existing.date = record_date
 
             else:
 
-                db.session.add(
-                    AttendanceRecord(
-                        tutor_id=tutor.tutor_id,
-                        student_id=student_id,
-                        session_id=session_id,
-                        status=status,
-                        date=date.today(),
-                    )
+                existing = AttendanceRecord(
+                    tutor_id=tutor.tutor_id,
+                    student_id=student_id,
+                    session_id=session_id,
+                    status=status,
+                    date=record_date,
                 )
+                db.session.add(existing)
+
+            if status in {"Present", "Absent", "Late"} and old_status != status:
+                student = db.session.get(Student, student_id)
+                sess = db.session.get(Session, int(session_id)) if session_id else None
+                if student:
+                    subject_label = subject_name(sess.subject_id) if sess else "session"
+                    result_label = "attended" if status == "Present" else ("marked not attended" if status == "Absent" else "marked late")
+                    db.session.add(Notification(
+                        recipient_type="Student", recipient_id=student.student_id,
+                        title=f"Attendance updated · {subject_label}",
+                        message=f"The tutor confirmed that you were {result_label} for the {subject_label} session.",
+                        notification_type="Attendance Confirmation",
+                        action_url=f"/student/sessions?session_id={session_id}",
+                    ))
+                    if student.parent_id:
+                        db.session.add(Notification(
+                            recipient_type="Parent",
+                            recipient_id=student.parent_id,
+                            title=f"Attendance confirmed · {subject_label}",
+                            message=f"The tutor confirmed that {student.student_name} was {result_label} for the {subject_label} session.",
+                            notification_type="Attendance Confirmation",
+                            action_url=f"/parent/progress?student_id={student.student_id}&session_id={session_id}",
+                        ))
 
         db.session.commit()
 
@@ -1074,6 +2301,7 @@ def attendance():
         "Present": 0,
         "Absent": 0,
         "Late": 0,
+        "Pending": 0,
     }
 
     data = []
@@ -1081,25 +2309,38 @@ def attendance():
     for r in rows:
 
         counts[r.status] = (
-            counts.get(r.status, 0) + 1
+            counts.get(
+                r.status,
+                0
+            )
+            + 1
         )
 
+        student = db.session.get(Student, r.student_id)
+        sess = db.session.get(Session, r.session_id) if r.session_id else None
         data.append({
             "attendanceId": r.attendance_id,
             "studentId": r.student_id,
+            "studentName": student.student_name if student else f"Student #{r.student_id}",
             "sessionId": r.session_id,
+            "subject": subject_name(sess.subject_id) if sess else "General",
+            "sessionDate": sess.session_date.isoformat() if sess and sess.session_date else None,
             "status": r.status,
+            "attendanceQuery": r.status == "Pending",
         })
 
-    total = sum(
-        counts.values()
-    ) or 1
+    total = (
+        sum(counts.values())
+        or 1
+    )
 
     analytics = [
         {
             "label": key,
             "value": round(
-                value / total * 100
+                value
+                / total
+                * 100
             ),
         }
         for key, value
@@ -1125,9 +2366,12 @@ def session_update():
 
     tutor = current_tutor()
 
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
 
     try:
 
@@ -1135,7 +2379,10 @@ def session_update():
             data.get("session_id")
         )
 
-    except:
+    except (
+        TypeError,
+        ValueError
+    ):
 
         return fail(
             "session_id is required"
@@ -1193,11 +2440,18 @@ def session_update():
             )
 
         except ValueError:
-            pass
 
-    for booking in SessionBooking.query.filter_by(
-        session_id=session_id
-    ).all():
+            return fail(
+                "Invalid next_session_date"
+            )
+
+    for booking in (
+        SessionBooking.query
+        .filter_by(
+            session_id=session_id
+        )
+        .all()
+    ):
 
         db.session.add(
             Notification(
@@ -1257,9 +2511,12 @@ def assignments():
 
     if request.method == "POST":
 
-        data = request.get_json(
-            silent=True
-        ) or {}
+        data = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
 
         try:
 
@@ -1267,7 +2524,10 @@ def assignments():
                 data.get("session_id")
             )
 
-        except:
+        except (
+            TypeError,
+            ValueError
+        ):
 
             return fail(
                 "session_id is required"
@@ -1323,7 +2583,10 @@ def assignments():
                 "title is required"
             )
 
-        db.session.add(assignment)
+        db.session.add(
+            assignment
+        )
+
         db.session.commit()
 
         return ok(
@@ -1331,6 +2594,7 @@ def assignments():
                 "assignment": {
                     "assignmentId":
                         assignment.assignment_id,
+
                     "title":
                         assignment.title,
                 }
@@ -1378,11 +2642,11 @@ def assignments():
                     "In Progress",
                 )
             )
-            else
-            "Submitted"
-            if statuses
-            else
-            "Pending"
+            else (
+                "Submitted"
+                if statuses
+                else "Pending"
+            )
         )
 
         sess = db.session.get(
@@ -1391,26 +2655,38 @@ def assignments():
         )
 
         data.append({
+
             "assignmentId":
                 assignment.assignment_id,
+
             "title":
                 assignment.title,
+
             "classLevel":
                 subject_name(
                     sess.subject_id
-                ) if sess else "General",
+                )
+                if sess
+                else "General",
+
             "submissions":
                 f"{len(submissions)} submissions",
+
             "type":
                 "assignment",
+
             "homeworkStatus":
                 status,
+
             "sessionId":
                 assignment.session_id,
+
             "dueDate":
-                assignment.due_date.isoformat()
-                if assignment.due_date
-                else None,
+                (
+                    assignment.due_date.isoformat()
+                    if assignment.due_date
+                    else None
+                ),
         })
 
     return ok({
@@ -1497,9 +2773,12 @@ def tutor_quizzes():
 
     if request.method == "POST":
 
-        data = request.get_json(
-            silent=True
-        ) or {}
+        data = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
 
         try:
 
@@ -1507,7 +2786,10 @@ def tutor_quizzes():
                 data.get("subject_id")
             )
 
-        except:
+        except (
+            TypeError,
+            ValueError
+        ):
 
             return fail(
                 "subject_id is required"
@@ -1517,6 +2799,7 @@ def tutor_quizzes():
             Subject,
             subject_id
         ):
+
             return fail(
                 "Subject not found",
                 404
@@ -1540,7 +2823,10 @@ def tutor_quizzes():
                 "title is required"
             )
 
-        db.session.add(quiz)
+        db.session.add(
+            quiz
+        )
+
         db.session.commit()
 
         return ok(
@@ -1548,6 +2834,7 @@ def tutor_quizzes():
                 "quiz": {
                     "quiz_id":
                         quiz.quiz_id,
+
                     "title":
                         quiz.title,
                 }
@@ -1570,12 +2857,17 @@ def tutor_quizzes():
     return ok({
         "quizzes": [
             {
-                "quiz_id": q.quiz_id,
-                "title": q.title,
+                "quiz_id":
+                    q.quiz_id,
+
+                "title":
+                    q.title,
+
                 "subject":
                     subject_name(
                         q.subject_id
                     ),
+
                 "questionCount":
                     QuizQuestion.query
                     .filter_by(
@@ -1608,37 +2900,47 @@ def create_question(
         not quiz
         or quiz.tutor_id != tutor.tutor_id
     ):
+
         return fail(
             "Quiz not found",
             404
         )
 
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
 
     question = QuizQuestion(
         quiz_id=quiz_id,
+
         question=data.get(
             "question",
             ""
         ),
+
         option_a=data.get(
             "option_a",
             ""
         ),
+
         option_b=data.get(
             "option_b",
             ""
         ),
+
         option_c=data.get(
             "option_c",
             ""
         ),
+
         option_d=data.get(
             "option_d",
             ""
         ),
+
         correct_option=str(
             data.get(
                 "correct_option",
@@ -1650,13 +2952,23 @@ def create_question(
     if (
         not question.question
         or question.correct_option
-        not in {"A", "B", "C", "D"}
+        not in {
+            "A",
+            "B",
+            "C",
+            "D"
+        }
     ):
+
         return fail(
-            "Question and correct_option A/B/C/D are required"
+            "Question and correct_option "
+            "A/B/C/D are required"
         )
 
-    db.session.add(question)
+    db.session.add(
+        question
+    )
+
     db.session.commit()
 
     return ok(
@@ -1692,7 +3004,10 @@ def materials():
                 form.get("session_id")
             )
 
-        except:
+        except (
+            TypeError,
+            ValueError
+        ):
 
             return fail(
                 "session_id is required"
@@ -1795,12 +3110,19 @@ def materials():
             resource_link=link,
         )
 
-        db.session.add(resource)
+        db.session.add(
+            resource
+        )
+
         db.session.commit()
 
-        for booking in SessionBooking.query.filter_by(
-            session_id=session_id
-        ).all():
+        for booking in (
+            SessionBooking.query
+            .filter_by(
+                session_id=session_id
+            )
+            .all()
+        ):
 
             db.session.add(
                 Notification(
@@ -1819,8 +3141,10 @@ def materials():
                 "resource": {
                     "resourceId":
                         resource.resource_id,
+
                     "title":
                         resource.resource_title,
+
                     "resourceLink":
                         resource.resource_link,
                 }
@@ -1851,23 +3175,31 @@ def materials():
         )
 
         data.append({
+
             "resourceId":
                 resource.resource_id,
+
             "sessionId":
                 resource.session_id,
+
             "title":
                 resource.resource_title,
+
             "description":
                 (
                     f"{subject_name(sess.subject_id)} "
                     f"· {resource.resource_type}"
                 ),
+
             "resourceLink":
                 resource.resource_link,
+
             "resourceType":
                 resource.resource_type,
+
             "gradient":
                 "linear-gradient(135deg,var(--g1),var(--g2))",
+
             "icon":
                 "<path d='M8 3h8l3 3v14H5V4Z'/>",
         })
@@ -1969,9 +3301,12 @@ def qa():
 
     if request.method == "POST":
 
-        data = request.get_json(
-            silent=True
-        ) or {}
+        data = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
 
         question = (
             data.get("question")
@@ -1998,16 +3333,26 @@ def qa():
             ),
         )
 
-        db.session.add(faq)
+        db.session.add(
+            faq
+        )
+
         db.session.commit()
 
         return ok(
             {
                 "entry": {
-                    "faqId": faq.faq_id,
-                    "question": faq.question,
-                    "answer": faq.answer,
-                    "meta": "Published",
+                    "faqId":
+                        faq.faq_id,
+
+                    "question":
+                        faq.question,
+
+                    "answer":
+                        faq.answer,
+
+                    "meta":
+                        "Published",
                 }
             },
             "FAQ published",
@@ -2025,9 +3370,15 @@ def qa():
     return ok({
         "entries": [
             {
-                "faqId": faq.faq_id,
-                "question": faq.question,
-                "answer": faq.answer,
+                "faqId":
+                    faq.faq_id,
+
+                "question":
+                    faq.question,
+
+                "answer":
+                    faq.answer,
+
                 "meta":
                     faq.category
                     or "General",
@@ -2045,8 +3396,6 @@ def qa():
 def delete_qa(
     faq_id
 ):
-    """Delete a Q&A board entry. Tutor/admin-only action, exposed here
-    because the tutor role already owns Q&A publishing."""
 
     faq = db.session.get(
         FAQ,
@@ -2063,6 +3412,7 @@ def delete_qa(
     db.session.delete(
         faq
     )
+
     db.session.commit()
 
     return ok(
@@ -2096,17 +3446,31 @@ def doubts():
 
     return ok({
         "doubts": [
+
             {
-                "doubtId": d.doubt_id,
-                "studentId": d.student_id,
-                "subject": d.subject,
-                "question": d.question,
+                "doubtId":
+                    d.doubt_id,
+
+                "studentId":
+                    d.student_id,
+
+                "subject":
+                    d.subject,
+
+                "question":
+                    d.question,
+
                 "askedAt":
-                    d.asked_at.isoformat()
-                    if d.asked_at
-                    else None,
-                "status": d.status,
+                    (
+                        d.asked_at.isoformat()
+                        if d.asked_at
+                        else None
+                    ),
+
+                "status":
+                    d.status,
             }
+
             for d in rows
         ]
     })
@@ -2140,13 +3504,18 @@ def reply_doubt(
         )
 
     text = (
-        request.get_json(
-            silent=True
-        ) or {}
-    ).get(
-        "reply",
-        ""
-    ).strip()
+        (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+        .get(
+            "reply",
+            ""
+        )
+        .strip()
+    )
 
     if not text:
 
@@ -2192,15 +3561,27 @@ def conversations():
         Message.query
         .filter(
             (
-                (Message.sender_type == "Tutor")
+                (
+                    Message.sender_type
+                    == "Tutor"
+                )
                 &
-                (Message.sender_id == tutor.tutor_id)
+                (
+                    Message.sender_id
+                    == tutor.tutor_id
+                )
             )
             |
             (
-                (Message.receiver_type == "Tutor")
+                (
+                    Message.receiver_type
+                    == "Tutor"
+                )
                 &
-                (Message.receiver_id == tutor.tutor_id)
+                (
+                    Message.receiver_id
+                    == tutor.tutor_id
+                )
             )
         )
         .order_by(
@@ -2215,13 +3596,23 @@ def conversations():
 
         if message.sender_type == "Tutor":
 
-            other_type = message.receiver_type
-            other_id = message.receiver_id
+            other_type = (
+                message.receiver_type
+            )
+
+            other_id = (
+                message.receiver_id
+            )
 
         else:
 
-            other_type = message.sender_type
-            other_id = message.sender_id
+            other_type = (
+                message.sender_type
+            )
+
+            other_id = (
+                message.sender_id
+            )
 
         key = (
             f"{other_type.lower()}-{other_id}"
@@ -2246,7 +3637,9 @@ def conversations():
                 Student
             ):
 
-                name = person.student_name
+                name = (
+                    person.student_name
+                )
 
             else:
 
@@ -2257,31 +3650,57 @@ def conversations():
                 )
 
             conversations_data[key] = {
-                "id": key,
-                "participantName": name,
-                "subtitle": other_type,
-                "initials": "".join(
-                    x[0]
-                    for x in name.split()[:2]
-                ).upper(),
+                "id":
+                    key,
+
+                "participantName":
+                    name,
+
+                "subtitle":
+                    other_type,
+
+                "initials":
+                    "".join(
+                        x[0]
+                        for x in name.split()[:2]
+                    ).upper(),
+
                 "gradient":
                     "linear-gradient(135deg,var(--g1),var(--g2))",
+
                 "messages": [],
-                "otherType": other_type,
-                "otherId": other_id,
+
+                "otherType":
+                    other_type,
+
+                "otherId":
+                    other_id,
             }
 
-        conversations_data[key]["messages"].append({
-            "messageId": message.message_id,
-            "message": message.message,
+        conversations_data[
+            key
+        ]["messages"].append({
+
+            "messageId":
+                message.message_id,
+
+            "message":
+                message.message,
+
             "timestamp":
-                message.sent_at.isoformat()
-                if message.sent_at
-                else None,
+                (
+                    message.sent_at.isoformat()
+                    if message.sent_at
+                    else None
+                ),
+
             "w":
-                "me"
-                if message.sender_type == "Tutor"
-                else "them",
+                (
+                    "me"
+                    if message.sender_type
+                    == "Tutor"
+                    else "them"
+                ),
         })
 
     return ok({
@@ -2299,9 +3718,12 @@ def send_message():
 
     tutor = current_tutor()
 
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
 
     receiver_type = data.get(
         "receiver_type"
@@ -2321,6 +3743,7 @@ def send_message():
         or not receiver_id
         or not text
     ):
+
         return fail(
             "receiver_type, receiver_id "
             "and message are required"
@@ -2335,11 +3758,23 @@ def send_message():
             "Invalid receiver type"
         )
 
+    try:
+        receiver_id = int(
+            receiver_id
+        )
+    except (
+        TypeError,
+        ValueError
+    ):
+        return fail(
+            "Invalid receiver_id"
+        )
+
     if (
         receiver_type == "Student"
         and not db.session.get(
             Student,
-            int(receiver_id)
+            receiver_id
         )
     ):
 
@@ -2352,7 +3787,7 @@ def send_message():
         receiver_type == "Parent"
         and not db.session.get(
             Parent,
-            int(receiver_id)
+            receiver_id
         )
     ):
 
@@ -2365,11 +3800,19 @@ def send_message():
         sender_type="Tutor",
         sender_id=tutor.tutor_id,
         receiver_type=receiver_type,
-        receiver_id=int(receiver_id),
+        receiver_id=receiver_id,
         message=text,
     )
 
-    db.session.add(message)
+    db.session.add(
+        message
+    )
+    db.session.add(Notification(
+        recipient_type=receiver_type, recipient_id=receiver_id,
+        title="New message from tutor", message=f"{tutor.tutor_name} sent you a new message.",
+        notification_type="New Message", action_url=f"/parent/messages" if receiver_type == "Parent" else "/student/messages"
+    ))
+
     db.session.commit()
 
     return ok(
@@ -2395,9 +3838,12 @@ def request_meeting():
 
     tutor = current_tutor()
 
-    data = request.get_json(
-        silent=True
-    ) or {}
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
 
     try:
 
@@ -2405,7 +3851,10 @@ def request_meeting():
             data.get("meeting_date")
         )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError
+    ):
 
         return fail(
             "meeting_date must be ISO datetime"
@@ -2451,6 +3900,89 @@ def request_meeting():
             404
         )
 
+    session_obj = None
+
+    if student_id:
+
+        student = db.session.get(
+            Student,
+            int(student_id)
+        )
+
+        enrolled = (
+            StudentSubject.query
+            .filter_by(
+                student_id=student.student_id
+            )
+            .all()
+        )
+
+        if not enrolled:
+
+            return fail(
+                "The selected student has "
+                "no registered subject",
+                400
+            )
+
+        subject_id = (
+            enrolled[0].subject_id
+        )
+
+        subject = db.session.get(
+            Subject,
+            subject_id
+        )
+
+        if not subject:
+
+            return fail(
+                "Student subject not found",
+                404
+            )
+
+        if not tutor_has_subject(
+            tutor,
+            subject_id
+        ):
+
+            return fail(
+                "The selected student's subject "
+                "is not assigned to this tutor",
+                403
+            )
+
+        session_obj = Session(
+            tutor_id=tutor.tutor_id,
+            subject_id=subject_id,
+            session_date=meeting_date.date(),
+            start_time=meeting_date.time(),
+            end_time=(
+                meeting_date
+                + timedelta(hours=1)
+            ).time(),
+            session_type="One-to-One",
+            status="Scheduled",
+        )
+
+        db.session.add(
+            session_obj
+        )
+
+        db.session.flush()
+
+        db.session.add(
+            SessionBooking(
+                session_id=session_obj.session_id,
+                student_id=student.student_id,
+                booking_status="Confirmed",
+            )
+        )
+        try:
+            session_obj.meeting_url = create_meeting_space()
+        except GoogleMeetNotConfigured:
+            session_obj.meeting_url = data.get("meeting_link") or None
+
     meeting = MeetingRequest(
         tutor_id=tutor.tutor_id,
         student_id=(
@@ -2471,11 +4003,19 @@ def request_meeting():
             "meeting_reason",
             ""
         ),
+        session_id=(
+            session_obj.session_id
+            if session_obj
+            else None
+        ),
         status="Scheduled",
     )
 
-    db.session.add(meeting)
-    db.session.commit()
+    db.session.add(
+        meeting
+    )
+
+    db.session.flush()
 
     if student_id:
 
@@ -2484,11 +4024,9 @@ def request_meeting():
                 recipient_type="Student",
                 recipient_id=int(student_id),
                 title="New meeting scheduled",
-                message=(
-                    data.get(
-                        "meeting_reason",
-                        "Meeting scheduled"
-                    )
+                message=data.get(
+                    "meeting_reason",
+                    "Meeting scheduled"
                 ),
                 notification_type="Reminder",
             )
@@ -2501,11 +4039,9 @@ def request_meeting():
                 recipient_type="Parent",
                 recipient_id=int(parent_id),
                 title="New meeting scheduled",
-                message=(
-                    data.get(
-                        "meeting_reason",
-                        "Meeting scheduled"
-                    )
+                message=data.get(
+                    "meeting_reason",
+                    "Meeting scheduled"
                 ),
                 notification_type="Reminder",
             )
@@ -2524,99 +4060,6 @@ def request_meeting():
 
 
 # =========================================================
-# EARNINGS
-# =========================================================
-
-@tutor_bp.route(
-    "/earnings",
-    methods=["GET"]
-)
-@tutor_required
-def earnings():
-
-    tutor = current_tutor()
-
-    completed = (
-        Session.query
-        .filter_by(
-            tutor_id=tutor.tutor_id,
-            status="Completed"
-        )
-        .all()
-    )
-
-    try:
-
-        rate = float(
-            str(
-                tutor.hourly_rate or ""
-            )
-            .replace("₹", "")
-            .replace("/hr", "")
-            .replace(",", "")
-            .strip()
-        )
-
-    except:
-
-        rate = 0
-
-    total_hours = sum(
-        max(
-            0,
-            (
-                datetime.combine(
-                    date.today(),
-                    s.end_time
-                )
-                -
-                datetime.combine(
-                    date.today(),
-                    s.start_time
-                )
-            ).seconds
-        ) / 3600
-        for s in completed
-    )
-
-    history = []
-
-    for s in completed:
-
-        minutes = (
-            s.end_time.hour * 60
-            + s.end_time.minute
-        ) - (
-            s.start_time.hour * 60
-            + s.start_time.minute
-        )
-
-        history.append({
-            "month":
-                s.session_date.strftime(
-                    "%b %Y"
-                ),
-            "sessions": 1,
-            "amount":
-                round(
-                    rate * minutes / 60,
-                    2
-                ),
-            "status":
-                "Completed",
-        })
-
-    return ok({
-        "history": history,
-        "total":
-            round(
-                rate * total_hours,
-                2
-            ),
-    })
-
-
-# =========================================================
 # PROFILE
 # =========================================================
 
@@ -2630,6 +4073,7 @@ def profile():
     tutor = current_tutor()
 
     if not tutor:
+
         return fail(
             "Tutor not found",
             404
@@ -2641,22 +4085,39 @@ def profile():
 
     if request.method == "PUT":
 
-        data = request.get_json(
-            silent=True
-        ) or {}
+        data = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
 
-        # Basic profile fields
         field_mapping = {
-            "name": "tutor_name",
-            "phone": "phone_no",
-            "bio": "bio",
-            "education": "education",
-            "hourlyRate": "hourly_rate",
-            "availability": "availability",
-            "experience": "experience_years",
+            "name":
+                "tutor_name",
+
+            "phone":
+                "phone_no",
+
+            "bio":
+                "bio",
+
+            "education":
+                "education",
+
+            "hourlyRate":
+                "hourly_rate",
+
+            "availability":
+                "availability",
+
+            "experience":
+                "experience_years",
         }
 
-        for field, attribute in field_mapping.items():
+        for field, attribute in (
+            field_mapping.items()
+        ):
 
             if field in data:
 
@@ -2666,7 +4127,6 @@ def profile():
                     data[field]
                 )
 
-        # Subjects
         if "subjects" in data:
 
             subjects = data.get(
@@ -2683,7 +4143,6 @@ def profile():
                 subjects
             )
 
-        # Languages
         if "languages" in data:
 
             languages = data.get(
@@ -2700,7 +4159,6 @@ def profile():
                 languages
             )
 
-        # Certificates
         if "certificates" in data:
 
             certificates = data.get(
@@ -2737,7 +4195,10 @@ def profile():
 
             return (
                 parsed
-                if isinstance(parsed, list)
+                if isinstance(
+                    parsed,
+                    list
+                )
                 else []
             )
 
@@ -2773,22 +4234,28 @@ def profile():
                 tutor.email,
 
             "phone":
-                tutor.phone_no or "",
+                tutor.phone_no
+                or "",
 
             "experience":
-                tutor.experience_years or 0,
+                tutor.experience_years
+                or 0,
 
             "bio":
-                tutor.bio or "",
+                tutor.bio
+                or "",
 
             "education":
-                tutor.education or "",
+                tutor.education
+                or "",
 
             "hourlyRate":
-                tutor.hourly_rate or "",
+                tutor.hourly_rate
+                or "",
 
             "availability":
-                tutor.availability or "",
+                tutor.availability
+                or "",
 
             "subjects":
                 load_json(
@@ -2806,7 +4273,8 @@ def profile():
                 ),
 
             "initials":
-                initials or "T",
+                initials
+                or "T",
         }
     })
 
@@ -2823,6 +4291,11 @@ def profile():
 def notifications():
 
     tutor = current_tutor()
+    if not tutor:
+        return fail(
+            "Tutor account could not be found. Please log in again.",
+            401
+        )
 
     rows = (
         Notification.query
@@ -2838,6 +4311,7 @@ def notifications():
 
     return ok({
         "notifications": [
+
             {
                 "id":
                     n.notification_id,
@@ -2852,8 +4326,21 @@ def notifications():
                     n.is_read,
 
                 "go":
-                    "dashboard",
+                    (
+                        n.action_url
+                        or (
+                            "/tutor/schedule"
+                            if n.notification_type
+                            == "One-to-One Meeting"
+                            else
+                            "dashboard"
+                        )
+                    ),
+
+                "type":
+                    n.notification_type,
             }
+
             for n in rows
         ]
     })
@@ -2869,6 +4356,11 @@ def mark_notification(
 ):
 
     tutor = current_tutor()
+    if not tutor:
+        return fail(
+            "Tutor account could not be found. Please log in again.",
+            401
+        )
 
     notification = (
         Notification.query

@@ -995,27 +995,7 @@ onMounted(loadTimetable)
                       c.session_id ??
                       `${cell.iso}-${c.time}-${c.subject}`
                     "
-                    class="
-                      group
-                      relative
-                      overflow-hidden
-                      rounded-xl
-                      border
-                      border-slate-100
-                      dark:border-slate-700
-                      bg-slate-50
-                      dark:bg-slate-800/80
-                      px-2.5
-                      py-2
-                      cursor-default
-                      hover:-translate-y-0.5
-                      hover:shadow-md
-                      transition-all
-                      duration-200
-                    "
-                    :title="
-                      `${c.subject || 'Subject'} · ${c.time || ''} · ${c.tutor || 'Tutor'}`
-                    "
+                    class="calendar-session group relative overflow-hidden rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-2 cursor-default hover:-translate-y-0.5 hover:shadow-md transition-all duration-200"
                   >
 
                     <!-- Colored side -->
@@ -1078,14 +1058,16 @@ onMounted(loadTimetable)
 
                       <div
                         v-if="c.tutor"
-                        class="
-                          text-[9px]
-                          text-slate-400
-                          truncate
-                          mt-0.5
-                        "
+                        class="text-[9px] text-slate-400 truncate mt-0.5"
                       >
                         {{ c.tutor }}
+                      </div>
+
+                      <div class="calendar-session-tooltip">
+                        <p class="font-bold text-xs text-slate-800 dark:text-white">{{ c.subject || 'Subject' }}</p>
+                        <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-300">{{ c.time || '--' }}</p>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-300">Tutor: {{ c.tutor || 'Tutor' }}</p>
+                        <p class="mt-1 text-[10px] font-semibold text-brand-blue">{{ c.meeting_lifecycle || c.status || 'Scheduled' }}</p>
                       </div>
 
                     </div>
@@ -1448,3 +1430,26 @@ onMounted(loadTimetable)
 
   </div>
 </template>
+<style scoped>
+.calendar-session-tooltip {
+  position: absolute;
+  z-index: 80;
+  left: 100%;
+  top: 0;
+  width: 220px;
+  padding: 10px 12px;
+  margin-left: 8px;
+  border-radius: 12px;
+  background: white;
+  border: 1px solid rgb(226 232 240);
+  box-shadow: 0 14px 35px rgba(15, 23, 42, .16);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+.calendar-session:hover { z-index: 70; overflow: visible; }
+.calendar-session:hover .calendar-session-tooltip { opacity: 1; transform: translateY(0); }
+.dark .calendar-session-tooltip { background: rgb(15 23 42); border-color: rgb(51 65 85); }
+@media (max-width: 640px) { .calendar-session-tooltip { display: none; } }
+</style>

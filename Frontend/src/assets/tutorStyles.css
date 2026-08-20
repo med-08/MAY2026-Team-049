@@ -124,7 +124,6 @@ html.dark .tutor-portal{
   .badge.done{color:var(--lime);border-color:color-mix(in srgb,var(--lime) 40%,transparent)}
   .badge.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 40%,transparent)}
 
-  /* earnings */
   .earn{background:linear-gradient(150deg,color-mix(in srgb,var(--lime) 16%,transparent),transparent);}
   .earn .big{font-family:'Space Grotesk';font-size:32px;font-weight:700;letter-spacing:-.02em}
   .bars{display:flex;align-items:flex-end;gap:6px;height:56px;margin-top:6px}

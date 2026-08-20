@@ -35,6 +35,7 @@ const navItems = [
   { name: "Study Tips", to: "/student/study-tips", icon: LightBulbIcon },
   { name: "FAQ", to: "/student/faq", icon: QuestionMarkCircleIcon },
   { name: "Ask Doubt", to: "/student/ask-doubt", icon: ChatBubbleLeftRightIcon },
+  { name: "Messages", to: "/student/messages", icon: ChatBubbleLeftRightIcon },
   { name: "Profile", to: "/student/profile", icon: UserCircleIcon },
 ]
 </script>
