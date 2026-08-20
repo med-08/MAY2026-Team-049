@@ -1,86 +1,148 @@
 # 📚 LearnAtHome
 
-<div align="center">
+### A Modern Home Tuition Management Platform
 
-# A Modern Home Tuition Management Platform
+LearnAtHome is a full-stack home tuition management platform connecting **Students, Tutors, Parents, and Administrators** through role-based dashboards.
 
-LearnAtHome is a full-stack web application that simplifies home tuition management by bringing **Students, Tutors, Parents, and Administrators** together on a single platform. It streamlines scheduling, progress tracking, communication, assessments, and resource management through dedicated role-based dashboards.
-
-![Vue](https://img.shields.io/badge/Vue.js-3-42b883?logo=vue.js)
-![Flask](https://img.shields.io/badge/Flask-Backend-black?logo=flask)
-![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
-![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?logo=sqlite)
-![TailwindCSS](https://img.shields.io/badge/TailwindCSS-Styled-38BDF8?logo=tailwindcss)
-
-</div>
+**Vue.js 3 · Flask · Python · SQLite · Tailwind CSS · REST APIs · Google Meet · AI**
 
 ---
 
 # ✨ Features
 
 ## 👨‍💼 Admin Dashboard
-- Dashboard analytics
-- Student, Tutor & Parent management
-- User search and filtering
-- Block / Unblock users
-- Delete users
-- Approve new registrations
-- Profile management
-- Responsive UI
-- Light & Dark mode
 
----
+* Dashboard analytics
+* Student, Tutor & Parent management
+* Search & filtering
+* Block / Unblock users
+* Delete users
+* Registration approval
+* Profile management
+* Responsive UI
+* Light / Dark mode
 
 ## 👨‍🏫 Tutor Dashboard
-- Manage assigned students
-- Schedule sessions
-- Upload study materials
-- Track student progress
-- Notifications
-- Profile management
-- Responsive UI
-- Light & Dark mode
 
----
+* Assigned student management
+* Session scheduling
+* Subject-based sessions
+* Attendance management
+* Assignments
+* Quizzes & quiz questions
+* Study material upload/delete
+* FAQs & doubts
+* Tutor–Parent messaging
+* Notifications
+* Google Meet meetings
+* Meeting start/end & duration tracking
+* Earnings
+* Profile management
+* Responsive UI
+* Light / Dark mode
 
 ## 🎓 Student Dashboard
-- Upcoming classes
-- Weekly quizzes
-- Quiz results
-- Learning progress
-- Study materials
-- Session booking
-- Personalized study tips
-- Notifications
-- FAQ section
-- Responsive UI
-- Light & Dark mode
+
+* Upcoming sessions
+* Subject-based session filtering
+* Session booking
+* Google Meet join option
+* Meeting notifications
+* Weekly quizzes
+* Quiz submission & results
+* Learning progress
+* Assignments
+* Study materials
+* Resource sharing date
+* Personalized study tips
+* FAQs
+* Profile & registered subjects
+* Notifications
+* Responsive UI
+* Light / Dark mode
+
+## 👨‍👩‍👧 Parent Dashboard
+
+* Child profile
+* Child progress tracking
+* Attendance monitoring
+* Quiz performance
+* Upcoming sessions
+* Curriculum
+* Tutor–Parent messaging
+* Meeting requests
+* Meeting approval/status
+* Google Meet join option
+* Notifications
+* Profile management
+* Responsive UI
+* Light / Dark mode
 
 ---
 
-## 👨‍👩‍👧 Parent Dashboard
-- Child progress tracking
-- Attendance monitoring
-- Upcoming sessions
-- Quiz performance
-- Weekly summaries
-- Notifications
-- Profile management
-- Responsive UI
-- Light & Dark mode
+# 🎥 Google Meet Integration
+
+Online sessions are integrated with Google Meet.
+
+* Tutor can start/end online meetings
+* Meeting links are available to relevant students
+* Students receive meeting notifications
+* Students can join active sessions
+* Meeting duration is tracked from start to end
+* Parent–Tutor meeting requests are supported
+* Approved meetings provide meeting details to both sides
+
+Google OAuth credentials are required for Google Meet functionality.
+
+---
+
+# 🤖 AI-Assisted Features
+
+* AI-generated quizzes
+* AI-generated flashcards
+* AI-assisted FAQ / question answering
+* AI-assisted learning insights
+
+---
+
+# 🔗 Real-Data Integration
+
+Student, Tutor and Parent workflows use the **existing SQLite database** instead of frontend mock data.
+
+Tutor-created content is connected to students through existing:
+
+* Subjects
+* StudentSubject
+* Sessions
+* SessionBooking
+* Assignments
+* Quizzes
+* Resources
+* Attendance
+* Meetings
+* Messages
+* Notifications
+
+**No database reset or seed operation is required.**
 
 ---
 
 # 🛠 Tech Stack
 
-| Category | Technologies |
-|-----------|--------------|
-| Frontend | Vue.js 3, Vue Router, Tailwind CSS, Vite |
-| Backend | Flask, Python |
-| Database | SQLite |
-| Charts | Chart.js |
-| Icons | Heroicons |
-| Testing | Pytest |
+| Category      | Technologies              |
+| ------------- | ------------------------- |
+| Frontend      | Vue.js 3, Vue Router      |
+| Styling       | Tailwind CSS              |
+| Build Tool    | Vite                      |
+| Backend       | Flask, Python             |
+| Database      | SQLite                    |
+| Charts        | Chart.js                  |
+| Icons         | Heroicons                 |
+| Testing       | Pytest                    |
+| API           | REST APIs                 |
+| Documentation | OpenAPI / Swagger         |
+| Meetings      | Google Meet               |
+| AI            | AI-assisted learning APIs |
 
 ---
 
@@ -93,11 +155,7 @@ git clone https://github.com/med-08/MAY2026-Team-049.git
 cd MAY2026-Team-049
 ```
 
----
-
-## Backend Setup
-
-### Create Virtual Environment and Enter inside backend folder
+## Backend
 
 ### Windows
 
@@ -115,136 +173,149 @@ source venv/bin/activate
 cd Backend
 ```
 
-### Install Dependencies
+Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-### Seed Database
-
-```bash
-python seed.py
-```
-
-This creates:
-
-- `learnathome.db`
-- Demo users
-- Roles
-- Subjects
-- FAQs
-
-### Run Backend
+Run backend:
 
 ```bash
 python app.py
 ```
 
-Backend runs at
+Backend:
 
+```text
+http://localhost:5000
 ```
+
+### Database
+
+The project uses the **existing SQLite database**.
+
+**No `seed.py` or database reset is required.**
+
+---
+
+# 🎨 Frontend
+
+```bash
+cd Frontend
+npm install
+npm run dev
+```
+
+Frontend:
+
+```text
+http://localhost:5173
+```
+
+The frontend uses the configured:
+
+```text
+VITE_API_BASE_URL
+```
+
+Default backend:
+
+```text
 http://localhost:5000
 ```
 
 ---
 
-## Frontend Setup
+# 🎥 Google Meet Setup
 
-```bash
-cd Frontend
+Google Meet functionality requires Google API/OAuth configuration.
 
-npm install
+Configure the required Google credentials before using:
 
-```
+* Online class meetings
+* Tutor meeting start/end
+* Parent–Tutor meetings
+* Meeting links
 
-Update
+Google credentials/tokens must **not** be committed to the repository.
 
-```
-VITE_API_BASE_URL
-```
-
-if required.
-
-Run
-
-```bash
-npm run dev
-```
-
-Frontend runs at
-
-```
-http://localhost:5173
-```
-
----
-
-# 🔐 Demo Accounts
-
-| Role | Username | Password |
-|------|----------|----------|
-| Admin | admin@Learnathome.com | admin123 |
-| Tutor | tutor@example.com | tutor123 |
-| Student | student@example.com | student123 |
-| Parent | parent@example.com | parent123 |
-
-> Select the appropriate role on the login page after entering the credentials.
+If an OAuth token expires or is revoked, Google authorization must be completed again.
 
 ---
 
 # 🧪 Running Tests
 
-Run the backend test suite:
+From `Backend`:
 
 ```bash
-cd Backend
-
 python -m pytest tests/ test_db.py -v
 ```
 
-✔ 64 automated tests
+Current test suite:
 
-✔ Uses an in-memory database
-
-✔ Never modifies `learnathome.db`
+* **64 automated tests**
+* Pytest
+* Isolated/in-memory database testing
+* Main SQLite database is not modified by the test suite
 
 ---
 
 # 📖 API Documentation
 
-OpenAPI Specification:
+OpenAPI specification:
 
-```
+```text
 Backend/api_docs.yaml
 ```
+
+API coverage includes:
+
+* Authentication
+* Admin
+* Student
+* Tutor
+* Parent
+* Sessions
+* Bookings
+* Assignments
+* Quizzes
+* Resources
+* Attendance
+* Meetings
+* Messages
+* Notifications
+* Progress
+* AI-assisted features
 
 ---
 
 # 📂 Project Structure
 
-```
-LearnAtHome
+```text
+MAY2026-Team-049/
 │
-├── Backend
-│   ├── admin
-│   ├── auth
-│   ├── models
-│   ├── routes
-│   ├── tests
+├── Backend/
+│   ├── admin/
+│   ├── auth/
+│   ├── models/
+│   ├── routes/
+│   ├── tests/
+│   ├── uploads/
 │   ├── app.py
-│   ├── seed.py
+│   ├── models.py
+│   ├── google_meet.py
 │   ├── api_docs.yaml
 │   └── requirements.txt
 │
-├── Frontend
-│   ├── src
-│   │   ├── components
-│   │   ├── views
-│   │   ├── services
-│   │   ├── router
-│   │   └── assets
-│   ├── public
+├── Frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── views/
+│   │   ├── services/
+│   │   ├── router/
+│   │   └── assets/
+│   ├── public/
 │   └── package.json
 │
 └── README.md
@@ -252,118 +323,79 @@ LearnAtHome
 
 ---
 
-# 🔒 Authentication
+# 🔐 Authentication
 
-- Session-based authentication
-- Role-based access control
-- Protected Admin APIs
-- Secure login & logout
-- Credentials automatically included with API requests
+* Session-based authentication
+* Role-based access control
+* Protected APIs
+* Secure login/logout
+* Authenticated API requests
+
+Supported roles:
+
+```text
+Admin
+Tutor
+Student
+Parent
+```
 
 ---
 
 # 🌟 Highlights
 
-- Four dedicated dashboards
-- Role-based authorization
-- Responsive design
-- Light & Dark theme
-- RESTful API architecture
-- Real backend integration
-- Search & filtering
-- Analytics dashboard
-- Comprehensive test suite
-- OpenAPI documentation
+* Four role-based dashboards
+* Real database integration
+* RESTful API architecture
+* Subject-based student sessions
+* Session booking
+* Assignments & quizzes
+* Progress tracking
+* Study resources
+* Attendance
+* Notifications
+* Tutor–Parent communication
+* Google Meet integration
+* Online meeting management
+* AI-assisted learning
+* OpenAPI documentation
+* Automated testing
+* Responsive UI
+* Light / Dark mode
 
 ---
 
-# ⚠ Known Limitations
+# ⚠️ Known Limitations
 
-- Tutor management UI is currently read-only.
-- Subjects taught are derived from scheduled sessions.
-- No cascade deletion for dependent records.
+* Tutor management UI is currently read-only where applicable.
+* Subjects taught are derived from scheduled sessions.
+* No cascade deletion for all dependent records.
+* Google Meet requires valid Google OAuth credentials.
+* Uploaded resources are stored locally under `Backend/uploads/`.
 
 ---
 
 # 🤝 Contributing
 
-1. Fork the repository
-
-2. Create a feature branch
-
 ```bash
 git checkout -b feature/your-feature
-```
-
-3. Commit your changes
-
-```bash
+git add .
 git commit -m "Add your feature"
-```
-
-4. Push the branch
-
-```bash
 git push origin feature/your-feature
 ```
 
-5. Open a Pull Request
+Then open a Pull Request.
 
 ---
 
-# 💙 Built By
+# 👥 Team
 
-**Team Synergy (Team-049)**
+**Team Synergy — Team-049**
 
-Indian Institute of Technology Madras  
-BS Degree Program
+**Indian Institute of Technology Madras**
+
+**BS Degree Program**
 
 ---
 
-## ⭐ If you found this project useful, don't forget to star the repository!
-
-## Real-data integration update
-
-The Student, Tutor and Parent flows now use the existing database instead of frontend mock records for the implemented workflows.
-
-### Backend
-
-- Student routes cover dashboard, progress, FAQs, quizzes, quiz submission, booking, sessions, timetable, assignments, resources, study tips, profile, meetings and notifications.
-- Tutor routes cover dashboard, schedule creation, students, attendance, session updates/notifications, assignments, quizzes/questions, material upload/delete, FAQs, doubts, messages, meetings, earnings, profile and notifications.
-- Parent routes preserve the existing Student -> Parent relationship and provide real profile, overview, meetings, child progress, curriculum, schedule, messages and notifications.
-- No database reset or schema replacement is performed.
-
-### Tutor content flow
-
-Tutor-created data is stored in the existing database and is then exposed to the relevant Student through the existing Subject/Session/Booking/StudentSubject relationships.
-
-Tutor can:
-
-1. Add a session from **Tutor > Schedule**.
-2. Create assignments or quizzes from **Tutor > Assignments**.
-3. Add quiz questions after creating a quiz.
-4. Upload a local file or external resource link from **Tutor > Materials**.
-5. Record attendance and session updates from **Tutor > Attendance**.
-6. Schedule meetings and send messages from **Tutor > Messages**.
-
-Uploaded files are stored locally under `Backend/uploads/` and served through the authenticated application's tutor upload endpoint.
-
-### Run locally
-
-Backend:
-
-```bash
-cd Backend
-python -m pip install -r requirements.txt
-python app.py
-```
-
-Frontend:
-
-```bash
-cd Frontend
-npm install
-npm run dev
-```
-
-The frontend defaults to `http://localhost:5000` for the backend and `http://localhost:5173` for Vite.
+⭐ If you found LearnAtHome useful, don't forget to star the repository!
