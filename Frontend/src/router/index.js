@@ -34,6 +34,7 @@ import StudentStudyResources from '../views/student/StudyResources.vue'
 import StudentStudyTips from '../views/student/StudyTips.vue'
 import StudentFAQ from '../views/student/FAQ.vue'
 import StudentAskDoubt from '../views/student/AskDoubt.vue'
+import StudentMessages from '../views/student/Messages.vue'
 import StudentProfile from '../views/student/Profile.vue'
 
 // Parent Layout
@@ -61,7 +62,6 @@ import TutorMaterials from '../views/tutor/Materials.vue'
 import TutorQaBoard from '../views/tutor/QaBoard.vue'
 import TutorDoubts from '../views/tutor/Doubts.vue'
 import TutorMessages from '../views/tutor/Messages.vue'
-import TutorEarnings from '../views/tutor/Earnings.vue'
 import TutorProfile from '../views/tutor/Profile.vue'
 
 const routes = [
@@ -118,6 +118,7 @@ const routes = [
       { path: 'study-tips', name: 'student-study-tips', component: StudentStudyTips, meta: { title: 'Study Tips' } },
       { path: 'faq', name: 'student-faq', component: StudentFAQ, meta: { title: 'FAQ' } },
       { path: 'ask-doubt', name: 'student-ask-doubt', component: StudentAskDoubt, meta: { title: 'Ask Doubt' } },
+      { path: 'messages', name: 'student-messages', component: StudentMessages, meta: { title: 'Messages' } },
       { path: 'profile', name: 'student-profile', component: StudentProfile, meta: { title: 'Student Profile' } }
     ]
   },
@@ -152,7 +153,6 @@ const routes = [
       { path: 'qa', name: 'tutor-qa', component: TutorQaBoard, meta: { title: 'Tutor Q&A Board', tutorView: 'qa' } },
       { path: 'doubts', name: 'tutor-doubts', component: TutorDoubts, meta: { title: 'Student Doubts', tutorView: 'doubts' } },
       { path: 'messages', name: 'tutor-messages', component: TutorMessages, meta: { title: 'Tutor Messages', tutorView: 'messages' } },
-      { path: 'earnings', name: 'tutor-earnings', component: TutorEarnings, meta: { title: 'Tutor Earnings', tutorView: 'earnings' } },
       { path: 'profile', name: 'tutor-profile', component: TutorProfile, meta: { title: 'Tutor Profile', tutorView: 'profile' } }
     ]
   },

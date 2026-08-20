@@ -32,7 +32,12 @@ const login = async () => {
   }
 
   try {
-    const data = await authApi.login(form.value.email, form.value.password, rememberMe.value)
+    const data = await authApi.login(
+      form.value.email,
+      form.value.password,
+      rememberMe.value,
+      selectedRole.value
+    )
 
     if (!data || !data.success) {
       authError.value = data?.message || "Login failed"
@@ -70,7 +75,16 @@ const login = async () => {
       })
     )
 
-    const roleLower = (data.role || selectedRole.value).toLowerCase()
+    const roleLower = (data.role || '').toString().trim().toLowerCase()
+
+    // The backend is authoritative about the account role.
+    // Never fall back to the selected UI role because doing so can send a
+    // successful login to the wrong dashboard when the response is malformed.
+    if (!roleLower) {
+      localStorage.clear()
+      authError.value = 'Login succeeded but no account role was returned. Please try again.'
+      return
+    }
 
     let target = "/"
     if (roleLower === "student") {

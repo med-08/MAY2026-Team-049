@@ -98,6 +98,9 @@ class Session(db.Model):
     status = db.Column(db.String(20), default='Scheduled')      # Scheduled, Completed, Cancelled, Rescheduled
     # Real Google Meet URL for this session. Nullable so existing sessions remain valid.
     meeting_url = db.Column(db.String(500), nullable=True)
+    meeting_started_at = db.Column(db.DateTime, nullable=True)
+    meeting_ended_at = db.Column(db.DateTime, nullable=True)
+    meeting_duration_seconds = db.Column(db.Integer, nullable=True)
     # max_seats = db.Column(db.Integer, default=5)
 
 class SessionUpdate(db.Model):
@@ -159,6 +162,10 @@ class LearningProgress(db.Model):
     session_completion_status = db.Column(db.String(30)) # Completed, Partially Completed, Needs Revision
     learning_pace = db.Column(db.String(20))             # Fast, Average, Needs Practice
     tutor_remarks = db.Column(db.Text)
+    joined_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    duration_seconds = db.Column(db.Integer, nullable=True)
+    completion_source = db.Column(db.String(20), nullable=True)
 
 class StudyTip(db.Model):
     __tablename__ = 'study_tip'
@@ -175,6 +182,7 @@ class StudyResource(db.Model):
     resource_title = db.Column(db.String(150), nullable=False)
     resource_type = db.Column(db.String(20)) # PDF, Video, Website, Notes, Practice Sheet
     resource_link = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 class TeachingPlan(db.Model):
     __tablename__ = 'teaching_plan'
@@ -250,6 +258,7 @@ class MeetingRequest(db.Model):
     meeting_date = db.Column(db.DateTime, nullable=False)
     meeting_link = db.Column(db.String(255))
     meeting_reason = db.Column(db.String(255))
+    session_id = db.Column(db.Integer, db.ForeignKey('session.session_id'), nullable=True)
     status = db.Column(db.String(20), default='Scheduled')
 
 
@@ -285,6 +294,7 @@ class Notification(db.Model):
     notification_type = db.Column(db.String(30)) # Session Update, Reminder, Weekly Summary, Doubt
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    action_url = db.Column(db.String(255), nullable=True)
 
 class Doubt(db.Model):
     __tablename__ = 'doubt'

@@ -15,13 +15,21 @@
           type="button"
           @click="$emit('navigate', item.go)"
         >
-          <div class="num">{{ item.value }}</div>
-          <div class="lbl">{{ item.label }}</div>
+          <div class="num">
+            {{ item.value }}
+          </div>
+
+          <div class="lbl">
+            {{ item.label }}
+          </div>
         </button>
       </div>
     </div>
 
-    <div class="tiles" style="margin-bottom:18px">
+    <div
+      class="tiles"
+      style="margin-bottom:18px"
+    >
       <TutorStatTile
         v-for="stat in stats"
         :key="stat.id"
@@ -34,9 +42,10 @@
       />
     </div>
 
+    <!-- TODAY'S CLASSES -->
     <div
       class="grid g2col reveal"
-      style="grid-template-columns:1.6fr 1fr"
+      style="grid-template-columns:1fr"
     >
       <div class="card glass">
         <div class="ch">
@@ -53,7 +62,7 @@
 
         <div class="tl">
           <div
-            v-for="session in sessions"
+            v-for="session in todaySessions"
             :key="session.sessionId"
             class="ev"
             :class="session.status"
@@ -74,19 +83,13 @@
               </div>
             </div>
 
-            <!--
-              Existing functionality is preserved.
-              This button already triggers the existing
-              "Class started · students notified" behavior.
-              Only the visible label has been changed.
-            -->
             <button
               v-if="session.action"
               class="btn grad sm magnetic"
               type="button"
-              @click="$emit('toast', 'Class started · students notified')"
+              @click="$emit('navigate', 'schedule')"
             >
-              Notify Student
+              Open Schedule
             </button>
 
             <span
@@ -99,53 +102,9 @@
           </div>
         </div>
       </div>
-
-      <div class="card earn glass">
-        <div class="ch">
-          <h3>This month</h3>
-
-          <button
-            class="lnk"
-            type="button"
-            @click="$emit('navigate', 'earnings')"
-          >
-            Earnings →
-          </button>
-        </div>
-
-        <div class="eyebrow">
-          Payout · paid
-        </div>
-
-        <div
-          class="big"
-          style="color:var(--lime)"
-        >
-          ₹24,000
-        </div>
-
-        <div
-          class="s"
-          style="font-size:12.5px;color:var(--muted);margin-top:4px"
-        >
-          48 sessions · ₹500/hr
-        </div>
-
-        <TutorAreaChart
-          :data="[42,55,60,52,78,70,92]"
-          :active-key="activeKey"
-          :reduce-motion="reduceMotion"
-        />
-
-        <div
-          class="eyebrow"
-          style="margin-top:10px"
-        >
-          Jan — Jun
-        </div>
-      </div>
     </div>
 
+    <!-- QUICK ACTIONS -->
     <div
       class="card glass reveal"
       style="margin-top:18px"
@@ -175,6 +134,7 @@
       </div>
     </div>
 
+    <!-- RECENT ACTIVITY + DEADLINES -->
     <div
       class="grid g2col reveal"
       style="grid-template-columns:1.25fr 1fr;margin-top:18px"
@@ -182,7 +142,10 @@
       <div class="card glass">
         <div class="ch">
           <h3>Recent activity</h3>
-          <span class="eyebrow">newest first</span>
+
+          <span class="eyebrow">
+            newest first
+          </span>
         </div>
 
         <div class="mini-list">
@@ -241,13 +204,18 @@
               class="badge"
               :class="deadline.badge"
             >
-              {{ deadline.badge === 'done' ? 'Ready' : 'Due' }}
+              {{
+                deadline.badge === 'done'
+                  ? 'Ready'
+                  : 'Due'
+              }}
             </span>
           </div>
         </div>
       </div>
     </div>
 
+    <!-- AI SUGGESTIONS + MEETINGS -->
     <div
       class="grid g2col reveal"
       style="grid-template-columns:1fr 1fr;margin-top:18px"
@@ -255,7 +223,10 @@
       <div class="card glass">
         <div class="ch">
           <h3>AI suggestions</h3>
-          <span class="eyebrow">activity insights</span>
+
+          <span class="eyebrow">
+            activity insights
+          </span>
         </div>
 
         <div
@@ -313,6 +284,7 @@
       </div>
     </div>
 
+    <!-- LEADERBOARD + ACHIEVEMENTS -->
     <div
       class="grid g2col reveal"
       style="grid-template-columns:1fr 1fr;margin-top:18px"
@@ -363,11 +335,12 @@
 </template>
 
 <script setup>
-import TutorAreaChart from '../../components/tutor/TutorAreaChart.vue'
+import { computed } from 'vue'
+
 import TutorIconSvg from '../../components/tutor/TutorIconSvg.vue'
 import TutorStatTile from '../../components/tutor/TutorStatTile.vue'
 
-defineProps({
+const props = defineProps({
   stats: {
     type: Array,
     required: true
@@ -429,30 +402,52 @@ defineEmits([
   'toast'
 ])
 
+const todaySessions = computed(() => {
+  const now = new Date()
+
+  const todayKey =
+    `${now.getFullYear()}-` +
+    `${String(now.getMonth() + 1).padStart(2, '0')}-` +
+    `${String(now.getDate()).padStart(2, '0')}`
+
+  return props.sessions.filter(
+    session => session.date === todayKey
+  )
+})
+
 const quickActions = [
   {
     view: 'attendance',
     title: 'Attendance',
     subtitle: 'Mark & send update',
-    icon: '<path d="M9 11.5 11 13.5l4-4.5"/><rect x="3.5" y="4" width="17" height="17" rx="2.5"/>'
+    icon:
+      '<path d="M9 11.5 11 13.5l4-4.5"/>' +
+      '<rect x="3.5" y="4" width="17" height="17" rx="2.5"/>'
   },
+
   {
     view: 'assignments',
     title: 'New quiz',
     subtitle: 'Create or AI-generate',
-    icon: '<path d="M8 3h8l3 3v14H5V4Z"/><path d="M9 12h6"/>'
+    icon:
+      '<path d="M8 3h8l3 3v14H5V4Z"/>' +
+      '<path d="M9 12h6"/>'
   },
+
   {
     view: 'materials',
     title: 'Upload',
     subtitle: 'Share study material',
-    icon: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>'
+    icon:
+      '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>'
   },
+
   {
     view: 'messages',
     title: 'Reply',
     subtitle: '2 parent queries',
-    icon: '<path d="M4 5h16v10H9l-5 4V5Z"/>'
+    icon:
+      '<path d="M4 5h16v10H9l-5 4V5Z"/>'
   }
 ]
 </script>

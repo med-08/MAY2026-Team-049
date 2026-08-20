@@ -21,17 +21,25 @@ const form = ref({
 async function loadDoubts() {
   try {
     const r = await studentApi.getDoubts()
-    doubts.value = r.data?.doubts || []
+
+    const data = r?.data || {}
+
+    doubts.value =
+      data.doubts ||
+      data.messages ||
+      data.conversations ||
+      []
   } catch (e) {
-    error.value = e.message
+    error.value = e?.message || 'Failed to load doubts.'
   }
 }
 
 async function loadTutors() {
   try {
     const r = await studentApi.getDoubtTutors()
-    tutors.value = r.data?.tutors || []
-    subjects.value = r.data?.subjects || []
+
+    tutors.value = r?.data?.tutors || []
+    subjects.value = r?.data?.subjects || []
   } catch {
     tutors.value = []
     subjects.value = []
@@ -40,7 +48,12 @@ async function loadTutors() {
 
 onMounted(async () => {
   loading.value = true
-  await Promise.all([loadDoubts(), loadTutors()])
+
+  await Promise.all([
+    loadDoubts(),
+    loadTutors()
+  ])
+
   loading.value = false
 })
 
@@ -66,7 +79,16 @@ async function send() {
       tutor_id: form.value.tutor_id
     }
 
-    await studentApi.askDoubt(payload)
+    const response = await studentApi.askDoubt(payload)
+
+    if (
+      response &&
+      response.success === false
+    ) {
+      throw new Error(
+        response.message || 'Failed to send doubt.'
+      )
+    }
 
     form.value = {
       question: '',
@@ -76,10 +98,67 @@ async function send() {
 
     await loadDoubts()
   } catch (e) {
-    sendError.value = e.message
+    sendError.value =
+      e?.message || 'Failed to send doubt.'
   } finally {
     sending.value = false
   }
+}
+
+function getTutorName(d) {
+  return (
+    d?.tutor ||
+    d?.tutor_name ||
+    d?.tutorName ||
+    'Tutor'
+  )
+}
+
+function getQuestion(d) {
+  return (
+    d?.question ||
+    d?.message ||
+    d?.content ||
+    ''
+  )
+}
+
+function getAnswer(d) {
+  return (
+    d?.answer ||
+    d?.reply ||
+    d?.reply_message ||
+    d?.tutor_reply ||
+    ''
+  )
+}
+
+function getAskedAt(d) {
+  return (
+    d?.askedAt ||
+    d?.asked_at ||
+    d?.sent_at ||
+    d?.created_at ||
+    ''
+  )
+}
+
+function getStatus(d) {
+  const status = String(
+    d?.status || ''
+  ).toLowerCase()
+
+  if (
+    status.includes('answer') ||
+    status.includes('complete') ||
+    status.includes('replied')
+  ) {
+    return 'Completed'
+  }
+
+  return getAnswer(d)
+    ? 'Completed'
+    : 'Pending'
 }
 </script>
 
@@ -109,7 +188,9 @@ async function send() {
           v-model="form.subject"
           class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-border-dark bg-transparent mb-4 text-sm"
         >
-          <option value="">Select subject</option>
+          <option value="">
+            Select subject
+          </option>
 
           <option
             v-for="s in subjects"
@@ -131,7 +212,9 @@ async function send() {
           v-model="form.tutor_id"
           class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-border-dark bg-transparent mb-4 text-sm"
         >
-          <option value="">Select tutor</option>
+          <option value="">
+            Select tutor
+          </option>
 
           <option
             v-for="t in tutors"
@@ -170,26 +253,35 @@ async function send() {
           {{ sendError }}
         </p>
 
-        <!-- Send -->
         <button
-  class="w-full py-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 font-semibold text-sm hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-  :disabled="
-    sending ||
-    !form.question.trim() ||
-    !form.subject ||
-    !form.tutor_id
-  "
-  @click="send"
->
-  {{ sending ? 'Sending...' : 'Send' }}
-</button>
+          class="w-full py-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 font-semibold text-sm hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="
+            sending ||
+            !form.question.trim() ||
+            !form.subject ||
+            !form.tutor_id
+          "
+          @click="send"
+        >
+          {{ sending ? 'Sending...' : 'Send' }}
+        </button>
       </div>
 
       <!-- Doubt history -->
       <div class="lg:col-span-2 lg:order-1">
-        <h3 class="font-display font-bold mb-4">
-          Your doubts
-        </h3>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-display font-bold">
+            Your doubts & tutor replies
+          </h3>
+
+          <button
+            type="button"
+            class="text-xs font-semibold text-brand-blue hover:underline"
+            @click="loadDoubts"
+          >
+            Refresh
+          </button>
+        </div>
 
         <p
           v-if="loading"
@@ -217,55 +309,91 @@ async function send() {
           class="space-y-4"
         >
           <div
-            v-for="d in doubts"
-            :key="d.id"
+            v-for="(d, index) in doubts"
+            :key="d.id || d.doubt_id || d.message_id || index"
             class="card p-5"
           >
-            <div class="flex justify-between items-start gap-3 mb-2">
+
+            <!-- Header -->
+            <div
+              class="flex justify-between items-start gap-3 mb-3"
+            >
               <div>
                 <p class="text-xs text-brand-blue font-semibold">
-                  {{ d.subject }} &middot; {{ d.tutor }}
+                  {{ d.subject || 'General' }}
+                  &middot;
+                  {{ getTutorName(d) }}
                 </p>
 
                 <p
                   class="text-xs text-ink-soft dark:text-slate-400 mt-0.5"
                 >
                   Asked
-                  {{ d.askedAt ? new Date(d.askedAt).toLocaleString() : '' }}
+                  {{ getAskedAt(d)
+                    ? new Date(getAskedAt(d)).toLocaleString()
+                    : ''
+                  }}
                 </p>
               </div>
 
               <StatusBadge
-                :status="d.status === 'Answered' ? 'Completed' : 'Pending'"
+                :status="getStatus(d)"
               />
             </div>
 
-            <p class="text-sm font-medium mb-3">
-              {{ d.question }}
-            </p>
-
-            <!-- Tutor reply -->
+            <!-- Student question -->
             <div
-              v-if="d.answer"
-              class="rounded-xl bg-slate-50 dark:bg-white/5 p-3"
+              class="rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 p-4 mb-3"
             >
               <p
-                class="text-xs font-semibold text-brand-green-dark dark:text-brand-green mb-1"
+                class="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1"
               >
-                Tutor's reply
+                Your question
               </p>
 
-              <p class="text-sm text-ink-soft dark:text-slate-300">
-                {{ d.answer }}
+              <p class="text-sm font-medium">
+                {{ getQuestion(d) }}
               </p>
             </div>
 
-            <p
-              v-else
-              class="text-xs italic text-ink-soft dark:text-slate-500"
+            <!-- Tutor reply -->
+            <div
+              v-if="getAnswer(d)"
+              class="rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-100 dark:border-green-500/20 p-4"
             >
-              Waiting for a reply...
-            </p>
+              <div
+                class="flex items-center justify-between mb-1"
+              >
+                <p
+                  class="text-xs font-semibold text-brand-green-dark dark:text-brand-green"
+                >
+                  Tutor's reply
+                </p>
+
+                <span class="text-[11px] text-slate-400">
+                  Tutor
+                </span>
+              </div>
+
+              <p
+                class="text-sm text-ink-soft dark:text-slate-300 whitespace-pre-wrap"
+              >
+                {{ getAnswer(d) }}
+              </p>
+            </div>
+
+            <!-- No reply -->
+            <div
+              v-else
+              class="rounded-xl bg-slate-50 dark:bg-white/5 p-3"
+            >
+              <p
+                class="text-xs italic text-ink-soft dark:text-slate-500"
+              >
+                Waiting for a reply from your tutor...
+              </p>
+            </div>
+
           </div>
         </div>
       </div>

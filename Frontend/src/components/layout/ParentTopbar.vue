@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Bars3Icon, BellIcon, SunIcon, MoonIcon } from '@heroicons/vue/24/outline'
 import { useTheme } from '../../composables/useTheme'
@@ -10,18 +10,46 @@ const route = useRoute()
 const router = useRouter()
 const { isDark, toggleTheme } = useTheme()
 
-const { parent, parentNotifications, unreadNotificationCount, markNotificationRead, markAllNotificationsRead } = useParentPortal(1)
+const {
+  parent,
+  parentNotifications,
+  unreadNotificationCount,
+  loadNotifications,
+  markNotificationRead,
+  markAllNotificationsRead
+} = useParentPortal()
 
 const pageTitle = computed(() => route.meta?.title || 'Dashboard')
 const bellOpen = ref(false)
+const clockLabel = ref('')
+let notificationTimer = null
+let clockTimer = null
 
 function formatDateTime(dateStr) {
   return new Date(dateStr).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-function openNotification(n) {
-  markNotificationRead(n.notification_id)
+async function openNotification(n) {
+  try { await markNotificationRead(n.notification_id ?? n.id) } catch {}
+  bellOpen.value = false
+  if (n.action_url) router.push(n.action_url)
 }
+
+function updateClock() {
+  clockLabel.value = new Date().toLocaleString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+}
+
+onMounted(async () => {
+  updateClock()
+  clockTimer = window.setInterval(updateClock, 1000)
+  await loadNotifications()
+  notificationTimer = window.setInterval(loadNotifications, 30000)
+})
+
+onUnmounted(() => {
+  if (clockTimer) window.clearInterval(clockTimer)
+  if (notificationTimer) window.clearInterval(notificationTimer)
+})
 
 function goToProfile() {
   bellOpen.value = false
@@ -37,11 +65,12 @@ function goToProfile() {
           <Bars3Icon class="w-6 h-6" />
         </button>
         <div class="min-w-0">
+          <p class="text-[11px] font-semibold text-brand-blue-600 dark:text-brand-blue-400">{{ clockLabel }}</p>
           <h1 class="font-display font-bold text-slate-800 dark:text-slate-100 leading-tight truncate">
             {{ pageTitle }}
           </h1>
           <p class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-            Welcome back, {{ parent?.parent_name.split(' ')[0] }} 👋
+            Welcome back, {{ parent?.parent_name?.split(' ')[0] || 'Parent' }} 👋
           </p>
         </div>
       </div>
@@ -85,7 +114,7 @@ function goToProfile() {
               <div v-if="parentNotifications.length" class="space-y-1">
                 <button
                   v-for="n in parentNotifications"
-                  :key="n.notification_id"
+                  :key="n.id ?? n.notification_id"
                   class="w-full text-left flex items-start gap-2.5 p-2.5 rounded-lg transition-colors"
                   :class="n.is_read ? 'hover:bg-slate-50 dark:hover:bg-slate-800/60' : 'bg-brand-blue-50 dark:bg-brand-blue-500/10 hover:bg-brand-blue-100 dark:hover:bg-brand-blue-500/20'"
                   @click="openNotification(n)"
@@ -105,7 +134,7 @@ function goToProfile() {
 
         <button class="flex items-center gap-2.5" @click="goToProfile">
           <div class="w-9 h-9 rounded-full bg-gradient-to-br from-brand-green-500 via-brand-blue-500 to-brand-purple-500 flex items-center justify-center text-white text-sm font-semibold shadow-soft">
-            {{ parent?.parent_name.charAt(0) }}
+            {{ parent?.parent_name?.charAt(0) || 'P' }}
           </div>
           <span class="text-sm font-semibold text-slate-700 dark:text-slate-200 hidden sm:inline">{{ parent?.parent_name }}</span>
         </button>

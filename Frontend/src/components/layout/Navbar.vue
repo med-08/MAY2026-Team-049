@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Bars3Icon, MagnifyingGlassIcon, SunIcon, MoonIcon } from '@heroicons/vue/24/outline'
 import { useTheme } from '../../composables/useTheme'
@@ -9,6 +9,11 @@ const route = useRoute()
 const { isDark, toggleTheme } = useTheme()
 
 const pageTitle = computed(() => route.meta?.title || 'Dashboard')
+const clockLabel = ref('')
+let clockTimer = null
+function updateClock() { clockLabel.value = new Date().toLocaleString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) }
+onMounted(() => { updateClock(); clockTimer = window.setInterval(updateClock, 1000) })
+onUnmounted(() => { if (clockTimer) window.clearInterval(clockTimer) })
 </script>
 
 <template>
@@ -19,6 +24,7 @@ const pageTitle = computed(() => route.meta?.title || 'Dashboard')
           <Bars3Icon class="w-6 h-6" />
         </button>
         <div class="min-w-0">
+          <p class="text-[11px] font-semibold text-brand-blue-600 dark:text-brand-blue-400">{{ clockLabel }}</p>
           <h1 class="font-display font-bold text-slate-800 dark:text-slate-100 leading-tight truncate">
             Welcome, Admin 🎯
           </h1>

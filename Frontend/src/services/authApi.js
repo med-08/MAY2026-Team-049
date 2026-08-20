@@ -1,10 +1,10 @@
 import { apiRequest } from './apiClient'
 
 export const authApi = {
-  login: (email, password, remember = false) =>
+  login: (email, password, remember = false, role = '') =>
     apiRequest('/auth/login', {
       method: 'POST',
-      body: { email, password, remember }
+      body: { email, password, remember, role }
     }),
 
   getSubjects: () =>

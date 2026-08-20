@@ -158,7 +158,9 @@ onMounted(init)
               <thead>
                 <tr class="border-b border-slate-100 dark:border-slate-800">
                   <th class="table-th">Date</th>
+                  <th class="table-th">Subject / Tutor</th>
                   <th class="table-th">Status</th>
+                  <th class="table-th">Attendance</th>
                   <th class="table-th">Learning Pace</th>
                   <th class="table-th">Tutor Observations</th>
                 </tr>
@@ -166,12 +168,21 @@ onMounted(init)
               <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                 <tr v-for="log in progress.session_logs" :key="log.session_id">
                   <td class="table-td text-xs font-medium">{{ log.date }}</td>
+                  <td class="table-td text-xs"><span class="font-semibold">{{ log.subject }}</span><span class="block text-slate-400">{{ log.tutor_name }}</span></td>
                   <td class="table-td">
                     <span 
                       class="px-2.5 py-1 rounded-full text-[11px] font-semibold"
                       :class="log.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'"
                     >
                       {{ log.status }}
+                    </span>
+                  </td>
+                  <td class="table-td">
+                    <span
+                      class="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                      :class="log.attendance_status === 'Present' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : log.attendance_status === 'Absent' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : log.attendance_status === 'Pending' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-slate-500/10 text-slate-600 dark:text-slate-400'"
+                    >
+                      {{ log.attendance_status || 'Not recorded' }}
                     </span>
                   </td>
                   <td class="table-td">
@@ -182,7 +193,7 @@ onMounted(init)
                       {{ log.learning_pace }}
                     </span>
                   </td>
-                  <td class="table-td text-xs text-slate-600 dark:text-slate-300">{{ log.remarks }}</td>
+                  <td class="table-td text-xs text-slate-600 dark:text-slate-300">{{ log.remarks || 'No tutor observation recorded.' }}</td>
                 </tr>
               </tbody>
             </table>

@@ -25,6 +25,12 @@ export const parentApi = {
     apiRequest(`${BASE}/curriculum/${studentId}`),
 
   getSchedule: (parentId) => apiRequest(`${BASE}/schedule/${parentId}`),
+  updateScheduleSession: (sessionId, payload) => apiRequest(`${BASE}/schedule/session/${sessionId}`, { method: 'PUT', body: payload }),
+  startScheduleSession: (sessionId) => apiRequest(`${BASE}/schedule/session/${sessionId}/start`, { method: 'POST' }),
+  endScheduleSession: (sessionId) => apiRequest(`${BASE}/schedule/session/${sessionId}/end`, { method: 'POST' }),
+  cancelScheduleSession: (sessionId) => apiRequest(`${BASE}/schedule/session/${sessionId}`, { method: 'DELETE' }),
+  requestAttendanceConfirmation: (studentId, sessionId) => apiRequest(`${BASE}/attendance-query`, { method: 'POST', body: { student_id: studentId, session_id: sessionId } }),
+  markNotificationRead: (id) => apiRequest(`${BASE}/notifications/${id}/read`, { method: 'PATCH' }),
 
   // Two-Way Parent-Tutor Communication
   getMessages: (parentId) => apiRequest(`${BASE}/messages/${parentId}`),

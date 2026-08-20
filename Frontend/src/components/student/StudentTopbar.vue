@@ -15,6 +15,8 @@ import InitialsAvatar from "./InitialsAvatar.vue"
 const emit = defineEmits(["toggle-sidebar"])
 const { isDark, toggleTheme } = useTheme()
 const search = ref("")
+const clockLabel = ref("")
+let clockTimer = null
 const searchFocused = ref(false)
 const router = useRouter()
 
@@ -56,9 +58,11 @@ async function openNotification(n) {
     }
   }
   notificationsOpen.value = false
-  if (n.type === "Doubt") {
+  if (n.actionUrl) {
+    router.push(n.actionUrl)
+  } else if (n.type === "Doubt") {
     router.push("/student/ask-doubt")
-  } else if (n.type === "Class Started") {
+  } else if (["Class Started", "Meeting Scheduled", "Meeting Updated", "Class Completed", "Session Completed"].includes(n.type)) {
     router.push("/student/sessions")
   }
 }
@@ -82,6 +86,9 @@ function makeInitials(name) {
 }
 
 onMounted(async () => {
+  const updateClock = () => { clockLabel.value = new Date().toLocaleString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }) }
+  updateClock()
+  clockTimer = window.setInterval(updateClock, 1000)
   try {
     const profileRes = await studentApi.getProfile()
     if (profileRes.success && profileRes.data?.student) {
@@ -138,6 +145,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (clockTimer) window.clearInterval(clockTimer)
   if (notificationsTimer) window.clearInterval(notificationsTimer)
 })
 
@@ -212,6 +220,7 @@ function handleBlur() {
     </button>
 
     <div class="min-w-0 shrink-0 hidden sm:block">
+      <p class="text-[11px] font-semibold text-brand-blue">{{ clockLabel }}</p>
       <h2 class="font-display font-bold text-lg leading-tight truncate">
         Welcome back, {{ student.name ? student.name.split(" ")[0] : "Student" }} 🎓
       </h2>

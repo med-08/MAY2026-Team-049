@@ -3,6 +3,8 @@ import sqlite3
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from database import db
+from werkzeug.security import generate_password_hash
+from models import Role, Subject, Admin
 
 from auth import auth_bp
 from parent import parent_bp
@@ -40,9 +42,69 @@ def ensure_database_compatibility(db_path):
                 "ALTER TABLE session ADD COLUMN meeting_url VARCHAR(500)"
             )
 
+        resource_columns = {row[1] for row in connection.execute("PRAGMA table_info(study_resource)").fetchall()}
+        if resource_columns and "created_at" not in resource_columns:
+            connection.execute("ALTER TABLE study_resource ADD COLUMN created_at DATETIME")
+            connection.execute("UPDATE study_resource SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
+
+        session_columns = {row[1] for row in connection.execute("PRAGMA table_info(session)").fetchall()}
+        if session_columns:
+            for column, definition in [("meeting_started_at", "DATETIME"), ("meeting_ended_at", "DATETIME"), ("meeting_duration_seconds", "INTEGER")]:
+                if column not in session_columns:
+                    connection.execute(f"ALTER TABLE session ADD COLUMN {column} {definition}")
+
+        progress_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_progress)").fetchall()}
+        if progress_columns:
+            for column, definition in [("joined_at", "DATETIME"), ("completed_at", "DATETIME"), ("duration_seconds", "INTEGER"), ("completion_source", "VARCHAR(20)")]:
+                if column not in progress_columns:
+                    connection.execute(f"ALTER TABLE learning_progress ADD COLUMN {column} {definition}")
+
+        meeting_columns = {row[1] for row in connection.execute("PRAGMA table_info(meeting_request)").fetchall()}
+        if meeting_columns and "session_id" not in meeting_columns:
+            connection.execute("ALTER TABLE meeting_request ADD COLUMN session_id INTEGER")
+
+        notification_columns = {row[1] for row in connection.execute("PRAGMA table_info(notification)").fetchall()}
+        if notification_columns and "action_url" not in notification_columns:
+            connection.execute("ALTER TABLE notification ADD COLUMN action_url VARCHAR(255)")
+
         connection.commit()
     finally:
         connection.close()
+
+
+def initialize_core_data():
+    """Create only the minimum real application data required for a fresh DB.
+
+    This deliberately creates no sample students, parents, tutors, sessions,
+    bookings, messages, or other mock activity. Existing rows are preserved.
+    """
+    roles = {}
+    for role_name in ('Admin', 'Tutor', 'Parent', 'Student'):
+        role = Role.query.filter_by(role_name=role_name).first()
+        if not role:
+            role = Role(role_name=role_name)
+            db.session.add(role)
+            db.session.flush()
+        roles[role_name] = role
+
+    subjects = ('English', 'Mathematics', 'Physics', 'Science', 'Chemistry', 'Biology')
+    for subject_name in subjects:
+        if not Subject.query.filter_by(subject_name=subject_name).first():
+            db.session.add(Subject(subject_name=subject_name))
+
+    # Create only the system administrator when a fresh DB has no admin.
+    if not Admin.query.filter_by(username='admin').first():
+        db.session.add(
+            Admin(
+                role_id=roles['Admin'].role_id,
+                username='admin',
+                password_hash=generate_password_hash('admin123'),
+                admin_name='Admin User',
+                email='admin@learnathome.com'
+            )
+        )
+
+    db.session.commit()
 
 
 def create_app():
@@ -63,6 +125,9 @@ def create_app():
     # Keep the existing real database intact while applying only the
     # additive compatibility fix needed by the current SQLAlchemy models.
     ensure_database_compatibility(DB_PATH)
+    with app.app_context():
+        db.create_all()
+        initialize_core_data()
 
     CORS(
         app,
