@@ -8,95 +8,57 @@ LearnAtHome is a full-stack home tuition management platform connecting **Studen
 
 ---
 
-# ✨ Features
+## ✨ Features
 
-## 👨‍💼 Admin Dashboard
+| 👨‍💼 **Admin**         | 👨‍🏫 **Tutor**       |
+| ----------------------- | --------------------- |
+| • Dashboard analytics   | • Student management  |
+| • Student management    | • Session scheduling  |
+| • Tutor management      | • Attendance          |
+| • Parent management     | • Assignments         |
+| • Search & filtering    | • Quizzes & questions |
+| • Block / Unblock users | • Study materials     |
+| • Delete users          | • FAQs & doubts       |
+| • Registration approval | • Messages            |
+| • Profile management    | • Notifications       |
+| • Responsive UI         | • Google Meet         |
+| • Light / Dark mode     | • Earnings & profile  |
 
-* Dashboard analytics
-* Student, Tutor & Parent management
-* Search & filtering
-* Block / Unblock users
-* Delete users
-* Registration approval
-* Profile management
-* Responsive UI
-* Light / Dark mode
-
-## 👨‍🏫 Tutor Dashboard
-
-* Assigned student management
-* Session scheduling
-* Subject-based sessions
-* Attendance management
-* Assignments
-* Quizzes & quiz questions
-* Study material upload/delete
-* FAQs & doubts
-* Tutor–Parent messaging
-* Notifications
-* Google Meet meetings
-* Meeting start/end & duration tracking
-* Earnings
-* Profile management
-* Responsive UI
-* Light / Dark mode
-
-## 🎓 Student Dashboard
-
-* Upcoming sessions
-* Subject-based session filtering
-* Session booking
-* Google Meet join option
-* Meeting notifications
-* Weekly quizzes
-* Quiz submission & results
-* Learning progress
-* Assignments
-* Study materials
-* Resource sharing date
-* Personalized study tips
-* FAQs
-* Profile & registered subjects
-* Notifications
-* Responsive UI
-* Light / Dark mode
-
-## 👨‍👩‍👧 Parent Dashboard
-
-* Child profile
-* Child progress tracking
-* Attendance monitoring
-* Quiz performance
-* Upcoming sessions
-* Curriculum
-* Tutor–Parent messaging
-* Meeting requests
-* Meeting approval/status
-* Google Meet join option
-* Notifications
-* Profile management
-* Responsive UI
-* Light / Dark mode
+| 🎓 **Student**            | 👨‍👩‍👧 **Parent**   |
+| ------------------------- | --------------------- |
+| • Upcoming sessions       | • Child profile       |
+| • Subject-based sessions  | • Progress tracking   |
+| • Session booking         | • Attendance          |
+| • Google Meet joining     | • Quiz performance    |
+| • Weekly quizzes          | • Upcoming sessions   |
+| • Quiz results            | • Curriculum          |
+| • Learning progress       | • Tutor messaging     |
+| • Assignments             | • Meeting requests    |
+| • Study materials         | • Meeting status      |
+| • Personalized study tips | • Google Meet joining |
+| • FAQs                    | • Notifications       |
+| • Notifications           | • Profile management  |
+| • Registered subjects     | • Responsive UI       |
 
 ---
 
-# 🎥 Google Meet Integration
+## 🎥 Google Meet
 
-Online sessions are integrated with Google Meet.
+* Online tutoring sessions
+* Tutor start / end meeting
+* Automatic meeting link availability
+* Student **Join Meeting** option
+* Meeting-start notifications
+* Meeting duration tracking
+* Parent–Tutor meeting requests
+* Meeting approval and status
+* Parent and Tutor meeting access
 
-* Tutor can start/end online meetings
-* Meeting links are available to relevant students
-* Students receive meeting notifications
-* Students can join active sessions
-* Meeting duration is tracked from start to end
-* Parent–Tutor meeting requests are supported
-* Approved meetings provide meeting details to both sides
-
-Google OAuth credentials are required for Google Meet functionality.
+> Google API / OAuth credentials are required for Google Meet functionality.
 
 ---
 
-# 🤖 AI-Assisted Features
+## 🤖 AI Features
 
 * AI-generated quizzes
 * AI-generated flashcards
@@ -105,35 +67,30 @@ Google OAuth credentials are required for Google Meet functionality.
 
 ---
 
-# 🔗 Real-Data Integration
+## 🔗 Real-Data Integration
 
-Student, Tutor and Parent workflows use the **existing SQLite database** instead of frontend mock data.
+The implemented workflows use the **existing SQLite database** instead of frontend mock data.
 
-Tutor-created content is connected to students through existing:
+| Area          | Database Integration                                |
+| ------------- | --------------------------------------------------- |
+| Students      | Profile, subjects, sessions, bookings, progress     |
+| Tutors        | Students, sessions, assignments, quizzes, resources |
+| Parents       | Child relationship, progress, sessions, meetings    |
+| Sessions      | Subjects, bookings, meeting information             |
+| Learning      | Assignments, quizzes, resources, progress           |
+| Communication | Messages, meetings, notifications                   |
 
-* Subjects
-* StudentSubject
-* Sessions
-* SessionBooking
-* Assignments
-* Quizzes
-* Resources
-* Attendance
-* Meetings
-* Messages
-* Notifications
-
-**No database reset or seed operation is required.**
+**No database reset or `seed.py` execution is required.**
 
 ---
 
-# 🛠 Tech Stack
+## 🛠 Tech Stack
 
 | Category      | Technologies              |
 | ------------- | ------------------------- |
 | Frontend      | Vue.js 3, Vue Router      |
 | Styling       | Tailwind CSS              |
-| Build Tool    | Vite                      |
+| Build         | Vite                      |
 | Backend       | Flask, Python             |
 | Database      | SQLite                    |
 | Charts        | Chart.js                  |
@@ -148,16 +105,16 @@ Tutor-created content is connected to students through existing:
 
 # 🚀 Quick Start
 
-## Clone Repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/med-08/MAY2026-Team-049.git
 cd MAY2026-Team-049
 ```
 
-## Backend
+### 2. Backend
 
-### Windows
+**Windows**
 
 ```bash
 python -m venv venv
@@ -165,7 +122,7 @@ venv\Scripts\activate
 cd Backend
 ```
 
-### macOS / Linux
+**macOS / Linux**
 
 ```bash
 python3 -m venv venv
@@ -179,7 +136,7 @@ Install dependencies:
 python -m pip install -r requirements.txt
 ```
 
-Run backend:
+Run:
 
 ```bash
 python app.py
@@ -191,15 +148,17 @@ Backend:
 http://localhost:5000
 ```
 
-### Database
+### 3. Database
 
-The project uses the **existing SQLite database**.
+The application uses the **existing SQLite database**.
 
-**No `seed.py` or database reset is required.**
+```text
+No seed.py
+No database reset
+No schema replacement
+```
 
----
-
-# 🎨 Frontend
+### 4. Frontend
 
 ```bash
 cd Frontend
@@ -213,51 +172,46 @@ Frontend:
 http://localhost:5173
 ```
 
-The frontend uses the configured:
+Default API:
 
 ```text
-VITE_API_BASE_URL
-```
-
-Default backend:
-
-```text
-http://localhost:5000
+VITE_API_BASE_URL=http://localhost:5000
 ```
 
 ---
 
-# 🎥 Google Meet Setup
+# 🎥 Google Meet Configuration
 
-Google Meet functionality requires Google API/OAuth configuration.
+Google Meet requires Google API/OAuth configuration.
 
-Configure the required Google credentials before using:
+Configure the required credentials before using:
 
 * Online class meetings
-* Tutor meeting start/end
+* Meeting start/end
 * Parent–Tutor meetings
 * Meeting links
 
-Google credentials/tokens must **not** be committed to the repository.
-
-If an OAuth token expires or is revoked, Google authorization must be completed again.
+**Do not commit Google credentials, tokens, API keys, or secrets to Git.**
 
 ---
 
-# 🧪 Running Tests
+# 🧪 Testing
 
-From `Backend`:
+Run backend tests:
 
 ```bash
+cd Backend
 python -m pytest tests/ test_db.py -v
 ```
 
-Current test suite:
+### Current Test Suite
 
-* **64 automated tests**
-* Pytest
-* Isolated/in-memory database testing
-* Main SQLite database is not modified by the test suite
+| Item      | Details                |
+| --------- | ---------------------- |
+| Framework | Pytest                 |
+| Tests     | **64 automated tests** |
+| Database  | Isolated / in-memory   |
+| Main DB   | Not modified by tests  |
 
 ---
 
@@ -269,24 +223,19 @@ OpenAPI specification:
 Backend/api_docs.yaml
 ```
 
-API coverage includes:
+### API Areas
 
-* Authentication
-* Admin
-* Student
-* Tutor
-* Parent
-* Sessions
-* Bookings
-* Assignments
-* Quizzes
-* Resources
-* Attendance
-* Meetings
-* Messages
-* Notifications
-* Progress
-* AI-assisted features
+| Module         | Coverage                                   |
+| -------------- | ------------------------------------------ |
+| Authentication | Login, logout, sessions                    |
+| Admin          | User management & approvals                |
+| Student        | Dashboard, progress, quizzes, sessions     |
+| Tutor          | Students, sessions, assignments, materials |
+| Parent         | Child progress, schedule, meetings         |
+| Communication  | Messages & notifications                   |
+| Meetings       | Google Meet & meeting requests             |
+| Learning       | Assignments, quizzes, resources            |
+| AI             | AI-assisted learning features              |
 
 ---
 
@@ -328,40 +277,25 @@ MAY2026-Team-049/
 * Session-based authentication
 * Role-based access control
 * Protected APIs
-* Secure login/logout
+* Secure login / logout
 * Authenticated API requests
 
-Supported roles:
+### Supported Roles
 
-```text
-Admin
-Tutor
-Student
-Parent
-```
+**Admin · Tutor · Student · Parent**
 
 ---
 
-# 🌟 Highlights
+# 🌟 Key Highlights
 
-* Four role-based dashboards
-* Real database integration
-* RESTful API architecture
-* Subject-based student sessions
-* Session booking
-* Assignments & quizzes
-* Progress tracking
-* Study resources
-* Attendance
-* Notifications
-* Tutor–Parent communication
-* Google Meet integration
-* Online meeting management
-* AI-assisted learning
-* OpenAPI documentation
-* Automated testing
-* Responsive UI
-* Light / Dark mode
+| 📌 Platform               | 📚 Learning       | 🎥 Communication |
+| ------------------------- | ----------------- | ---------------- |
+| Role-based dashboards     | Assignments       | Google Meet      |
+| Real database integration | Quizzes           | Meeting requests |
+| REST APIs                 | Progress tracking | Messages         |
+| Responsive UI             | Study resources   | Notifications    |
+| Light / Dark mode         | Attendance        | Session updates  |
+| Search & filtering        | AI features       | Meeting duration |
 
 ---
 
@@ -384,18 +318,17 @@ git commit -m "Add your feature"
 git push origin feature/your-feature
 ```
 
-Then open a Pull Request.
+Open a Pull Request after pushing your branch.
 
 ---
 
 # 👥 Team
 
-**Team Synergy — Team-049**
+### Team Synergy — Team-049
 
 **Indian Institute of Technology Madras**
-
 **BS Degree Program**
 
 ---
 
-⭐ If you found LearnAtHome useful, don't forget to star the repository!
+⭐ **If you found LearnAtHome useful, don't forget to star the repository!**
