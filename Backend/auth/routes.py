@@ -1,3 +1,5 @@
+import json
+
 from flask import request, session, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
@@ -217,15 +219,42 @@ def register():
         role_id = get_role_id(role_name)
         hashed_pw = generate_password_hash(password)
 
+        # Subjects: the registration form sends subject_ids (from the same
+        # subject picker used by Student sign-up). Tutors are matched against
+        # subjects_json by subject NAME elsewhere (see parent/routes.py and
+        # tutor/routes.py profile), so resolve ids -> names here.
+        subject_ids = data.get('subject_ids') or []
+        subject_names = []
+        if isinstance(subject_ids, list) and subject_ids:
+            rows = Subject.query.filter(Subject.subject_id.in_(subject_ids)).all()
+            subject_names = [s.subject_name for s in rows]
+
+        # Teaching languages: accept either a list (["English", "Hindi"]) or
+        # a comma-separated string ("English, Hindi").
+        languages = data.get('languages') or data.get('teaching_languages') or []
+        if isinstance(languages, str):
+            languages = [lang.strip() for lang in languages.split(',') if lang.strip()]
+        elif not isinstance(languages, list):
+            languages = []
+
+        try:
+            experience_years = int(data.get('experience_years') or 0)
+        except (TypeError, ValueError):
+            experience_years = 0
+
         new_user = Tutor(
             tutor_name=name,
             email=email,
             password_hash=hashed_pw,
             role_id=role_id,
             phone_no=data.get('phone_no') or data.get('phone'),
-            experience_years=data.get('experience_years') or 0,
+            experience_years=experience_years,
             bio=data.get('bio', ''),
+            education=data.get('education', ''),
             hourly_rate=data.get('hourly_rate', ''),
+            availability=data.get('availability', ''),
+            subjects_json=json.dumps(subject_names),
+            languages_json=json.dumps(languages),
             status='Pending'
         )
 
