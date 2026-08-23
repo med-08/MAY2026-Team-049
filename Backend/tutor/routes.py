@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime, date, timedelta
+from urllib.parse import urlparse
 
 from flask import jsonify, request, session, current_app, send_from_directory
 from werkzeug.utils import secure_filename
@@ -30,10 +31,13 @@ from models import (
     LearningProgress,
     StudentSubject,
     SessionBooking,
+    FlashcardSet,
+    Flashcard,
 )
 from utils import decode_jwt_token
 from google_meet import create_meeting_space, GoogleMeetNotConfigured
 from schedule import meeting_lifecycle, _local_now
+from ai_service import AIConfigError, AIResponseError, AIServiceError, generate_text
 
 
 # =========================================================
@@ -132,6 +136,16 @@ def fail(message, status=400):
         "success": False,
         "message": message
     }), status
+
+
+def clean_optional_url(value):
+    url = str(value or "").strip()
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Meeting Link must be a valid URL")
+    return url
 
 
 def subject_name(subject_id):
@@ -1044,6 +1058,11 @@ def add_class():
             "start_time and end_time are required"
         )
 
+    try:
+        meeting_link = clean_optional_url(data.get("meeting_link") or data.get("meeting_url"))
+    except ValueError as exc:
+        return fail(str(exc))
+
     # -----------------------------------------------------
     # SUBJECT VALIDATION
     # -----------------------------------------------------
@@ -1126,6 +1145,7 @@ def add_class():
         end_time=end_time,
         session_type="One-to-One" if student_id is not None else data.get("session_type", "Regular"),
         status="Scheduled",
+        meeting_url=meeting_link,
     )
 
     db.session.add(s)
@@ -1156,15 +1176,18 @@ def add_class():
 
     try:
 
-        s.meeting_url = (
-            create_meeting_space()
-        )
+        if not s.meeting_url:
+            s.meeting_url = (
+                create_meeting_space()
+            )
 
-        db.session.commit()
+            db.session.commit()
 
-        meet_message = (
-            "Session created with Google Meet"
-        )
+            meet_message = (
+                "Session created with Google Meet"
+            )
+        else:
+            meet_message = "Session created with meeting link"
 
     except GoogleMeetNotConfigured as exc:
 
@@ -1325,13 +1348,20 @@ def update_class(session_id):
                 ).time()
             )
 
+        if "meeting_link" in data or "meeting_url" in data:
+            s.meeting_url = clean_optional_url(
+                data.get("meeting_link")
+                if "meeting_link" in data
+                else data.get("meeting_url")
+            )
+
     except (
         TypeError,
         ValueError
-    ):
+    ) as exc:
 
         return fail(
-            "Invalid schedule data"
+            str(exc) if str(exc) == "Meeting Link must be a valid URL" else "Invalid schedule data"
         )
 
     if s.start_time >= s.end_time:
@@ -1960,15 +1990,26 @@ def meeting_requests():
             continue
         sess = db.session.get(Session, m.session_id)
         student = db.session.get(Student, m.student_id) if m.student_id else None
-        parent = db.session.get(Parent, m.parent_id) if m.parent_id else None
+        # A parent is only shown when the parent genuinely created/is part of
+        # this meeting. A stray parent_id on a Student- or Tutor-created
+        # meeting must never surface as "Parent: [Name]" on the tutor side.
+        parent = db.session.get(Parent, m.parent_id) if (m.parent_id and m.creator_type == 'Parent') else None
         subject = db.session.get(Subject, sess.subject_id) if sess else None
+        display_status = m.status
+        if m.creator_type != 'Parent':
+            if m.status == 'Pending Approval':
+                display_status = 'Tutor approval pending'
+            elif m.status == 'Scheduled':
+                display_status = 'Meeting scheduled with student and tutor'
         data.append({
             'meeting_id': m.meeting_id, 'session_id': m.session_id, 'status': m.status,
+            'display_status': display_status,
             'date': sess.session_date.isoformat() if sess else m.meeting_date.date().isoformat(),
             'start_time': sess.start_time.strftime('%H:%M') if sess else m.meeting_date.strftime('%H:%M'),
             'end_time': sess.end_time.strftime('%H:%M') if sess else None,
             'student_id': student.student_id if student else None, 'student_name': student.student_name if student else None,
             'parent_id': parent.parent_id if parent else None, 'parent_name': parent.parent_name if parent else None,
+            'creator_type': m.creator_type,
             'subject': subject.subject_name if subject else 'General', 'reason': m.meeting_reason or '',
             'session_type': sess.session_type if sess else 'One-to-One', 'meeting_link': (sess.meeting_url if sess and sess.meeting_url else m.meeting_link),
             'meeting_started_at': sess.meeting_started_at.isoformat() if sess and sess.meeting_started_at else None, 'meeting_ended_at': sess.meeting_ended_at.isoformat() if sess and sess.meeting_ended_at else None,
@@ -2002,13 +2043,22 @@ def decide_meeting(meeting_id):
     if not sess:
         return fail('Shared session not found', 404)
     student = db.session.get(Student, meeting.student_id) if meeting.student_id else None
-    parent = db.session.get(Parent, meeting.parent_id) if meeting.parent_id else None
+    # Only notify/reference the parent when the parent actually created this
+    # meeting. A Student+Tutor meeting must never treat the parent as a
+    # participant, even if parent_id is present on the record.
+    parent = db.session.get(Parent, meeting.parent_id) if (meeting.parent_id and meeting.creator_type == 'Parent') else None
     subject = db.session.get(Subject, sess.subject_id)
     label = subject.subject_name if subject else 'session'
     if decision == 'approve':
         # Approval is the point at which the one-to-one becomes an official
         # tutor session. Make sure a Meet URL exists before notifying users.
-        if not sess.meeting_url:
+        try:
+            provided_link = clean_optional_url(data.get('meeting_link'))
+        except ValueError as exc:
+            return fail(str(exc))
+        if provided_link:
+            sess.meeting_url = provided_link
+        elif not sess.meeting_url:
             try:
                 sess.meeting_url = create_meeting_space()
             except GoogleMeetNotConfigured as exc:
@@ -2021,6 +2071,8 @@ def decide_meeting(meeting_id):
                 return fail('Google Meet link could not be created. Please try again.', 502)
         meeting.meeting_link = sess.meeting_url
         meeting.status = 'Scheduled'
+        if not meeting.meeting_type:
+            meeting.meeting_type = 'STUDENT_TUTOR' if meeting.creator_type == 'Student' else ('PARENT_TUTOR' if meeting.parent_id else 'TUTOR_STUDENT')
         sess.status = 'Scheduled'
         meeting_type = 'One-to-One' if sess.session_type == 'One-to-One' else 'Regular'
         message = f'Tutor {tutor.tutor_name} approved your {meeting_type} {label} meeting for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}–{sess.end_time.strftime("%I:%M %p")}. The meeting link is ready and will become joinable when the tutor starts the meeting.'
@@ -2028,10 +2080,11 @@ def decide_meeting(meeting_id):
             db.session.add(Notification(recipient_type='Student', recipient_id=student.student_id, title=f'{label} meeting approved', message=message, notification_type='Meeting Approved', action_url=f'/student/sessions?session_id={sess.session_id}'))
         if parent:
             db.session.add(Notification(recipient_type='Parent', recipient_id=parent.parent_id, title=f'{label} meeting approved', message=message, notification_type='Meeting Approved', action_url=f'/parent/schedule?session_id={sess.session_id}'))
+        with_whom = parent.parent_name if parent else (student.student_name if student else 'the student')
         db.session.add(Notification(
             recipient_type='Tutor', recipient_id=tutor.tutor_id,
             title=f'{meeting_type} {label} meeting approved',
-            message=f'Your {meeting_type} meeting with {parent.parent_name if parent else "the parent"} is scheduled for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}–{sess.end_time.strftime("%I:%M %p")}. Meeting link is ready.',
+            message=f'Your {meeting_type} meeting with {with_whom} is scheduled for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}–{sess.end_time.strftime("%I:%M %p")}. Meeting link is ready.',
             notification_type='Meeting Approved',
             action_url=f'/tutor/schedule?session_id={sess.session_id}'
         ))
@@ -2750,12 +2803,174 @@ def delete_assignment(
 )
 @tutor_required
 def ai_generate():
+    tutor = current_tutor()
+    if not tutor:
+        return fail("Tutor not found", 404)
 
-    return fail(
-        "AI generation is not configured; "
-        "create real quiz questions in the database instead.",
-        501,
+    data = request.get_json(silent=True) or {}
+    requested_subject = str(data.get("subject") or "").strip()
+    topic = str(data.get("topic") or data.get("title") or "").strip()
+    difficulty = str(data.get("difficulty") or "Medium").strip()
+    try:
+        question_count = int(data.get("question_count") or data.get("count") or 5)
+    except (TypeError, ValueError):
+        question_count = 5
+    question_count = max(1, min(question_count, 10))
+
+    subject_ids = get_tutor_subject_ids(tutor)
+    if not subject_ids:
+        subject_ids = {s.subject_id for s in Subject.query.all()}
+
+    subjects = [
+        subject_name(subject_id)
+        for subject_id in sorted(subject_ids)
+    ]
+    subject = requested_subject or (subjects[0] if subjects else "General")
+
+    sessions = (
+        Session.query
+        .filter(Session.tutor_id == tutor.tutor_id)
+        .order_by(Session.session_date.desc(), Session.start_time.desc())
+        .limit(12)
+        .all()
     )
+    session_data = [
+        {
+            "subject": subject_name(s.subject_id),
+            "date": s.session_date.isoformat() if s.session_date else None,
+            "status": s.status,
+            "session_type": s.session_type,
+        }
+        for s in sessions
+    ]
+
+    student_ids = {
+        booking.student_id
+        for s in sessions
+        for booking in SessionBooking.query.filter_by(session_id=s.session_id).all()
+    }
+    students = []
+    for sid in sorted(student_ids):
+        student = db.session.get(Student, sid)
+        if not student:
+            continue
+        progress_rows = (
+            LearningProgress.query
+            .filter_by(student_id=sid)
+            .order_by(LearningProgress.progress_id.desc())
+            .limit(5)
+            .all()
+        )
+        attempts = (
+            QuizAttempt.query
+            .filter_by(student_id=sid)
+            .order_by(QuizAttempt.attempted_at.desc())
+            .limit(5)
+            .all()
+        )
+        attendance = (
+            AttendanceRecord.query
+            .filter_by(tutor_id=tutor.tutor_id, student_id=sid)
+            .order_by(AttendanceRecord.date.desc())
+            .limit(10)
+            .all()
+        )
+        students.append({
+            "learner": f"student_{len(students) + 1}",
+            "progress": [
+                {
+                    "status": p.session_completion_status,
+                    "learning_pace": p.learning_pace,
+                    "remarks": p.tutor_remarks,
+                }
+                for p in progress_rows
+            ],
+            "quiz_attempts": [
+                {
+                    "score": a.score,
+                    "attempted_at": a.attempted_at.isoformat() if a.attempted_at else None,
+                }
+                for a in attempts
+            ],
+            "attendance": [
+                {
+                    "status": a.status,
+                    "date": a.date.isoformat() if a.date else None,
+                }
+                for a in attendance
+            ],
+        })
+
+    payload = {
+        "tutor": {
+            "subjects": subjects,
+        },
+        "request": {
+            "subject": subject,
+            "topic": topic or "recent class topics",
+            "difficulty": difficulty,
+            "question_count": question_count,
+        },
+        "recent_sessions": session_data,
+        "students": students,
+    }
+
+    prompt = (
+        "You are Tutor AI for LearnAtHome. Generate quiz/practice questions "
+        "for the tutor using only the exact requested subject, topic, "
+        "difficulty, and question count below. Every question must directly "
+        "test the requested topic; do not drift into adjacent topics. Do not "
+        "invent student records. Return a JSON array of "
+        "objects with question, option_a, option_b, option_c, option_d, "
+        "correct_option, and explanation. correct_option must be exactly one "
+        "of A, B, C, or D. Verify each answer against its explanation before "
+        "returning it. Keep questions suitable for home "
+        f"tuition. Return exactly {question_count} questions.\n\n"
+        f"DATA:\n{json.dumps(payload, ensure_ascii=False, default=str)}"
+    )
+
+    try:
+        raw_generated = generate_text(prompt, response_mime_type="application/json")
+        json_text = raw_generated.strip()
+        if json_text.startswith("```"):
+            json_text = json_text.removeprefix("```json").removeprefix("```")
+            json_text = json_text.removesuffix("```").strip()
+        generated = json.loads(json_text)
+        required_fields = {
+            "question",
+            "option_a",
+            "option_b",
+            "option_c",
+            "option_d",
+            "correct_option",
+            "explanation",
+        }
+        if not isinstance(generated, list) or not generated:
+            raise AIResponseError("AI provider returned an invalid question set.")
+        for item in generated:
+            if not isinstance(item, dict) or not required_fields.issubset(item):
+                raise AIResponseError("AI provider returned an invalid question set.")
+            correct_option = str(item.get("correct_option", "")).strip().upper()
+            if correct_option.startswith("OPTION_"):
+                correct_option = correct_option[-1]
+            if correct_option not in {"A", "B", "C", "D"}:
+                raise AIResponseError("AI provider returned an invalid question set.")
+            item["correct_option"] = correct_option
+        generated = generated[:question_count]
+    except AIConfigError as exc:
+        return fail(str(exc), 503)
+    except json.JSONDecodeError:
+        return fail("AI question generation failed: AI provider returned invalid question JSON.", 502)
+    except (AIServiceError, AIResponseError) as exc:
+        return fail(f"AI question generation failed: {exc}", 502)
+
+    return ok({
+        "questions": generated,
+        "sourceCounts": {
+            "sessions": len(session_data),
+            "students": len(students),
+        },
+    }, message="AI questions generated")
 
 
 # =========================================================
@@ -2805,13 +3020,68 @@ def tutor_quizzes():
                 404
             )
 
+        tutor_subject_ids = get_tutor_subject_ids(tutor)
+        if tutor_subject_ids and subject_id not in tutor_subject_ids:
+            return fail(
+                "You can only create quizzes for subjects assigned to your tutor profile.",
+                403
+            )
+
+        assigned_student_id = data.get("assigned_student_id")
+        if assigned_student_id not in (None, ""):
+            try:
+                assigned_student_id = int(assigned_student_id)
+            except (TypeError, ValueError):
+                return fail("assigned_student_id must be a valid student id")
+
+            student = db.session.get(Student, assigned_student_id)
+            if not student:
+                return fail("Assigned student not found", 404)
+
+            linked = (
+                Session.query
+                .join(SessionBooking, SessionBooking.session_id == Session.session_id)
+                .filter(
+                    Session.tutor_id == tutor.tutor_id,
+                    Session.subject_id == subject_id,
+                    SessionBooking.student_id == assigned_student_id,
+                    SessionBooking.booking_status == "Confirmed",
+                )
+                .first()
+            )
+            if not linked:
+                return fail(
+                    "The selected student is not assigned to your sessions for this subject.",
+                    403
+                )
+        else:
+            linked_student_ids = {
+                booking.student_id
+                for sess in Session.query.filter_by(
+                    tutor_id=tutor.tutor_id,
+                    subject_id=subject_id
+                ).all()
+                for booking in SessionBooking.query.filter_by(
+                    session_id=sess.session_id,
+                    booking_status="Confirmed"
+                ).all()
+            }
+            assigned_student_id = (
+                next(iter(linked_student_ids))
+                if len(linked_student_ids) == 1
+                else None
+            )
+
         quiz = Quiz(
             tutor_id=tutor.tutor_id,
             subject_id=subject_id,
+            assigned_student_id=assigned_student_id,
             title=(
                 data.get("title")
                 or ""
             ).strip(),
+            topic=(data.get("topic") or "").strip() or None,
+            difficulty=(data.get("difficulty") or "").strip() or None,
             week_number=data.get(
                 "week_number"
             ),
@@ -2837,6 +3107,9 @@ def tutor_quizzes():
 
                     "title":
                         quiz.title,
+
+                    "assigned_student_id":
+                        quiz.assigned_student_id,
                 }
             },
             "Quiz created",
@@ -2860,6 +3133,9 @@ def tutor_quizzes():
                 "quiz_id":
                     q.quiz_id,
 
+                "subject_id":
+                    q.subject_id,
+
                 "title":
                     q.title,
 
@@ -2868,12 +3144,45 @@ def tutor_quizzes():
                         q.subject_id
                     ),
 
+                "topic":
+                    q.topic,
+
+                "difficulty":
+                    q.difficulty,
+
+                "assigned_student_id":
+                    q.assigned_student_id,
+
+                "assignedStudent":
+                    (
+                        db.session.get(Student, q.assigned_student_id).student_name
+                        if q.assigned_student_id and db.session.get(Student, q.assigned_student_id)
+                        else None
+                    ),
+
                 "questionCount":
                     QuizQuestion.query
                     .filter_by(
                         quiz_id=q.quiz_id
                     )
                     .count(),
+
+                "questions": [
+                    {
+                        "id": question.question_id,
+                        "question": question.question,
+                        "option_a": question.option_a,
+                        "option_b": question.option_b,
+                        "option_c": question.option_c,
+                        "option_d": question.option_d,
+                        "correct_option": question.correct_option,
+                        "explanation": question.explanation or "",
+                    }
+                    for question in QuizQuestion.query
+                    .filter_by(quiz_id=q.quiz_id)
+                    .order_by(QuizQuestion.question_id)
+                    .all()
+                ],
             }
             for q in rows
         ]
@@ -2947,10 +3256,19 @@ def create_question(
                 ""
             )
         ).upper(),
+
+        explanation=(
+            data.get("explanation")
+            or ""
+        ).strip(),
     )
 
     if (
         not question.question
+        or not question.option_a
+        or not question.option_b
+        or not question.option_c
+        or not question.option_d
         or question.correct_option
         not in {
             "A",
@@ -2961,8 +3279,7 @@ def create_question(
     ):
 
         return fail(
-            "Question and correct_option "
-            "A/B/C/D are required"
+            "Question, options A-D, and correct_option A/B/C/D are required"
         )
 
     db.session.add(
@@ -2979,6 +3296,198 @@ def create_question(
         "Question added",
         201,
     )
+
+
+# =========================================================
+# FLASHCARDS
+# =========================================================
+
+@tutor_bp.route(
+    "/flashcards/ai-generate",
+    methods=["POST"]
+)
+@tutor_required
+def flashcards_ai_generate():
+    tutor = current_tutor()
+    if not tutor:
+        return fail("Tutor not found", 404)
+
+    data = request.get_json(silent=True) or {}
+    subject = str(data.get("subject") or "").strip()
+    topic = str(data.get("topic") or "").strip()
+    class_level = str(data.get("class_level") or "").strip()
+    context = str(data.get("context") or "").strip()
+    try:
+        count = int(data.get("count") or 10)
+    except (TypeError, ValueError):
+        count = 10
+    count = max(1, min(count, 20))
+
+    if not subject:
+        return fail("subject is required")
+    if not topic:
+        return fail("topic is required")
+
+    prompt = (
+        "You are Tutor AI for LearnAtHome. Generate flashcards for the tutor "
+        "using only the exact requested subject, topic, class level, and "
+        "context below. Every flashcard must directly test or explain the "
+        "requested topic; do not drift into adjacent topics. Do not invent "
+        "content unrelated to what was provided. Return a JSON array of "
+        "objects with exactly the keys front, back, and explanation. "
+        "'front' is a short question or term for the student to recall, "
+        "'back' is the concise answer or definition, 'explanation' is one "
+        f"sentence giving context. Return exactly {count} flashcards.\n\n"
+        f"Subject: {subject}\n"
+        f"Topic: {topic}\n"
+        f"Class level: {class_level or 'Not specified'}\n"
+        f"Context: {context or 'None provided'}"
+    )
+
+    try:
+        raw_generated = generate_text(prompt, response_mime_type="application/json")
+        json_text = raw_generated.strip()
+        if json_text.startswith("```"):
+            json_text = json_text.removeprefix("```json").removeprefix("```")
+            json_text = json_text.removesuffix("```").strip()
+        generated = json.loads(json_text)
+        if not isinstance(generated, list) or not generated:
+            raise AIResponseError("AI provider returned an invalid flashcard set.")
+        required_fields = {"front", "back"}
+        for item in generated:
+            if not isinstance(item, dict) or not required_fields.issubset(item):
+                raise AIResponseError("AI provider returned an invalid flashcard set.")
+            if not str(item.get("front") or "").strip() or not str(item.get("back") or "").strip():
+                raise AIResponseError("AI provider returned an invalid flashcard set.")
+        generated = generated[:count]
+    except AIConfigError as exc:
+        return fail(str(exc), 503)
+    except json.JSONDecodeError:
+        return fail("AI flashcard generation failed: AI provider returned invalid flashcard JSON.", 502)
+    except (AIServiceError, AIResponseError) as exc:
+        return fail(f"AI flashcard generation failed: {exc}", 502)
+
+    return ok({"flashcards": generated}, message="AI flashcards generated")
+
+
+@tutor_bp.route(
+    "/flashcard-sets",
+    methods=["GET", "POST"]
+)
+@tutor_required
+def tutor_flashcard_sets():
+    tutor = current_tutor()
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+
+        try:
+            subject_id = int(data.get("subject_id"))
+        except (TypeError, ValueError):
+            return fail("subject_id is required")
+
+        if not db.session.get(Subject, subject_id):
+            return fail("Subject not found", 404)
+
+        tutor_subject_ids = get_tutor_subject_ids(tutor)
+        if tutor_subject_ids and subject_id not in tutor_subject_ids:
+            return fail(
+                "You can only create flashcards for subjects assigned to your tutor profile.",
+                403
+            )
+
+        assigned_student_id = data.get("assigned_student_id")
+        if assigned_student_id not in (None, ""):
+            try:
+                assigned_student_id = int(assigned_student_id)
+            except (TypeError, ValueError):
+                return fail("assigned_student_id must be a valid student id")
+            if not db.session.get(Student, assigned_student_id):
+                return fail("Assigned student not found", 404)
+        else:
+            assigned_student_id = None
+
+        title = (data.get("title") or "").strip()
+        if not title:
+            return fail("title is required")
+
+        fset = FlashcardSet(
+            tutor_id=tutor.tutor_id,
+            subject_id=subject_id,
+            assigned_student_id=assigned_student_id,
+            title=title,
+            topic=(data.get("topic") or "").strip() or None,
+            class_level=(data.get("class_level") or "").strip() or None,
+            context=(data.get("context") or "").strip() or None,
+        )
+        db.session.add(fset)
+        db.session.commit()
+
+        return ok(
+            {"set": {"set_id": fset.set_id, "title": fset.title, "assigned_student_id": fset.assigned_student_id}},
+            "Flashcard set created",
+            201,
+        )
+
+    rows = (
+        FlashcardSet.query
+        .filter_by(tutor_id=tutor.tutor_id)
+        .order_by(FlashcardSet.created_at.desc())
+        .all()
+    )
+
+    return ok({
+        "sets": [
+            {
+                "set_id": s.set_id,
+                "subject_id": s.subject_id,
+                "subject": subject_name(s.subject_id),
+                "title": s.title,
+                "topic": s.topic,
+                "class_level": s.class_level,
+                "context": s.context,
+                "assigned_student_id": s.assigned_student_id,
+                "assignedStudent": (
+                    db.session.get(Student, s.assigned_student_id).student_name
+                    if s.assigned_student_id and db.session.get(Student, s.assigned_student_id)
+                    else None
+                ),
+                "cardCount": Flashcard.query.filter_by(set_id=s.set_id).count(),
+                "cards": [
+                    {"id": c.card_id, "front": c.front, "back": c.back, "explanation": c.explanation or ""}
+                    for c in Flashcard.query.filter_by(set_id=s.set_id).order_by(Flashcard.card_id).all()
+                ],
+            }
+            for s in rows
+        ]
+    })
+
+
+@tutor_bp.route(
+    "/flashcard-sets/<int:set_id>/cards",
+    methods=["POST"]
+)
+@tutor_required
+def create_flashcard(set_id):
+    tutor = current_tutor()
+
+    fset = db.session.get(FlashcardSet, set_id)
+    if not fset or fset.tutor_id != tutor.tutor_id:
+        return fail("Flashcard set not found", 404)
+
+    data = request.get_json(silent=True) or {}
+    front = (data.get("front") or "").strip()
+    back = (data.get("back") or "").strip()
+    explanation = (data.get("explanation") or "").strip()
+
+    if not front or not back:
+        return fail("front and back are required")
+
+    card = Flashcard(set_id=set_id, front=front, back=back, explanation=explanation)
+    db.session.add(card)
+    db.session.commit()
+
+    return ok({"card_id": card.card_id}, "Flashcard added", 201)
 
 
 # =========================================================
@@ -3703,9 +4212,35 @@ def conversations():
                 ),
         })
 
+    # Make connected contacts discoverable even before the first message.
+    linked_student_ids = [b.student_id for b in SessionBooking.query.join(Session, SessionBooking.session_id == Session.session_id).filter(
+        Session.tutor_id == tutor.tutor_id, SessionBooking.booking_status == "Confirmed"
+    ).all()]
+    for sid in linked_student_ids:
+        student = db.session.get(Student, sid)
+        if not student:
+            continue
+        key = f"student-{sid}"
+        conversations_data.setdefault(key, {
+            "id": key, "participantName": student.student_name, "subtitle": "Student",
+            "initials": "".join(x[0] for x in student.student_name.split()[:2]).upper(),
+            "gradient": "linear-gradient(135deg,var(--g1),var(--g2))", "messages": [],
+            "otherType": "Student", "otherId": sid,
+        })
+        if student.parent_id:
+            parent = db.session.get(Parent, student.parent_id)
+            if parent:
+                pkey = f"parent-{parent.parent_id}"
+                item = conversations_data.setdefault(pkey, {
+                    "id": pkey, "participantName": parent.parent_name, "subtitle": "Parent",
+                    "initials": "".join(x[0] for x in parent.parent_name.split()[:2]).upper(),
+                    "gradient": "linear-gradient(135deg,var(--g1),var(--g2))", "messages": [],
+                    "otherType": "Parent", "otherId": parent.parent_id,
+                })
+                item.setdefault("linkedStudents", []).append({"studentId": sid, "studentName": student.student_name})
+
     return ok({
-        "conversations":
-            conversations_data
+        "conversations": conversations_data
     })
 
 
@@ -3770,31 +4305,27 @@ def send_message():
             "Invalid receiver_id"
         )
 
-    if (
-        receiver_type == "Student"
-        and not db.session.get(
-            Student,
-            receiver_id
-        )
-    ):
-
-        return fail(
-            "Student not found",
-            404
-        )
-
-    if (
-        receiver_type == "Parent"
-        and not db.session.get(
-            Parent,
-            receiver_id
-        )
-    ):
-
-        return fail(
-            "Parent not found",
-            404
-        )
+    if receiver_type == "Student":
+        receiver = db.session.get(Student, receiver_id)
+        if not receiver:
+            return fail("Student not found", 404)
+        related = Session.query.join(SessionBooking, SessionBooking.session_id == Session.session_id).filter(
+            Session.tutor_id == tutor.tutor_id, SessionBooking.student_id == receiver_id,
+            SessionBooking.booking_status == "Confirmed"
+        ).first()
+        if not related:
+            return fail("You can only message students connected to you", 403)
+    else:
+        receiver = db.session.get(Parent, receiver_id)
+        if not receiver:
+            return fail("Parent not found", 404)
+        child_ids = [x.student_id for x in Student.query.filter_by(parent_id=receiver_id).all()]
+        related = Session.query.join(SessionBooking, SessionBooking.session_id == Session.session_id).filter(
+            Session.tutor_id == tutor.tutor_id, SessionBooking.student_id.in_(child_ids or [-1]),
+            SessionBooking.booking_status == "Confirmed"
+        ).first()
+        if not related:
+            return fail("You can only message parents connected through your students", 403)
 
     message = Message(
         sender_type="Tutor",
@@ -3817,8 +4348,14 @@ def send_message():
 
     return ok(
         {
-            "messageId":
-                message.message_id
+            "messageId": message.message_id,
+            "message_id": message.message_id,
+            "message": message.message,
+            "sender_type": message.sender_type,
+            "sender_id": message.sender_id,
+            "receiver_type": message.receiver_type,
+            "receiver_id": message.receiver_id,
+            "sent_at": message.sent_at.isoformat() if message.sent_at else None,
         },
         "Message sent",
         201,
@@ -3873,6 +4410,11 @@ def request_meeting():
         return fail(
             "student_id or parent_id is required"
         )
+
+    try:
+        meeting_link = clean_optional_url(data.get("meeting_link"))
+    except ValueError as exc:
+        return fail(str(exc))
 
     if (
         student_id
@@ -3979,9 +4521,9 @@ def request_meeting():
             )
         )
         try:
-            session_obj.meeting_url = create_meeting_space()
+            session_obj.meeting_url = meeting_link or create_meeting_space()
         except GoogleMeetNotConfigured:
-            session_obj.meeting_url = data.get("meeting_link") or None
+            session_obj.meeting_url = None
 
     meeting = MeetingRequest(
         tutor_id=tutor.tutor_id,
@@ -3998,7 +4540,7 @@ def request_meeting():
         meeting_date=meeting_date,
         meeting_link=data.get(
             "meeting_link"
-        ),
+        ) if meeting_link else None,
         meeting_reason=data.get(
             "meeting_reason",
             ""
@@ -4009,6 +4551,8 @@ def request_meeting():
             else None
         ),
         status="Scheduled",
+        creator_type="Tutor",
+        meeting_type="TUTOR_STUDENT" if student_id else "TUTOR_PARENT",
     )
 
     db.session.add(

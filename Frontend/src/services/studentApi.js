@@ -1,35 +1,10 @@
-const BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/student`;
+import { apiRequest } from './apiClient'
 
 /**
  * Helper to execute HTTP requests with JWT token + credentials
  */
 async function request(endpoint, options = {}) {
-  const url = `${BASE_URL}${endpoint}`;
-
-  // Get token from localStorage
-  const token = localStorage.getItem('token');
-
-  const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    },
-    credentials: 'include',
-    ...options,
-  };
-
-  try {
-    const res = await fetch(url, config);
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || `HTTP Error ${res.status}`);
-    }
-    return await res.json();
-  } catch (err) {
-    console.warn(`[studentApi] Request to ${endpoint} failed:`, err.message);
-    throw err;
-  }
+  return apiRequest(`/student${endpoint}`, options)
 }
 
 export const studentApi = {
@@ -45,18 +20,18 @@ export const studentApi = {
   getQuizDetails: (quizId) => request(`/quizzes/${quizId}`),
   submitQuiz: (quizId, answers) => request(`/quizzes/${quizId}/submit`, {
     method: 'POST',
-    body: JSON.stringify({ answers }),
+    body: { answers },
   }),
 
   // Features 5 & 6: Booking
   getBookingSlots: () => request('/booking-slots'),
   bookSession: (sessionId) => request('/book-session', {
     method: 'POST',
-    body: JSON.stringify({ session_id: sessionId }),
+    body: { session_id: sessionId },
   }),
   rescheduleSession: (currentSessionId, targetSessionId) => request('/reschedule-session', {
     method: 'POST',
-    body: JSON.stringify({ current_session_id: currentSessionId, target_session_id: targetSessionId }),
+    body: { current_session_id: currentSessionId, target_session_id: targetSessionId },
   }),
 
   // Feature 7: Sessions
@@ -65,19 +40,30 @@ export const studentApi = {
   completeSession: (sessionId) => request(`/sessions/${sessionId}/complete`, { method: 'POST' }),
   getUpcomingSessions: () => request('/upcoming-sessions'),
   getNextSession: () => request('/next-session'),
+  requestMeeting: (payload) => request('/meeting-request', { method: 'POST', body: payload }),
 
   // Feature 8: Study Tips
   getStudyTips: () => request('/study-tips'),
+  getPerformanceInsights: () => request('/performance-insights', { method: 'POST' }),
+  getFlashcards: (topic = '') => request(`/flashcards${topic ? `?topic=${encodeURIComponent(topic)}` : ''}`),
+  getFlashcardSets: () => request('/flashcard-sets'),
+  getFlashcardSetCards: (setId) => request(`/flashcard-sets/${setId}/cards`),
+  aiGenerateFlashcards: (payload) => request('/flashcards/ai-generate', { method: 'POST', body: payload }),
+  createOwnFlashcardSet: (payload) => request('/flashcard-sets/self-generate', { method: 'POST', body: payload }),
+  performanceChat: (message) => request('/performance-chat', {
+    method: 'POST',
+    body: { message },
+  }),
 
   // Feature 9: Assignments
   getAssignments: () => request('/assignments'),
   updateAssignmentProgress: (assignmentId, progress) => request(`/assignments/${assignmentId}/update-progress`, {
     method: 'POST',
-    body: JSON.stringify({ progress }),
+    body: { progress },
   }),
   submitAssignment: (assignmentId) => request(`/assignments/${assignmentId}/submit`, {
     method: 'POST',
-    body: JSON.stringify({ progress: 100 }),
+    body: { progress: 100 },
   }),
   markHomeworkCompleted: (assignmentId) => request(`/assignments/${assignmentId}/complete`, {
     method: 'POST',
@@ -87,7 +73,7 @@ export const studentApi = {
   getDoubts: () => request('/doubts'),
   askDoubt: (payload) => request('/doubts', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: payload,
   }),
   getDoubtTutors: () => request('/tutors'),
 
@@ -101,16 +87,16 @@ export const studentApi = {
   },
   getResources: () => request('/resources'),
   getSubjects: () => request('/subjects'),
-  addSubject: (subjectId) => request('/subjects', { method: 'POST', body: JSON.stringify({ subject_id: subjectId }) }),
-  removeSubject: (subjectId) => request('/subjects', { method: 'DELETE', body: JSON.stringify({ subject_id: subjectId }) }),
+  addSubject: (subjectId) => request('/subjects', { method: 'POST', body: { subject_id: subjectId } }),
+  removeSubject: (subjectId) => request('/subjects', { method: 'DELETE', body: { subject_id: subjectId } }),
   getProfile: () => request('/profile'),
-  updateProfile: (data) => request('/profile', { method: 'PUT', body: JSON.stringify(data) }),
-  changePassword: (data) => request('/profile/password', { method: 'PUT', body: JSON.stringify(data) }),
+  updateProfile: (data) => request('/profile', { method: 'PUT', body: data }),
+  changePassword: (data) => request('/profile/password', { method: 'PUT', body: data }),
   getMeetings: () => request('/meetings'),
   getNotifications: () => request('/notifications'),
   markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'PATCH' }),
   getMessages: () => request('/messages'),
-  sendMessage: (payload) => request('/messages', { method: 'POST', body: JSON.stringify(payload) }),
+  sendMessage: (payload) => request('/messages', { method: 'POST', body: payload }),
 };
 
 export default studentApi;

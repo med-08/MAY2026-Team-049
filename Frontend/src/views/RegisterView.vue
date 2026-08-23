@@ -55,7 +55,14 @@ const form = ref({
   parentName: "",
   parentPassword: "",
   parentConfirmPassword: "",
-  parentPhone: ""
+  parentPhone: "",
+  // Tutor-only fields
+  bio: "",
+  experience: "",
+  education: "",
+  hourlyRate: "",
+  availability: "",
+  teachingLanguages: ""
 })
 
 // Parent-email lookup state: 'idle' | 'checking' | 'found' | 'not_found' | 'error'
@@ -189,13 +196,29 @@ const register = async () => {
           }
     }
   } else {
+    // Tutor registration
+    if (!selectedSubjectIds.value.length) {
+      authError.value = "Please select at least one subject you can teach."
+      return
+    }
+
     payload = {
       name: form.value.fullName,
       email: form.value.email,
       role: selectedRole.value,
       password: form.value.password,
       confirm_password: form.value.confirmPassword,
-      phone_no: form.value.mobile
+      phone_no: form.value.mobile,
+      bio: form.value.bio.trim(),
+      experience_years: form.value.experience,
+      education: form.value.education.trim(),
+      hourly_rate: form.value.hourlyRate.trim(),
+      availability: form.value.availability.trim(),
+      subject_ids: selectedSubjectIds.value,
+      languages: form.value.teachingLanguages
+        .split(",")
+        .map((lang) => lang.trim())
+        .filter(Boolean)
     }
   }
 
@@ -218,7 +241,13 @@ const register = async () => {
         parentName: "",
         parentPassword: "",
         parentConfirmPassword: "",
-        parentPhone: ""
+        parentPhone: "",
+        bio: "",
+        experience: "",
+        education: "",
+        hourlyRate: "",
+        availability: "",
+        teachingLanguages: ""
       }
       selectedSubjectIds.value = []
       resetParentCheck()
@@ -309,13 +338,16 @@ async function logOutAndRetry() {
           </div>
         </div>
 
-        <div v-if="selectedRole === 'Student'" class="mt-6">
+        <div v-if="selectedRole === 'Student' || selectedRole === 'Tutor'" class="mt-6">
           <label class="font-semibold text-slate-700 dark:text-slate-300">
-            Subjects You're Interested In <span class="text-rose-500">*</span>
+            {{ selectedRole === 'Student' ? "Subjects You're Interested In" : "Subjects You Teach" }}
+            <span class="text-rose-500">*</span>
           </label>
 
           <p class="text-xs text-slate-400 mt-1 mb-3">
-            Required — pick at least one so tutors and admins know what to set you up with.
+            {{ selectedRole === 'Student'
+              ? "Required — pick at least one so tutors and admins know what to set you up with."
+              : "Required — pick at least one so students and admins know what you can teach." }}
           </p>
 
           <div v-if="subjectsLoading" class="text-sm text-slate-400">
@@ -395,6 +427,100 @@ async function logOutAndRetry() {
               placeholder="Enter your school name (optional)"
               class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
             />
+          </div>
+
+          <div v-if="selectedRole === 'Tutor'" class="space-y-5 pt-2 border-t border-slate-200 dark:border-slate-700">
+            <p class="font-semibold text-slate-700 dark:text-slate-300 mt-5 mb-1">
+              Teaching Profile
+            </p>
+            <p class="text-xs text-slate-400 mb-3">
+              This helps students and admins understand your teaching background.
+            </p>
+
+            <div>
+              <label class="font-medium text-slate-700 dark:text-slate-300">
+                Personal Bio
+              </label>
+
+              <textarea
+                v-model="form.bio"
+                rows="3"
+                placeholder="Tell students a little about yourself (optional)"
+                class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+              ></textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="font-medium text-slate-700 dark:text-slate-300">
+                  Experience
+                </label>
+
+                <input
+                  v-model="form.experience"
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 5 (years)"
+                  class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+                />
+              </div>
+
+              <div>
+                <label class="font-medium text-slate-700 dark:text-slate-300">
+                  Hourly Rate
+                </label>
+
+                <input
+                  v-model="form.hourlyRate"
+                  type="text"
+                  placeholder="e.g. ₹500/hr"
+                  class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label class="font-medium text-slate-700 dark:text-slate-300">
+                Education
+              </label>
+
+              <input
+                v-model="form.education"
+                type="text"
+                placeholder="e.g. B.Tech Computer Science"
+                class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+              />
+            </div>
+
+            <div>
+              <label class="font-medium text-slate-700 dark:text-slate-300">
+                Teaching Language(s)
+              </label>
+
+              <input
+                v-model="form.teachingLanguages"
+                type="text"
+                placeholder="e.g. English, Hindi"
+                class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+              />
+
+              <p class="text-xs text-slate-400 mt-2">
+                Separate multiple languages with commas.
+              </p>
+            </div>
+
+            <div>
+              <label class="font-medium text-slate-700 dark:text-slate-300">
+                Availability
+              </label>
+
+              <input
+                v-model="form.availability"
+                type="text"
+                placeholder="e.g. Mon-Fri, 4 PM - 8 PM"
+                class="w-full mt-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 transition-colors duration-300"
+              />
+            </div>
           </div>
 
           <div>

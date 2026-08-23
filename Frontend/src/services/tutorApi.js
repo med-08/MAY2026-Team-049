@@ -194,11 +194,12 @@ export const tutorApi = {
       }
     ),
 
-  aiGenerateQuestions: () =>
+  aiGenerateQuestions: (payload = {}) =>
     apiRequest(
       `${BASE}/assignments/ai-generate`,
       {
-        method: 'POST'
+        method: 'POST',
+        body: payload
       }
     ),
 
@@ -235,6 +236,46 @@ export const tutorApi = {
   ) =>
     apiRequest(
       `${BASE}/quizzes/${quizId}/questions`,
+      {
+        method: 'POST',
+        body: payload
+      }
+    ),
+
+
+  // ==========================================================
+  // FLASHCARDS
+  // ==========================================================
+
+  aiGenerateFlashcards: (payload = {}) =>
+    apiRequest(
+      `${BASE}/flashcards/ai-generate`,
+      {
+        method: 'POST',
+        body: payload
+      }
+    ),
+
+  getFlashcardSets: () =>
+    apiRequest(
+      `${BASE}/flashcard-sets`
+    ),
+
+  createFlashcardSet: (payload) =>
+    apiRequest(
+      `${BASE}/flashcard-sets`,
+      {
+        method: 'POST',
+        body: payload
+      }
+    ),
+
+  addFlashcard: (
+    setId,
+    payload
+  ) =>
+    apiRequest(
+      `${BASE}/flashcard-sets/${setId}/cards`,
       {
         method: 'POST',
         body: payload

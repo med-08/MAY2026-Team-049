@@ -177,6 +177,21 @@
               </div>
 
 
+              <div>
+
+                <label class="lab">
+                  Meeting link (optional)
+                </label>
+
+                <input
+                  v-model="studentMeeting.meeting_link"
+                  class="field"
+                  placeholder="Leave blank to auto-generate a Google Meet link"
+                >
+
+              </div>
+
+
               <button
                 type="button"
                 class="btn grad connect-button"
@@ -374,6 +389,21 @@
                   v-model="parentMeeting.meeting_reason"
                   class="field"
                   placeholder="Progress discussion, attendance query..."
+                >
+
+              </div>
+
+
+              <div>
+
+                <label class="lab">
+                  Meeting link (optional)
+                </label>
+
+                <input
+                  v-model="parentMeeting.meeting_link"
+                  class="field"
+                  placeholder="Leave blank to auto-generate a Google Meet link"
                 >
 
               </div>
@@ -844,7 +874,9 @@ const studentMeeting = reactive({
 
   meeting_date: '',
 
-  meeting_reason: ''
+  meeting_reason: '',
+
+  meeting_link: ''
 
 })
 
@@ -853,7 +885,9 @@ const parentMeeting = reactive({
 
   meeting_date: '',
 
-  meeting_reason: ''
+  meeting_reason: '',
+
+  meeting_link: ''
 
 })
 
@@ -1252,7 +1286,8 @@ async function sendDirectMessage(type) {
     emit(
       'send-message',
       `${isStudent ? 'student' : 'parent'}-${numericTargetId}`,
-      text
+      text,
+      true
     )
 
 
@@ -1394,6 +1429,8 @@ function resetMeetingForm(type) {
 
     studentMeeting.meeting_reason = ''
 
+    studentMeeting.meeting_link = ''
+
     showStudentMeetingForm.value = false
 
   } else {
@@ -1403,6 +1440,8 @@ function resetMeetingForm(type) {
     parentMeeting.meeting_date = ''
 
     parentMeeting.meeting_reason = ''
+
+    parentMeeting.meeting_link = ''
 
     showParentMeetingForm.value = false
 
@@ -1474,7 +1513,11 @@ async function scheduleMeeting(type) {
           isStudent
             ? 'One-to-one session with tutor'
             : 'Tutor-parent meeting'
-        )
+        ),
+
+      meeting_link:
+        form.meeting_link ||
+        undefined
 
     }
 
@@ -1568,6 +1611,21 @@ async function decideRequest(
 
   const payload = {
     decision
+  }
+
+
+  if (decision === 'approve') {
+
+    const link =
+      window.prompt(
+        'Meeting link (leave blank to auto-generate a Google Meet link):',
+        ''
+      )
+
+    if (link) {
+      payload.meeting_link = link
+    }
+
   }
 
 

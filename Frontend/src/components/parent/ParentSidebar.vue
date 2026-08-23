@@ -29,8 +29,9 @@ const navItems = [
   { name: 'parent-progress', to: '/parent/progress', label: 'Child Progress', icon: ChartBarIcon },
   { name: 'parent-curriculum', to: '/parent/curriculum', label: 'Curriculum Plan', icon: BookOpenIcon },
   { name: 'parent-schedule', to: '/parent/schedule', label: 'Connect with Your Child', icon: CalendarDaysIcon },
-  { name: 'parent-messages', to: '/parent/messages', label: 'Messages', icon: ChatBubbleLeftRightIcon },
-  { name: 'parent-meetings', to: '/parent/meetings', label: 'Meeting Requests', icon: VideoCameraIcon }
+  { name: 'parent-meetings', to: '/parent/meetings', label: 'Connect with Tutor', icon: VideoCameraIcon },
+  { name: 'parent-all-meetings', to: '/parent/all-meetings', label: 'All Meetings', icon: CalendarDaysIcon },
+  { name: 'parent-messages', to: '/parent/messages', label: 'Messages', icon: ChatBubbleLeftRightIcon }
 ]
 
 async function confirmLogout() {

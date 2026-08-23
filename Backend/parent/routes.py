@@ -1,9 +1,10 @@
+import json
 from datetime import datetime, date, timezone
 from flask import jsonify, request, session, current_app
 from parent import parent_bp
 from database import db
 from models import (
-    Parent, Student, WeeklySummary, QuizAttempt, AttendanceRecord, 
+    Parent, Student, WeeklySummary, Quiz, QuizAttempt, AttendanceRecord, 
     TeachingPlan, MeetingRequest, Tutor, Session, SessionBooking, 
     Subject, StudentSubject, Message, Notification, LearningProgress
 )
@@ -11,6 +12,7 @@ from decorators import parent_required
 from utils import decode_jwt_token
 from google_meet import create_meeting_space, GoogleMeetNotConfigured
 from schedule import meeting_lifecycle, _local_now
+from ai_service import AIConfigError, AIResponseError, AIServiceError, generate_text
 
 
 def current_parent():
@@ -92,6 +94,83 @@ def overview(parent_id):
     latest = WeeklySummary.query.filter(WeeklySummary.student_id.in_(ids)).order_by(WeeklySummary.created_at.desc()).first() if ids else None
     return ok({'parent_id': parent.parent_id, 'parent_name': parent.parent_name, 'total_children': len(children), 'children': [{'student_id': c.student_id, 'student_name': c.student_name, 'status': c.status} for c in children], 'latest_summary': {'topics_taught': latest.topics_taught if latest else 'No summary yet', 'homework': latest.homework_summary if latest else 'No homework recorded', 'areas_for_improvement': latest.areas_for_improvement if latest else 'No remarks yet'}})
 
+
+@parent_bp.route('/child-meeting', methods=['POST'])
+@parent_required
+def create_child_meeting():
+    """Create a parent-to-child one-to-one meeting with no tutor approval/dependency."""
+    parent = current_parent()
+    d = request.get_json(silent=True) or {}
+    if not parent:
+        return fail('Parent not logged in', 401)
+    try:
+        student_id = int(d.get('student_id'))
+    except (TypeError, ValueError):
+        return fail('student_id is required')
+    child = db.session.get(Student, student_id)
+    if not child or child.parent_id != parent.parent_id:
+        return fail('Child is not linked to this parent', 403)
+    preferred_date = d.get('preferred_date')
+    preferred_time = d.get('preferred_time')
+    preferred_end_time = d.get('preferred_end_time')
+    if not preferred_date or not preferred_time or not preferred_end_time:
+        return fail('preferred_date, preferred_time and preferred_end_time are required')
+    try:
+        start_dt = datetime.strptime(f'{preferred_date} {preferred_time}', '%Y-%m-%d %H:%M')
+        end_dt = datetime.strptime(f'{preferred_date} {preferred_end_time}', '%Y-%m-%d %H:%M')
+    except ValueError:
+        return fail('Invalid date/time')
+    if end_dt <= start_dt:
+        return fail('End time must be later than start time')
+    reason = str(d.get('reason') or '').strip()
+    if not reason:
+        return fail('Reason is required')
+    subject_row = StudentSubject.query.filter_by(student_id=student_id).first()
+    if not subject_row:
+        return fail('Child has no registered subject')
+    # A Session still references the child's active tutor for compatibility,
+    # but this workflow never asks that tutor for approval or attendance.
+    booking = (SessionBooking.query.join(Session, SessionBooking.session_id == Session.session_id)
+               .filter(SessionBooking.student_id == student_id, SessionBooking.booking_status == 'Confirmed')
+               .order_by(Session.session_date.desc()).first())
+    tutor_id = db.session.get(Session, booking.session_id).tutor_id if booking else None
+    if not tutor_id:
+        tutor = Tutor.query.filter(Tutor.status == 'Active').order_by(Tutor.tutor_id).first()
+        tutor_id = tutor.tutor_id if tutor else None
+    if not tutor_id:
+        return fail('No tutor relationship is available for this child', 409)
+    duplicate = MeetingRequest.query.filter(
+        MeetingRequest.parent_id == parent.parent_id,
+        MeetingRequest.student_id == student_id,
+        MeetingRequest.creator_type == 'Parent',
+        MeetingRequest.meeting_date == start_dt,
+        MeetingRequest.status.in_(['Scheduled', 'Completed'])
+    ).first()
+    if duplicate:
+        return fail('A meeting for this child and time already exists.', 409)
+    conflicts = Session.query.filter(Session.tutor_id == tutor_id, Session.session_date == start_dt.date()).all()
+    # Parent-child meetings are private and must not be blocked by tutor schedule.
+    subject = db.session.get(Subject, subject_row.subject_id)
+    sess = Session(tutor_id=tutor_id, subject_id=subject_row.subject_id,
+                   session_date=start_dt.date(), start_time=start_dt.time(), end_time=end_dt.time(),
+                   session_type='One-to-One', status='Scheduled')
+    db.session.add(sess); db.session.flush()
+    db.session.add(SessionBooking(session_id=sess.session_id, student_id=student_id, booking_status='Confirmed'))
+    meeting = MeetingRequest(tutor_id=tutor_id, student_id=student_id, parent_id=parent.parent_id,
+                             meeting_date=start_dt, meeting_link=None, meeting_reason=reason,
+                             session_id=sess.session_id, status='Scheduled', creator_type='Parent', meeting_type='PARENT_CHILD')
+    db.session.add(meeting); db.session.flush()
+    display = f'{start_dt.strftime("%d %b %Y")}, {start_dt.strftime("%I:%M %p")}–{end_dt.strftime("%I:%M %p")}'
+    db.session.add(Notification(recipient_type='Student', recipient_id=student_id,
+        title='One-on-one session scheduled by your parent',
+        message=f'{parent.parent_name} scheduled a one-on-one session with you for {display}. Reason: {reason}. The meeting will be joinable when your parent starts it.',
+        notification_type='Meeting Scheduled', action_url=f'/student/sessions?session_id={sess.session_id}'))
+    db.session.add(Notification(recipient_type='Parent', recipient_id=parent.parent_id,
+        title='One-on-one session scheduled',
+        message=f'Your one-on-one session with {child.student_name} is scheduled for {display}. Reason: {reason}. You can start the meeting from Connect with Your Child.',
+        notification_type='Meeting Scheduled', action_url=f'/parent/schedule?session_id={sess.session_id}'))
+    db.session.commit()
+    return ok({'meeting_id': meeting.meeting_id, 'session_id': sess.session_id, 'status': 'Scheduled'}, 'One-on-one session scheduled', 201)
 
 @parent_bp.route('/meeting-request', methods=['POST'])
 @parent_required
@@ -211,7 +290,7 @@ def meetings(parent_id):
     parent = current_parent()
     if not parent or parent.parent_id != parent_id:
         return fail('Unauthorized parent access', 403)
-    rows = MeetingRequest.query.filter_by(parent_id=parent_id).order_by(MeetingRequest.meeting_date.desc()).all()
+    rows = MeetingRequest.query.filter(MeetingRequest.parent_id == parent_id, MeetingRequest.meeting_type.in_(['PARENT_TUTOR', None])).order_by(MeetingRequest.meeting_date.desc()).all()
     data = []
     for m in rows:
         st = db.session.get(Student, m.student_id)
@@ -248,11 +327,69 @@ def meetings(parent_id):
             'meeting_duration_seconds': sess.meeting_duration_seconds if sess else None,
             'subject': db.session.get(Subject, sess.subject_id).subject_name if sess and db.session.get(Subject, sess.subject_id) else 'General',
             'session_type': sess.session_type if sess else 'One-to-One',
+            'creator_type': m.creator_type,
+            'session_type_label': 'One-on-One Session' if (sess and sess.session_type == 'One-to-One') else 'Regular Session',
             'start_time': sess.start_time.strftime('%H:%M') if sess else m.meeting_date.strftime('%H:%M'),
             'end_time': sess.end_time.strftime('%H:%M') if sess else None,
         })
     return ok(data)
 
+
+@parent_bp.route('/all-meetings/<int:parent_id>', methods=['GET'])
+@parent_required
+def all_meetings(parent_id):
+    parent = current_parent()
+    if not parent or parent.parent_id != parent_id:
+        return fail('Unauthorized parent access', 403)
+    rows = MeetingRequest.query.filter(
+        (MeetingRequest.parent_id == parent_id) | (MeetingRequest.student_id.in_([x.student_id for x in Student.query.filter_by(parent_id=parent_id).all()] or [-1]))
+    ).order_by(MeetingRequest.meeting_date.desc()).all()
+    out = []
+    for m in rows:
+        sess = db.session.get(Session, m.session_id) if m.session_id else None
+        student = db.session.get(Student, m.student_id) if m.student_id else None
+        tutor = db.session.get(Tutor, m.tutor_id) if m.tutor_id else None
+        subject = db.session.get(Subject, sess.subject_id) if sess else None
+        lifecycle = meeting_lifecycle(sess) if sess else {'status': m.status, 'can_join': False, 'can_start': False, 'can_end': False}
+
+        # Who created the meeting decides who is a participant — never the
+        # family relationship. A Student+Tutor (or Tutor-initiated) meeting
+        # is only ever shown to the parent for visibility; the parent can
+        # never join/start it, no matter what state the underlying session
+        # is in.
+        is_parent_participant = (m.creator_type == 'Parent')
+
+        if not is_parent_participant:
+            if m.status == 'Pending Approval':
+                display_status = 'Tutor approval pending'
+            elif m.status == 'Scheduled':
+                display_status = 'Meeting scheduled with student and tutor'
+            elif m.status in ('Denied', 'Reschedule Requested', 'Cancelled'):
+                display_status = m.status
+            else:
+                display_status = lifecycle['status']
+            lifecycle = {**lifecycle, 'status': display_status, 'can_join': False, 'can_start': False}
+        elif m.status == 'Pending Approval':
+            lifecycle = {**lifecycle, 'status': 'Pending Tutor Approval', 'can_join': False}
+        elif m.status in ('Denied', 'Reschedule Requested', 'Cancelled'):
+            lifecycle = {**lifecycle, 'status': m.status, 'can_join': False}
+        out.append({
+            'meeting_id': m.meeting_id, 'session_id': m.session_id,
+            'meeting_type': m.meeting_type or 'PARENT_TUTOR',
+            'session_type': sess.session_type if sess else 'One-to-One',
+            'session_type_label': 'One-on-One Session' if (sess and sess.session_type == 'One-to-One') else 'Regular Session',
+            'creator_type': m.creator_type, 'created_by_label': f'Created by {m.creator_type}' if m.creator_type else 'Created by system',
+            'student_id': student.student_id if student else None, 'student_name': student.student_name if student else None,
+            'tutor_id': tutor.tutor_id if tutor else None, 'tutor_name': tutor.tutor_name if tutor else None,
+            'topic': subject.subject_name if subject else 'General', 'reason': m.meeting_reason or 'Reason not specified',
+            'date': sess.session_date.isoformat() if sess else m.meeting_date.date().isoformat(),
+            'start_time': sess.start_time.strftime('%H:%M') if sess else m.meeting_date.strftime('%H:%M'),
+            'end_time': sess.end_time.strftime('%H:%M') if sess else None,
+            'approval_status': m.status if m.status in ('Pending Approval','Scheduled','Denied','Reschedule Requested') else 'Not Required',
+            'meeting_status': lifecycle['status'], 'can_join': lifecycle.get('can_join', False), 'can_start': lifecycle.get('can_start', False),
+            'meeting_url': sess.meeting_url if sess else m.meeting_link,
+        })
+    return ok({'meetings': out})
 
 @parent_bp.route('/attendance-query', methods=['POST'])
 @parent_required
@@ -375,6 +512,120 @@ def get_weekly_summary(parent_id, student_id):
     })
 
 
+@parent_bp.route('/ai-weekly-report/<int:parent_id>/<int:student_id>', methods=['POST'])
+@parent_required
+def ai_weekly_report(parent_id, student_id):
+    parent = current_parent()
+    if not parent or parent.parent_id != parent_id:
+        return fail('Unauthorized parent access', 403)
+    child = db.session.get(Student, student_id)
+    if not child or child.parent_id != parent_id:
+        return fail('Child not found for this parent', 404)
+
+    attendance = AttendanceRecord.query.filter_by(student_id=student_id).all()
+    final_attendance = [a for a in attendance if a.status in {'Present', 'Absent', 'Late'}]
+    present = sum(a.status == 'Present' for a in final_attendance)
+    attendance_rate = round(present / len(final_attendance) * 100) if final_attendance else 0
+
+    attempts = (
+        QuizAttempt.query
+        .filter_by(student_id=student_id)
+        .order_by(QuizAttempt.attempted_at.desc())
+        .limit(5)
+        .all()
+    )
+    quiz_scores = []
+    for attempt in attempts:
+        quiz = db.session.get(Quiz, attempt.quiz_id)
+        subject = db.session.get(Subject, quiz.subject_id) if quiz else None
+        quiz_scores.append({
+            'subject': subject.subject_name if subject else 'General',
+            'topic': quiz.title if quiz else 'Quiz',
+            'score': attempt.score,
+            'date': attempt.attempted_at.strftime('%Y-%m-%d') if attempt.attempted_at else None,
+        })
+
+    progress_records = (
+        LearningProgress.query
+        .filter_by(student_id=student_id)
+        .order_by(LearningProgress.progress_id.desc())
+        .limit(10)
+        .all()
+    )
+    session_logs = []
+    for progress in progress_records:
+        sess = db.session.get(Session, progress.session_id) if progress.session_id else None
+        subject = db.session.get(Subject, sess.subject_id) if sess else None
+        attendance_row = AttendanceRecord.query.filter_by(session_id=progress.session_id, student_id=student_id).first() if sess else None
+        session_logs.append({
+            'date': sess.session_date.strftime('%Y-%m-%d') if sess and sess.session_date else None,
+            'subject': subject.subject_name if subject else 'General',
+            'status': progress.session_completion_status,
+            'attendance_status': attendance_row.status if attendance_row else None,
+            'learning_pace': progress.learning_pace,
+            'remarks': progress.tutor_remarks,
+        })
+
+    summaries = (
+        WeeklySummary.query
+        .filter_by(student_id=student_id)
+        .order_by(WeeklySummary.created_at.desc())
+        .limit(3)
+        .all()
+    )
+    summary_data = [
+        {
+            'week_start': s.week_start.isoformat() if s.week_start else None,
+            'week_end': s.week_end.isoformat() if s.week_end else None,
+            'topics_taught': s.topics_taught,
+            'homework_summary': s.homework_summary,
+            'areas_for_improvement': s.areas_for_improvement,
+        }
+        for s in summaries
+    ]
+
+    payload = {
+        'student': {
+            'subjects': [
+                subject.subject_name
+                for row in StudentSubject.query.filter_by(student_id=student_id).all()
+                if (subject := db.session.get(Subject, row.subject_id))
+            ],
+        },
+        'attendance_rate': f'{attendance_rate}%',
+        'quiz_scores': quiz_scores,
+        'session_logs': session_logs,
+        'weekly_summaries': summary_data,
+    }
+
+    prompt = (
+        "You are LearnAtHome Parent AI. Write a clear weekly progress report "
+        "for a parent using only the real child data below. Do not invent "
+        "quiz records, attendance, tutor remarks, or homework. If data is "
+        "limited, explicitly mention that and provide practical next steps.\n\n"
+        f"DATA:\n{json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+        "Return a short parent-friendly report with attendance, learning "
+        "progress, assessment performance, concerns, and recommended next step."
+    )
+
+    try:
+        report = generate_text(prompt)
+    except AIConfigError as exc:
+        return fail(str(exc), 503)
+    except (AIServiceError, AIResponseError) as exc:
+        return fail(f"AI weekly report generation failed: {exc}", 502)
+
+    return ok({
+        'report': report,
+        'sourceCounts': {
+            'attendanceRecords': len(attendance),
+            'quizAttempts': len(quiz_scores),
+            'sessionLogs': len(session_logs),
+            'weeklySummaries': len(summary_data),
+        }
+    })
+
+
 @parent_bp.route('/curriculum/<int:student_id>', methods=['GET'])
 @parent_required
 def curriculum(student_id):
@@ -397,11 +648,15 @@ def schedule(parent_id):
 
     # This page is ONLY for parent-created one-to-one meetings that include
     # the child. Regular booked classes stay out of the parent meeting area.
+    # creator_type == 'Parent' is required explicitly: a meeting's parent_id
+    # column alone is not proof the parent is a participant (e.g. a
+    # Student-created Student+Tutor meeting must never surface here).
     meetings = (
         MeetingRequest.query
         .filter(
             MeetingRequest.parent_id == parent_id,
             MeetingRequest.student_id.isnot(None),
+            MeetingRequest.creator_type == 'Parent',
         )
         .order_by(MeetingRequest.meeting_date, MeetingRequest.meeting_id)
         .all()
@@ -456,6 +711,8 @@ def schedule(parent_id):
             'meeting_id': meeting.meeting_id,
             'meeting_request_status': meeting.status,
             'meeting_reason': meeting.meeting_reason,
+            'creator_type': meeting.creator_type or ('Parent' if meeting.parent_id and meeting.student_id and meeting.status == 'Scheduled' else None),
+            'session_type_label': 'One-on-One Session' if s.session_type == 'One-to-One' else 'Regular Session',
         })
 
     return ok(data)
@@ -469,8 +726,13 @@ def start_parent_session(session_id):
     meeting = MeetingRequest.query.filter_by(session_id=session_id, parent_id=parent.parent_id).first() if parent else None
     if not sess or not meeting:
         return fail('Parent-created session not found', 404)
+    # The parent may only start a meeting they actually created. A meeting
+    # created by the student (or tutor) never makes the parent a participant,
+    # even if parent_id happens to be set on the record.
+    if meeting.creator_type != 'Parent':
+        return fail('You are not a participant in this meeting.', 403)
     if meeting.status != 'Scheduled':
-        return fail('The meeting must be approved by the tutor before it can be started.', 409)
+        return fail('The meeting must be approved before it can be started.', 409)
     lifecycle = meeting_lifecycle(sess)
     if lifecycle['status'] == 'Meeting Ended':
         return fail('This meeting has already ended.', 409)
@@ -491,7 +753,7 @@ def start_parent_session(session_id):
     label = subject.subject_name if subject else 'session'
     if student:
         db.session.add(Notification(recipient_type='Student', recipient_id=student.student_id, title=f'{label} meeting started', message=f'{parent.parent_name} started the {label} meeting. Join the meeting now.', notification_type='Class Started', action_url=f'/student/sessions?session_id={session_id}'))
-    if tutor:
+    if tutor and meeting.creator_type != 'Parent':
         db.session.add(Notification(recipient_type='Tutor', recipient_id=tutor.tutor_id, title=f'{label} meeting started', message=f'{parent.parent_name} started {student.student_name if student else "the student"}’s {label} meeting.', notification_type='Class Started', action_url=f'/tutor/schedule?session_id={session_id}'))
     db.session.commit()
     return ok({'session_id': session_id, 'meeting_url': sess.meeting_url, 'meeting_started_at': sess.meeting_started_at.isoformat()}, 'Meeting started')
@@ -516,6 +778,9 @@ def end_parent_session(session_id):
 
     if not sess or not meeting:
         return fail('Parent-created meeting not found', 404)
+
+    if meeting.creator_type != 'Parent':
+        return fail('You are not a participant in this meeting.', 403)
 
     if sess.session_type != 'One-to-One':
         return fail('Only one-to-one meetings can be ended here.', 400)
@@ -577,6 +842,8 @@ def manage_parent_session(session_id):
     meeting = MeetingRequest.query.filter_by(session_id=session_id, parent_id=parent.parent_id).first() if parent else None
     if not sess or not meeting:
         return fail('Parent-created session not found', 404)
+    if meeting.creator_type != 'Parent':
+        return fail('You are not a participant in this meeting.', 403)
     if sess.status in ('Live', 'Completed', 'Cancelled'):
         return fail('This session can no longer be changed', 400)
     student = db.session.get(Student, meeting.student_id)

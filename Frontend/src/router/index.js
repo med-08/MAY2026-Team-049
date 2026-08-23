@@ -32,6 +32,7 @@ import StudentAssignments from '../views/student/Assignments.vue'
 import StudentHomework from '../views/student/Homework.vue'
 import StudentStudyResources from '../views/student/StudyResources.vue'
 import StudentStudyTips from '../views/student/StudyTips.vue'
+import StudentFlashcards from '../views/student/Flashcards.vue'
 import StudentFAQ from '../views/student/FAQ.vue'
 import StudentAskDoubt from '../views/student/AskDoubt.vue'
 import StudentMessages from '../views/student/Messages.vue'
@@ -47,6 +48,7 @@ import ParentCurriculum from '../views/parent/Curriculum.vue'
 import ParentSchedule from '../views/parent/Schedule.vue'
 import ParentMessages from '../views/parent/Messages.vue'
 import ParentMeetings from '../views/parent/Meetings.vue'
+import ParentAllMeetings from '../views/parent/AllMeetings.vue'
 import ParentProfile from '../views/parent/Profile.vue'
 
 // Tutor Layout
@@ -115,7 +117,8 @@ const routes = [
       { path: 'assignments', name: 'student-assignments', component: StudentAssignments, meta: { title: 'Interactive Assignments' } },
       { path: 'homework', name: 'student-homework', component: StudentHomework, meta: { title: 'Homework' } },
       { path: 'resources', name: 'student-study-resources', component: StudentStudyResources, meta: { title: 'Study Resources' } },
-      { path: 'study-tips', name: 'student-study-tips', component: StudentStudyTips, meta: { title: 'Study Tips' } },
+      { path: 'study-tips', name: 'student-study-tips', component: StudentStudyTips, meta: { title: 'Performance Insights' } },
+      { path: 'flashcards', name: 'student-flashcards', component: StudentFlashcards, meta: { title: 'Flashcards' } },
       { path: 'faq', name: 'student-faq', component: StudentFAQ, meta: { title: 'FAQ' } },
       { path: 'ask-doubt', name: 'student-ask-doubt', component: StudentAskDoubt, meta: { title: 'Ask Doubt' } },
       { path: 'messages', name: 'student-messages', component: StudentMessages, meta: { title: 'Messages' } },
@@ -133,7 +136,8 @@ const routes = [
       { path: 'curriculum', name: 'parent-curriculum', component: ParentCurriculum, meta: { title: 'Curriculum Plan' } },
       { path: 'schedule', name: 'parent-schedule', component: ParentSchedule, meta: { title: 'Schedule' } },
       { path: 'messages', name: 'parent-messages', component: ParentMessages, meta: { title: 'Messages' } },
-      { path: 'meetings', name: 'parent-meetings', component: ParentMeetings, meta: { title: 'Meeting Requests' } },
+      { path: 'meetings', name: 'parent-meetings', component: ParentMeetings, meta: { title: 'Connect with Tutor' } },
+      { path: 'all-meetings', name: 'parent-all-meetings', component: ParentAllMeetings, meta: { title: 'All Meetings' } },
       { path: 'profile', name: 'parent-profile', component: ParentProfile, meta: { title: 'Parent Profile' } }
     ]
   },

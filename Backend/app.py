@@ -1,5 +1,9 @@
 import os
 import sqlite3
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from database import db
@@ -60,12 +64,72 @@ def ensure_database_compatibility(db_path):
                     connection.execute(f"ALTER TABLE learning_progress ADD COLUMN {column} {definition}")
 
         meeting_columns = {row[1] for row in connection.execute("PRAGMA table_info(meeting_request)").fetchall()}
+        if meeting_columns and "creator_type" not in meeting_columns:
+            connection.execute("ALTER TABLE meeting_request ADD COLUMN creator_type VARCHAR(20)")
+            meeting_columns.add("creator_type")
+        if meeting_columns and "meeting_type" not in meeting_columns:
+            connection.execute("ALTER TABLE meeting_request ADD COLUMN meeting_type VARCHAR(30)")
+            meeting_columns.add("meeting_type")
         if meeting_columns and "session_id" not in meeting_columns:
             connection.execute("ALTER TABLE meeting_request ADD COLUMN session_id INTEGER")
 
         notification_columns = {row[1] for row in connection.execute("PRAGMA table_info(notification)").fetchall()}
         if notification_columns and "action_url" not in notification_columns:
             connection.execute("ALTER TABLE notification ADD COLUMN action_url VARCHAR(255)")
+
+        quiz_question_columns = {row[1] for row in connection.execute("PRAGMA table_info(quiz_question)").fetchall()}
+        if quiz_question_columns and "explanation" not in quiz_question_columns:
+            connection.execute("ALTER TABLE quiz_question ADD COLUMN explanation TEXT")
+
+        quiz_columns = {row[1] for row in connection.execute("PRAGMA table_info(quiz)").fetchall()}
+        if quiz_columns:
+            for column, definition in [
+                ("assigned_student_id", "INTEGER"),
+                ("topic", "VARCHAR(100)"),
+                ("difficulty", "VARCHAR(20)"),
+            ]:
+                if column not in quiz_columns:
+                    connection.execute(f"ALTER TABLE quiz ADD COLUMN {column} {definition}")
+
+        quiz_attempt_columns = {row[1] for row in connection.execute("PRAGMA table_info(quiz_attempt)").fetchall()}
+        if quiz_attempt_columns:
+            for column, definition in [
+                ("correct_count", "INTEGER"),
+                ("total_questions", "INTEGER"),
+                ("answers_json", "TEXT"),
+                ("review_json", "TEXT"),
+            ]:
+                if column not in quiz_attempt_columns:
+                    connection.execute(f"ALTER TABLE quiz_attempt ADD COLUMN {column} {definition}")
+
+        # Students can now self-generate their own flashcard sets (no tutor
+        # involved), so tutor_id must become optional. SQLite can't alter a
+        # column's NOT NULL constraint directly, so rebuild the table only
+        # if it still has the old constraint, preserving existing rows.
+        flashcard_set_info = connection.execute("PRAGMA table_info(flashcard_set)").fetchall()
+        tutor_id_col = next((c for c in flashcard_set_info if c[1] == "tutor_id"), None)
+        if tutor_id_col and tutor_id_col[3] == 1:
+            connection.execute("""
+                CREATE TABLE flashcard_set_new (
+                    set_id INTEGER PRIMARY KEY,
+                    tutor_id INTEGER,
+                    subject_id INTEGER NOT NULL,
+                    assigned_student_id INTEGER,
+                    title VARCHAR(100) NOT NULL,
+                    topic VARCHAR(100),
+                    class_level VARCHAR(50),
+                    context TEXT,
+                    created_at DATETIME
+                )
+            """)
+            connection.execute("""
+                INSERT INTO flashcard_set_new
+                    (set_id, tutor_id, subject_id, assigned_student_id, title, topic, class_level, context, created_at)
+                SELECT set_id, tutor_id, subject_id, assigned_student_id, title, topic, class_level, context, created_at
+                FROM flashcard_set
+            """)
+            connection.execute("DROP TABLE flashcard_set")
+            connection.execute("ALTER TABLE flashcard_set_new RENAME TO flashcard_set")
 
         connection.commit()
     finally:

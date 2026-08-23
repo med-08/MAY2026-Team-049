@@ -14,6 +14,8 @@ export const parentApi = {
 
   requestMeeting: (payload) =>
     apiRequest(`${BASE}/meeting-request`, { method: 'POST', body: payload }),
+  createChildMeeting: (payload) => apiRequest(`${BASE}/child-meeting`, { method: 'POST', body: payload }),
+  getAllMeetings: (parentId) => apiRequest(`${BASE}/all-meetings/${parentId}`),
 
   getMeetings: (parentId) =>
     apiRequest(`${BASE}/meetings/${parentId}`),
@@ -41,6 +43,9 @@ export const parentApi = {
   // Weekly Progress Summary Report
   getWeeklySummary: (parentId, studentId) =>
     apiRequest(`${BASE}/weekly-summary/${parentId}/${studentId}`),
+
+  generateWeeklyReport: (parentId, studentId) =>
+    apiRequest(`${BASE}/ai-weekly-report/${parentId}/${studentId}`, { method: 'POST' }),
 
   getNotifications: (parentId) => apiRequest(`${BASE}/notifications/${parentId}`)
 }

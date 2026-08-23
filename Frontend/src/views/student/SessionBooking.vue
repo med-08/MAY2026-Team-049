@@ -48,6 +48,27 @@ const subjectColor = subject => {
   return colors[subject] || 'bg-indigo-50 text-indigo-600'
 }
 
+/*
+ * SESSION TYPE COLOUR CONVENTION
+ *
+ * Regular  -> blue    (matches the tutor schedule badge)
+ * One-to-One -> violet (matches the tutor schedule badge)
+ *
+ * Used consistently: badge colour + left accent border on the card,
+ * so a student can tell the two apart at a glance without reading text.
+ */
+const isOneToOne = s => (s.type || '').toLowerCase().includes('one')
+
+const typeBadgeClasses = s =>
+  isOneToOne(s)
+    ? 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
+    : 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+
+const typeAccentClasses = s =>
+  isOneToOne(s)
+    ? 'border-l-4 border-l-violet-400 dark:border-l-violet-500'
+    : 'border-l-4 border-l-blue-400 dark:border-l-blue-500'
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -232,6 +253,7 @@ async function confirmBooking() {
         v-for="s in active"
         :key="s.id"
         class="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg dark:border-slate-700 dark:bg-slate-900"
+        :class="typeAccentClasses(s)"
       >
 
         <!-- Subject -->
@@ -258,16 +280,27 @@ async function confirmBooking() {
 
           </div>
 
-          <span
-            class="rounded-full px-2.5 py-1 text-[11px] font-bold"
-            :class="
-              s.booked
-                ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300'
-                : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300'
-            "
-          >
-            {{ s.booked ? 'Booked' : 'Available' }}
-          </span>
+          <div class="flex flex-col items-end gap-1.5">
+
+            <span
+              class="rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide"
+              :class="typeBadgeClasses(s)"
+            >
+              {{ isOneToOne(s) ? 'One-to-One' : 'Regular' }}
+            </span>
+
+            <span
+              class="rounded-full px-2.5 py-1 text-[11px] font-bold"
+              :class="
+                s.booked
+                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300'
+                  : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300'
+              "
+            >
+              {{ s.booked ? 'Booked' : 'Available' }}
+            </span>
+
+          </div>
 
         </div>
 
@@ -312,8 +345,47 @@ async function confirmBooking() {
                   Session Type
                 </p>
 
+                <span
+                  class="mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-bold"
+                  :class="typeBadgeClasses(s)"
+                >
+                  {{ s.meeting_type_label || (isOneToOne(s) ? 'One-on-One Session' : 'Regular Session') }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Created by -->
+            <div
+              v-if="s.created_by_label"
+              class="flex items-center gap-3"
+            >
+              <span class="text-base">👤</span>
+
+              <div>
+                <p class="text-xs text-slate-400">
+                  Created By
+                </p>
+
                 <p class="font-medium text-slate-700 dark:text-slate-200">
-                  {{ s.type || 'Regular' }}
+                  {{ s.created_by_label }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Reason -->
+            <div
+              v-if="s.meeting_reason"
+              class="flex items-start gap-3"
+            >
+              <span class="text-base">📝</span>
+
+              <div class="min-w-0">
+                <p class="text-xs text-slate-400">
+                  Reason
+                </p>
+
+                <p class="font-medium text-slate-700 dark:text-slate-200 break-words">
+                  {{ s.meeting_reason }}
                 </p>
               </div>
             </div>

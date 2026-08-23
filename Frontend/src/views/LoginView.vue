@@ -23,6 +23,21 @@ const form = ref({
 
 const rememberMe = ref(false)
 
+// Only clear auth-related keys on login. A blind localStorage.clear()
+// here was also wiping the saved 'learnathome-theme' preference, which
+// made the app silently fall back to the OS/browser dark-mode setting
+// on the very next refresh after logging in.
+function clearAuthStorage() {
+  localStorage.removeItem("user")
+  localStorage.removeItem("token")
+  localStorage.removeItem("role")
+  localStorage.removeItem("user_id")
+  localStorage.removeItem("username")
+  localStorage.removeItem("parent_id")
+  localStorage.removeItem("student_id")
+  localStorage.removeItem("tutor_id")
+}
+
 const login = async () => {
   authError.value = ""
 
@@ -44,7 +59,7 @@ const login = async () => {
       return
     }
 
-    localStorage.clear()
+    clearAuthStorage()
 
     if (data.token) localStorage.setItem("token", data.token)
     if (data.role) localStorage.setItem("role", data.role)
@@ -81,7 +96,7 @@ const login = async () => {
     // Never fall back to the selected UI role because doing so can send a
     // successful login to the wrong dashboard when the response is malformed.
     if (!roleLower) {
-      localStorage.clear()
+      clearAuthStorage()
       authError.value = 'Login succeeded but no account role was returned. Please try again.'
       return
     }

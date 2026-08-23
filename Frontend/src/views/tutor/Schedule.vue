@@ -80,6 +80,17 @@
           >
         </div>
 
+        <div>
+          <label class="lab">Meeting Link</label>
+
+          <input
+            v-model="form.meeting_link"
+            type="url"
+            class="field"
+            placeholder="https://meet.google.com/xxxxx"
+          >
+        </div>
+
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
@@ -147,6 +158,21 @@
             ·
             {{ s.classLevel }}
           </div>
+
+          <!--
+            REASON
+
+            Only rendered when the meeting actually has one.
+            Regular tutor-created classes without a MeetingRequest
+            have no reason, so this line is simply omitted for them
+            rather than showing a fake placeholder.
+          -->
+          <p
+            v-if="s.meeting_reason"
+            class="mt-1 truncate text-xs text-slate-500"
+          >
+            Reason: {{ s.meeting_reason }}
+          </p>
 
 
           <!-- ===================================================
@@ -407,7 +433,9 @@ const form = reactive({
 
   end_time: '17:00',
 
-  session_type: 'Regular'
+  session_type: 'Regular',
+
+  meeting_link: ''
 
 })
 
@@ -741,6 +769,7 @@ function beginEdit(s) {
   form.start_time = s.start_time || ''
   form.end_time = s.end_time || ''
   form.session_type = 'Regular'
+  form.meeting_link = s.meeting_url || s.meetingUrl || ''
   message.value = 'Edit the schedule, then save changes.'
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -752,6 +781,7 @@ function cancelEdit() {
   form.start_time = '16:00'
   form.end_time = '17:00'
   form.session_type = 'Regular'
+  form.meeting_link = ''
   message.value = ''
 }
 
@@ -764,7 +794,8 @@ async function saveEdit() {
       session_date: form.session_date,
       start_time: form.start_time,
       end_time: form.end_time,
-      session_type: 'Regular'
+      session_type: 'Regular',
+      meeting_link: form.meeting_link
     })
     const updated = result?.session || result?.data?.session || result?.data || null
     if (updated) notifySessionUpdate(updated)
@@ -813,7 +844,10 @@ async function saveDetails() {
 async function decideRequest(s, decision) {
   if (!s.meeting_id) return
   let payload = { decision }
-  if (decision === 'deny') {
+  if (decision === 'approve') {
+    const link = window.prompt('Meeting link (leave blank to auto-generate a Google Meet link):', '')
+    if (link) payload.meeting_link = link
+  } else if (decision === 'deny') {
     const reason = window.prompt('Reason for denying this meeting request:')
     if (reason === null) return
     payload.reason = reason
@@ -1261,7 +1295,10 @@ async function add() {
         form.end_time,
 
       session_type:
-        'Regular'
+        'Regular',
+
+      meeting_link:
+        form.meeting_link
 
     }
 
@@ -1316,6 +1353,7 @@ async function add() {
      */
 
     form.subject_id = ''
+    form.meeting_link = ''
 
   }
 
@@ -1614,5 +1652,4 @@ async function add() {
 .cancel-session-btn { background: #fff1f2 !important; color: #e11d48 !important; border: 1px solid #fecdd3 !important; }
 .cancel-session-btn:hover { background: #ffe4e6 !important; }
 </style>
-
 

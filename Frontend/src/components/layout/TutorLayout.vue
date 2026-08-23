@@ -775,7 +775,10 @@ const routeProps = computed(() => {
         assignmentsState.value,
 
       sessions:
-        sessionsState.value
+        sessionsState.value,
+
+      subjects:
+        tutorUserState.value?.subjects || []
 
     },
 
@@ -1562,7 +1565,8 @@ async function replyToDoubt(
 
 async function sendMessage(
   conversationId,
-  message
+  message,
+  alreadySent = false
 ) {
 
   const conversation =
@@ -1576,59 +1580,25 @@ async function sendMessage(
   }
 
 
-  conversation.messages.push({
-
-    messageId:
-      `msg-${Date.now()}`,
-
-    senderId:
-      tutorUserState.value.userId,
-
-    receiverId:
-      conversationId,
-
-    message,
-
-    timestamp:
-      new Date().toISOString(),
-
-    status:
-      'sent',
-
-    w:
-      'me'
-
-  })
-
-
   try {
-
-    await tutorApi.sendMessage({
-
-      receiver_type:
-        conversation.otherType,
-
-      receiver_id:
-        conversation.otherId,
-
+    const response = alreadySent ? null : await tutorApi.sendMessage({
+      receiver_type: conversation.otherType,
+      receiver_id: conversation.otherId,
       message
-
     })
-
-
-    addToast(
-      `Sent to ${conversation.participantName}`
-    )
-
-  }
-
-  catch (e) {
-
-    addToast(
-      e.message ||
-      'Message could not be sent'
-    )
-
+    const payload = response?.data || response || {}
+    conversation.messages.push({
+      messageId: payload.messageId || payload.message_id || `msg-${Date.now()}`,
+      senderId: tutorUserState.value.userId,
+      receiverId: conversation.otherId,
+      message,
+      timestamp: payload.sent_at || new Date().toISOString(),
+      status: 'sent',
+      w: 'me'
+    })
+    addToast(`Sent to ${conversation.participantName}`)
+  } catch (e) {
+    addToast(e.message || 'Message could not be sent')
   }
 
 }

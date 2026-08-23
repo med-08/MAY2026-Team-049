@@ -12,6 +12,44 @@ const loading = ref(true)
 const error = ref('')
 let refreshTimer = null
 
+const tutors = ref([])
+const requestForm = ref({ tutor_id: '', date: '', startTime: '', endTime: '', notes: '' })
+const requesting = ref(false)
+
+async function loadTutors() {
+  try {
+    const r = await studentApi.getDoubtTutors()
+    tutors.value = r.data?.tutors || []
+  } catch {
+    tutors.value = []
+  }
+}
+
+async function submitMeetingRequest() {
+  const f = requestForm.value
+  if (!f.tutor_id || !f.date || !f.startTime) {
+    showToast('Choose a tutor, date, and start time.', 'error')
+    return
+  }
+  requesting.value = true
+  try {
+    await studentApi.requestMeeting({
+      tutor_id: Number(f.tutor_id),
+      preferred_date: f.date,
+      preferred_time: f.startTime,
+      preferred_end_time: f.endTime || undefined,
+      notes: f.notes
+    })
+    showToast('Meeting requested. Your tutor has been notified.', 'success')
+    requestForm.value = { tutor_id: '', date: '', startTime: '', endTime: '', notes: '' }
+    await loadSessions(false)
+  } catch (e) {
+    showToast(e?.message || 'Unable to request meeting.', 'error')
+  } finally {
+    requesting.value = false
+  }
+}
+
 async function loadSessions(showLoading = true) {
   if (showLoading) loading.value = true
   error.value = ''
@@ -60,8 +98,22 @@ function meetingLabel(s) {
   return s?.meeting_lifecycle || s?.meeting_status || 'Meeting Not Started'
 }
 
+// Same Regular=blue / One-to-One=violet convention used on the tutor
+// schedule and the session booking pages, so students see one consistent
+// colour language for session type everywhere in the app.
+function isOneToOne(s) {
+  return (s?.type || s?.meeting_type_label || '').toLowerCase().includes('one')
+}
+
+function typeBadgeClasses(s) {
+  return isOneToOne(s)
+    ? 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
+    : 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+}
+
 onMounted(async () => {
   await loadSessions()
+  await loadTutors()
   // The server is the source of truth for the lifecycle. Polling makes the
   // Join Meeting button appear/disappear automatically without a page reload.
   refreshTimer = window.setInterval(() => loadSessions(false), 15000)
@@ -75,6 +127,27 @@ onUnmounted(() => {
 <template>
   <div>
     <PageHeader title="My Sessions" subtitle="View your booked tuition sessions." />
+
+    <div class="card mb-6 px-5 py-5">
+      <h3 class="font-display text-lg font-bold text-slate-800 dark:text-white">Request a Meeting</h3>
+      <p class="mb-3 text-xs text-slate-500">Ask a tutor for a one-on-one session at a time that works for you.</p>
+      <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+        <select v-model="requestForm.tutor_id" class="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+          <option value="">Choose tutor</option>
+          <option v-for="t in tutors" :key="t.tutor_id" :value="t.tutor_id">{{ t.name }}</option>
+        </select>
+        <input v-model="requestForm.date" type="date" class="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+        <input v-model="requestForm.startTime" type="time" class="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+        <input v-model="requestForm.endTime" type="time" class="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="End (optional)">
+        <button
+          type="button"
+          class="rounded-lg bg-gradient-to-r from-teal-500 to-blue-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+          :disabled="requesting"
+          @click="submitMeetingRequest"
+        >{{ requesting ? 'Requesting...' : 'Request Meeting' }}</button>
+      </div>
+      <input v-model="requestForm.notes" class="mt-2.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="What would you like to discuss? (optional)">
+    </div>
 
     <div v-if="loading" class="py-10 text-center text-sm text-slate-500">Loading sessions...</div>
 
@@ -112,14 +185,20 @@ onUnmounted(() => {
                 <h4 class="font-display font-bold text-slate-800 dark:text-white">{{ s.subject }}</h4>
                 <StatusBadge :status="meetingLabel(s)" />
               </div>
-              <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+              <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                <span
+                  v-if="s.meeting_type_label"
+                  class="rounded-full px-2 py-0.5 text-[11px] font-bold"
+                  :class="typeBadgeClasses(s)"
+                >{{ s.meeting_type_label }}</span>
+                <span v-if="s.created_by_label">{{ s.created_by_label }}</span>
                 <span>👨‍🏫 {{ s.tutor }}</span>
                 <span v-if="s.parent">👪 {{ s.parent }}</span>
                 <span>📅 {{ s.date }}</span>
                 <span>🕐 {{ s.time }} – {{ s.end_time }}</span>
                 <span v-if="s.duration">⏱ {{ s.duration }}</span>
-                <span v-if="s.type">{{ s.type }}</span>
               </div>
+              <div v-if="s.meeting_reason" class="mt-1 truncate text-xs text-slate-500">Reason: {{ s.meeting_reason }}</div>
               <div v-if="s.attendance_status" class="mt-1 text-[11px] font-semibold text-slate-400">
                 Attendance: {{ s.attendance_status }}
               </div>
@@ -133,6 +212,13 @@ onUnmounted(() => {
                 :disabled="busy === s.id"
                 @click="joinSession(s)"
               >Join Meeting</button>
+              <a
+                v-else-if="s.meeting_url || s.meetingUrl"
+                :href="s.meeting_url || s.meetingUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              >Meeting Link</a>
               <span v-else-if="meetingLabel(s) === 'Meeting Not Started'" class="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                 Meeting Not Started
               </span>
