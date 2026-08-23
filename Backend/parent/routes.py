@@ -1,9 +1,10 @@
+import json
 from datetime import datetime, date, timezone
 from flask import jsonify, request, session, current_app
 from parent import parent_bp
 from database import db
 from models import (
-    Parent, Student, WeeklySummary, QuizAttempt, AttendanceRecord, 
+    Parent, Student, WeeklySummary, Quiz, QuizAttempt, AttendanceRecord, 
     TeachingPlan, MeetingRequest, Tutor, Session, SessionBooking, 
     Subject, StudentSubject, Message, Notification, LearningProgress
 )
@@ -11,6 +12,7 @@ from decorators import parent_required
 from utils import decode_jwt_token
 from google_meet import create_meeting_space, GoogleMeetNotConfigured
 from schedule import meeting_lifecycle, _local_now
+from ai_service import AIConfigError, AIResponseError, AIServiceError, generate_text
 
 
 def current_parent():
@@ -372,6 +374,120 @@ def get_weekly_summary(parent_id, student_id):
         'topics_taught': summary.topics_taught,
         'homework_summary': summary.homework_summary,
         'areas_for_improvement': summary.areas_for_improvement
+    })
+
+
+@parent_bp.route('/ai-weekly-report/<int:parent_id>/<int:student_id>', methods=['POST'])
+@parent_required
+def ai_weekly_report(parent_id, student_id):
+    parent = current_parent()
+    if not parent or parent.parent_id != parent_id:
+        return fail('Unauthorized parent access', 403)
+    child = db.session.get(Student, student_id)
+    if not child or child.parent_id != parent_id:
+        return fail('Child not found for this parent', 404)
+
+    attendance = AttendanceRecord.query.filter_by(student_id=student_id).all()
+    final_attendance = [a for a in attendance if a.status in {'Present', 'Absent', 'Late'}]
+    present = sum(a.status == 'Present' for a in final_attendance)
+    attendance_rate = round(present / len(final_attendance) * 100) if final_attendance else 0
+
+    attempts = (
+        QuizAttempt.query
+        .filter_by(student_id=student_id)
+        .order_by(QuizAttempt.attempted_at.desc())
+        .limit(5)
+        .all()
+    )
+    quiz_scores = []
+    for attempt in attempts:
+        quiz = db.session.get(Quiz, attempt.quiz_id)
+        subject = db.session.get(Subject, quiz.subject_id) if quiz else None
+        quiz_scores.append({
+            'subject': subject.subject_name if subject else 'General',
+            'topic': quiz.title if quiz else 'Quiz',
+            'score': attempt.score,
+            'date': attempt.attempted_at.strftime('%Y-%m-%d') if attempt.attempted_at else None,
+        })
+
+    progress_records = (
+        LearningProgress.query
+        .filter_by(student_id=student_id)
+        .order_by(LearningProgress.progress_id.desc())
+        .limit(10)
+        .all()
+    )
+    session_logs = []
+    for progress in progress_records:
+        sess = db.session.get(Session, progress.session_id) if progress.session_id else None
+        subject = db.session.get(Subject, sess.subject_id) if sess else None
+        attendance_row = AttendanceRecord.query.filter_by(session_id=progress.session_id, student_id=student_id).first() if sess else None
+        session_logs.append({
+            'date': sess.session_date.strftime('%Y-%m-%d') if sess and sess.session_date else None,
+            'subject': subject.subject_name if subject else 'General',
+            'status': progress.session_completion_status,
+            'attendance_status': attendance_row.status if attendance_row else None,
+            'learning_pace': progress.learning_pace,
+            'remarks': progress.tutor_remarks,
+        })
+
+    summaries = (
+        WeeklySummary.query
+        .filter_by(student_id=student_id)
+        .order_by(WeeklySummary.created_at.desc())
+        .limit(3)
+        .all()
+    )
+    summary_data = [
+        {
+            'week_start': s.week_start.isoformat() if s.week_start else None,
+            'week_end': s.week_end.isoformat() if s.week_end else None,
+            'topics_taught': s.topics_taught,
+            'homework_summary': s.homework_summary,
+            'areas_for_improvement': s.areas_for_improvement,
+        }
+        for s in summaries
+    ]
+
+    payload = {
+        'student': {
+            'subjects': [
+                subject.subject_name
+                for row in StudentSubject.query.filter_by(student_id=student_id).all()
+                if (subject := db.session.get(Subject, row.subject_id))
+            ],
+        },
+        'attendance_rate': f'{attendance_rate}%',
+        'quiz_scores': quiz_scores,
+        'session_logs': session_logs,
+        'weekly_summaries': summary_data,
+    }
+
+    prompt = (
+        "You are LearnAtHome Parent AI. Write a clear weekly progress report "
+        "for a parent using only the real child data below. Do not invent "
+        "quiz records, attendance, tutor remarks, or homework. If data is "
+        "limited, explicitly mention that and provide practical next steps.\n\n"
+        f"DATA:\n{json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+        "Return a short parent-friendly report with attendance, learning "
+        "progress, assessment performance, concerns, and recommended next step."
+    )
+
+    try:
+        report = generate_text(prompt)
+    except AIConfigError as exc:
+        return fail(str(exc), 503)
+    except (AIServiceError, AIResponseError) as exc:
+        return fail(f"AI weekly report generation failed: {exc}", 502)
+
+    return ok({
+        'report': report,
+        'sourceCounts': {
+            'attendanceRecords': len(attendance),
+            'quizAttempts': len(quiz_scores),
+            'sessionLogs': len(session_logs),
+            'weeklySummaries': len(summary_data),
+        }
     })
 
 

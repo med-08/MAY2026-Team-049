@@ -21,6 +21,20 @@ const progress = computed(() =>
   progressByChild.value[selectedChildId.value] || null
 )
 
+// Overall Performance / Strong Topics / Needs Improvement, computed from the
+// same recent_quiz_scores data already rendered in the Recent Quiz Scores
+// table below - no new backend data, no invented values.
+const performanceSummary = computed(() => {
+  const scores = (progress.value?.recent_quiz_scores || [])
+    .map((q) => ({ ...q, numericScore: parseFloat(q.score) }))
+    .filter((q) => !Number.isNaN(q.numericScore))
+  if (!scores.length) return null
+  const average = Math.round(scores.reduce((sum, q) => sum + q.numericScore, 0) / scores.length)
+  const strong = scores.filter((q) => q.numericScore >= 80)
+  const needsImprovement = scores.filter((q) => q.numericScore < 55)
+  return { average, strong, needsImprovement, count: scores.length }
+})
+
 async function handleGenerateReport() {
   if (!selectedChildId.value) return
   isGeneratingReport.value = true
@@ -142,6 +156,32 @@ onMounted(init)
           <div class="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4">
             <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Attendance Rate</p>
             <p class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{{ progress.attendance_rate }}</p>
+          </div>
+        </div>
+
+        <!-- Overall Performance / Strong Topics / Needs Improvement -->
+        <div v-if="performanceSummary" class="card p-5 border border-slate-100 dark:border-slate-800">
+          <h4 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">Overall Performance</h4>
+          <div class="grid sm:grid-cols-3 gap-4">
+            <div class="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Average Score</p>
+              <p class="mt-2 text-lg font-bold text-slate-800 dark:text-slate-100">{{ performanceSummary.average }}%</p>
+              <p class="text-[11px] text-slate-400 mt-1">Across {{ performanceSummary.count }} recent quiz{{ performanceSummary.count === 1 ? '' : 'zes' }}</p>
+            </div>
+            <div class="rounded-xl bg-emerald-500/10 p-4">
+              <p class="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-400 font-semibold">Strong Topics</p>
+              <p v-if="!performanceSummary.strong.length" class="mt-2 text-xs text-slate-500">None yet</p>
+              <ul v-else class="mt-2 space-y-1">
+                <li v-for="q in performanceSummary.strong" :key="`strong-${q.subject}-${q.topic}-${q.date}`" class="text-xs font-medium text-emerald-700 dark:text-emerald-400">{{ q.subject }} - {{ q.topic }} ({{ q.score }})</li>
+              </ul>
+            </div>
+            <div class="rounded-xl bg-rose-500/10 p-4">
+              <p class="text-xs uppercase tracking-wider text-rose-700 dark:text-rose-400 font-semibold">Needs Improvement</p>
+              <p v-if="!performanceSummary.needsImprovement.length" class="mt-2 text-xs text-slate-500">None yet</p>
+              <ul v-else class="mt-2 space-y-1">
+                <li v-for="q in performanceSummary.needsImprovement" :key="`weak-${q.subject}-${q.topic}-${q.date}`" class="text-xs font-medium text-rose-700 dark:text-rose-400">{{ q.subject }} - {{ q.topic }} ({{ q.score }})</li>
+              </ul>
+            </div>
           </div>
         </div>
 

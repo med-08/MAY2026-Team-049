@@ -1,16 +1,16 @@
 .tutor-portal{
   --bg:#EEF0F7;--bg2:#E6E9F4;--panel:rgba(255,255,255,.78);--solid:#fff;
   --border:rgba(24,24,54,.1);--text:#191A2C;--muted:#5B6079;--faint:#858AA4;
-  --g1:#6C4DFF;--g2:#3FBEEF;--lime:#0EA47F;--coral:#E8496B;--amber:#C77A00;
-  --shadow:0 24px 60px -28px rgba(40,40,90,.32);--ring:rgba(108,77,255,.35);--aop:.4;--glassedge:rgba(255,255,255,.9);
+  --g1:#2454ff;--g2:#14b877;--lime:#0EA47F;--coral:#E8496B;--amber:#C77A00;
+  --shadow:0 24px 60px -28px rgba(40,40,90,.32);--ring:rgba(36,84,255,.35);--aop:.4;--glassedge:rgba(255,255,255,.9);
   --page-pad:clamp(24px,2vw,32px);--sidebar-width:260px;--layout-gap:24px;--section-gap:22px;--card-gap:18px;--card-pad:24px;--card-radius:22px;
   min-height:100vh;background:var(--bg);color:var(--text);font-family:Inter,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;transition:background .5s ease,color .3s ease;
 }
 html.dark .tutor-portal{
   --bg:#07080F;--bg2:#0B0C16;--panel:rgba(20,22,38,.64);--solid:#12131F;
   --border:rgba(255,255,255,.09);--text:#ECEDF7;--muted:#A0A3BA;--faint:#73778F;
-  --g1:#8B6BFF;--g2:#4CC9F0;--lime:#20E3A2;--coral:#FF6B8A;--amber:#FFC24B;
-  --shadow:0 30px 70px -30px rgba(0,0,0,.72);--ring:rgba(139,107,255,.4);--aop:.55;--glassedge:rgba(255,255,255,.07);
+  --g1:#60a5fa;--g2:#34d399;--lime:#20E3A2;--coral:#FF6B8A;--amber:#FFC24B;
+  --shadow:0 30px 70px -30px rgba(0,0,0,.72);--ring:rgba(96,165,250,.4);--aop:.55;--glassedge:rgba(255,255,255,.07);
 }
 @scope (.tutor-portal){
   *{margin:0;padding:0;box-sizing:border-box}

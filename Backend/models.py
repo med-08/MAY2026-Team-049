@@ -201,7 +201,10 @@ class Quiz(db.Model):
     quiz_id = db.Column(db.Integer, primary_key=True)
     tutor_id = db.Column(db.Integer, db.ForeignKey('tutor.tutor_id'), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subject.subject_id'), nullable=False)
+    assigned_student_id = db.Column(db.Integer, db.ForeignKey('student.student_id'), nullable=True)
     title = db.Column(db.String(100), nullable=False)
+    topic = db.Column(db.String(100), nullable=True)
+    difficulty = db.Column(db.String(20), nullable=True)
     week_number = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -215,6 +218,7 @@ class QuizQuestion(db.Model):
     option_c = db.Column(db.String(255))
     option_d = db.Column(db.String(255))
     correct_option = db.Column(db.String(1)) # A, B, C, D
+    explanation = db.Column(db.Text)
 
 class QuizAttempt(db.Model):
     __tablename__ = 'quiz_attempt'
@@ -222,8 +226,32 @@ class QuizAttempt(db.Model):
     quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.quiz_id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('student.student_id'), nullable=False)
     score = db.Column(db.Float)
+    correct_count = db.Column(db.Integer, nullable=True)
+    total_questions = db.Column(db.Integer, nullable=True)
+    answers_json = db.Column(db.Text, nullable=True)
+    review_json = db.Column(db.Text, nullable=True)
     attempted_at = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (db.UniqueConstraint('quiz_id', 'student_id', name='_quiz_student_uc'),)
+
+class FlashcardSet(db.Model):
+    __tablename__ = 'flashcard_set'
+    set_id = db.Column(db.Integer, primary_key=True)
+    tutor_id = db.Column(db.Integer, db.ForeignKey('tutor.tutor_id'), nullable=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subject.subject_id'), nullable=False)
+    assigned_student_id = db.Column(db.Integer, db.ForeignKey('student.student_id'), nullable=True)
+    title = db.Column(db.String(100), nullable=False)
+    topic = db.Column(db.String(100), nullable=True)
+    class_level = db.Column(db.String(50), nullable=True)
+    context = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Flashcard(db.Model):
+    __tablename__ = 'flashcard'
+    card_id = db.Column(db.Integer, primary_key=True)
+    set_id = db.Column(db.Integer, db.ForeignKey('flashcard_set.set_id'), nullable=False)
+    front = db.Column(db.Text, nullable=False)
+    back = db.Column(db.Text, nullable=False)
+    explanation = db.Column(db.Text, nullable=True)
 
 class WeeklySummary(db.Model):
     __tablename__ = 'weekly_summary'

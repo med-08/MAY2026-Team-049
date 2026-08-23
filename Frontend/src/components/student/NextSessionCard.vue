@@ -59,6 +59,13 @@ async function join() {
         :disabled="busy"
         @click="join"
       >Join Google Meet</button>
+      <a
+        v-else-if="session.meeting_url || session.meetingUrl"
+        :href="session.meeting_url || session.meetingUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="block w-full rounded-xl bg-white px-4 py-3 text-center text-sm font-bold text-brand-blue hover:bg-slate-50"
+      >Meeting Link</a>
       <div v-else class="rounded-xl bg-white/15 px-4 py-3 text-center text-sm font-semibold text-white">
         {{ meetingLabel() }}
       </div>

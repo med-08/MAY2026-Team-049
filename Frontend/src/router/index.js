@@ -32,6 +32,7 @@ import StudentAssignments from '../views/student/Assignments.vue'
 import StudentHomework from '../views/student/Homework.vue'
 import StudentStudyResources from '../views/student/StudyResources.vue'
 import StudentStudyTips from '../views/student/StudyTips.vue'
+import StudentFlashcards from '../views/student/Flashcards.vue'
 import StudentFAQ from '../views/student/FAQ.vue'
 import StudentAskDoubt from '../views/student/AskDoubt.vue'
 import StudentMessages from '../views/student/Messages.vue'
@@ -115,7 +116,8 @@ const routes = [
       { path: 'assignments', name: 'student-assignments', component: StudentAssignments, meta: { title: 'Interactive Assignments' } },
       { path: 'homework', name: 'student-homework', component: StudentHomework, meta: { title: 'Homework' } },
       { path: 'resources', name: 'student-study-resources', component: StudentStudyResources, meta: { title: 'Study Resources' } },
-      { path: 'study-tips', name: 'student-study-tips', component: StudentStudyTips, meta: { title: 'Study Tips' } },
+      { path: 'study-tips', name: 'student-study-tips', component: StudentStudyTips, meta: { title: 'Performance Insights' } },
+      { path: 'flashcards', name: 'student-flashcards', component: StudentFlashcards, meta: { title: 'Flashcards' } },
       { path: 'faq', name: 'student-faq', component: StudentFAQ, meta: { title: 'FAQ' } },
       { path: 'ask-doubt', name: 'student-ask-doubt', component: StudentAskDoubt, meta: { title: 'Ask Doubt' } },
       { path: 'messages', name: 'student-messages', component: StudentMessages, meta: { title: 'Messages' } },

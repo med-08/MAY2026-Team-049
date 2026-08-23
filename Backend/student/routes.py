@@ -1,4 +1,5 @@
 import calendar
+import json
 from datetime import date, datetime
 from flask import jsonify, request, session, send_from_directory, current_app
 from student import student_bp
@@ -7,12 +8,14 @@ from models import (
     Student, Parent, Tutor, Subject, StudentSubject, Session, SessionUpdate,
     SessionBooking, Quiz, QuizQuestion, QuizAttempt, Assignment,
     AssignmentSubmission, StudyTip, StudyResource, FAQ, LearningProgress,
-    MeetingRequest, Notification, Doubt, Message
+    MeetingRequest, Notification, Doubt, Message, AttendanceRecord,
+    FlashcardSet, Flashcard
 )
 from decorators import student_required
 from utils import decode_jwt_token
 from schedule import meeting_lifecycle, _local_now
 from werkzeug.security import check_password_hash, generate_password_hash
+from ai_service import AIConfigError, AIResponseError, AIServiceError, generate_text
 
 
 def ok(data=None, message=None, status=200, meta=None):
@@ -59,6 +62,251 @@ def enrolled_subject_ids(student_id):
             student_id=student_id
         ).all()
     }
+
+
+def student_can_access_quiz(student_id, quiz):
+    if not quiz:
+        return False
+
+    if quiz.assigned_student_id is not None:
+        return quiz.assigned_student_id == student_id
+
+    enrolled = StudentSubject.query.filter_by(
+        student_id=student_id,
+        subject_id=quiz.subject_id
+    ).first()
+
+    return enrolled is not None
+
+
+def quiz_topic(quiz):
+    return (getattr(quiz, "topic", None) or quiz.title or "General").strip()
+
+
+def answer_label(question, option):
+    return {
+        "A": question.option_a,
+        "B": question.option_b,
+        "C": question.option_c,
+        "D": question.option_d,
+    }.get(str(option or "").strip().upper(), "")
+
+
+def attempt_review(attempt):
+    try:
+        data = json.loads(attempt.review_json or "[]")
+        return data if isinstance(data, list) else []
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+
+
+def assigned_student_quizzes(student_id):
+    return [
+        quiz
+        for quiz in Quiz.query.order_by(Quiz.created_at.desc()).all()
+        if student_can_access_quiz(student_id, quiz)
+    ]
+
+
+def build_performance_context(student):
+    attempts = (
+        QuizAttempt.query
+        .filter_by(student_id=student.student_id)
+        .order_by(QuizAttempt.attempted_at.desc())
+        .all()
+    )
+
+    quiz_attempts = []
+    topic_stats = {}
+    missed = []
+
+    for attempt in attempts:
+        quiz = db.session.get(Quiz, attempt.quiz_id)
+        if not quiz:
+            continue
+        topic = quiz_topic(quiz)
+        subject = subject_name(quiz.subject_id)
+        total = attempt.total_questions
+        correct = attempt.correct_count
+        if total is None:
+            total = QuizQuestion.query.filter_by(quiz_id=quiz.quiz_id).count()
+        if correct is None and attempt.score is not None and total:
+            correct = round((float(attempt.score) / 100) * total)
+
+        score = float(attempt.score or 0)
+        stat = topic_stats.setdefault(topic, {
+            "topic": topic,
+            "subject": subject,
+            "attempts": 0,
+            "totalScore": 0,
+            "correct": 0,
+            "totalQuestions": 0,
+            "missed": [],
+        })
+        stat["attempts"] += 1
+        stat["totalScore"] += score
+        stat["correct"] += int(correct or 0)
+        stat["totalQuestions"] += int(total or 0)
+
+        review = attempt_review(attempt)
+        wrong = [item for item in review if not item.get("is_correct")]
+        for item in wrong:
+            missed_item = {
+                "quiz": quiz.title,
+                "subject": subject,
+                "topic": topic,
+                "question": item.get("question"),
+                "studentAnswer": item.get("selected_label") or item.get("selected"),
+                "correctAnswer": item.get("correct_label") or item.get("correct_option"),
+                "concept": item.get("explanation") or topic,
+            }
+            missed.append(missed_item)
+            stat["missed"].append(missed_item)
+
+        quiz_attempts.append({
+            "quiz_id": quiz.quiz_id,
+            "title": quiz.title,
+            "subject": subject,
+            "topic": topic,
+            "difficulty": quiz.difficulty,
+            "score": score,
+            "correctCount": correct,
+            "totalQuestions": total,
+            "attempted_at": attempt.attempted_at.isoformat() if attempt.attempted_at else None,
+            "incorrect": wrong,
+        })
+
+    topic_performance = []
+    for stat in topic_stats.values():
+        avg = stat["totalScore"] / stat["attempts"] if stat["attempts"] else 0
+        if stat["attempts"] < 1:
+            status = "Not enough data"
+        elif avg >= 80:
+            status = "Strong"
+        elif avg >= 55:
+            status = "Needs Practice"
+        else:
+            status = "Needs Improvement"
+        topic_performance.append({
+            "topic": stat["topic"],
+            "subject": stat["subject"],
+            "attempts": stat["attempts"],
+            "averageScore": round(avg, 2),
+            "correctCount": stat["correct"],
+            "totalQuestions": stat["totalQuestions"],
+            "status": status,
+            "missed": stat["missed"][:5],
+        })
+
+    topic_performance.sort(key=lambda item: item["averageScore"])
+    scores = [item["score"] for item in quiz_attempts if item["score"] is not None]
+    strong = [item for item in topic_performance if item["status"] == "Strong"]
+    weak = [item for item in topic_performance if item["status"] == "Needs Improvement"]
+    practice = [item for item in topic_performance if item["status"] == "Needs Practice"]
+
+    recommendations = []
+    for item in weak + practice:
+        missed_concepts = [
+            m["concept"]
+            for m in item["missed"]
+            if m.get("concept")
+        ]
+        recommendations.append({
+            "topic": item["topic"],
+            "subject": item["subject"],
+            "nextStep": f"Review the flashcards for {item['topic']} and attempt another short quiz.",
+            "revise": missed_concepts[:3] or [item["topic"]],
+        })
+
+    if not quiz_attempts:
+        summary = "Not enough data yet - complete more quizzes to get a reliable insight."
+    else:
+        summary = (
+            f"Your overall quiz average is {round(sum(scores) / len(scores))}% "
+            f"across {len(scores)} completed quiz{'zes' if len(scores) != 1 else ''}."
+        )
+
+    return {
+        "student_id": student.student_id,
+        "overall": {
+            "completedQuizzes": len(quiz_attempts),
+            "averageScore": round(sum(scores) / len(scores), 2) if scores else None,
+            "summary": summary,
+        },
+        "recentQuizPerformance": quiz_attempts[:5],
+        "topicPerformance": topic_performance,
+        "strongTopics": strong,
+        "weakTopics": weak,
+        "practiceTopics": practice,
+        "missedQuestions": missed[:10],
+        "recommendations": recommendations[:5],
+        "hasEnoughData": bool(quiz_attempts),
+    }
+
+
+def render_performance_text(context):
+    if not context["hasEnoughData"]:
+        return context["overall"]["summary"]
+
+    lines = [
+        "Your Performance",
+        f"Overall score: {round(context['overall']['averageScore'])}%",
+        "",
+    ]
+    if context["strongTopics"]:
+        lines.append("Topics you are strong in:")
+        lines.extend([f"- {x['subject']} - {x['topic']} ({round(x['averageScore'])}%)" for x in context["strongTopics"]])
+    if context["weakTopics"] or context["practiceTopics"]:
+        lines.append("")
+        lines.append("Topics to revise:")
+        lines.extend([f"- {x['subject']} - {x['topic']}: {x['status']}" for x in context["weakTopics"] + context["practiceTopics"]])
+    if context["missedQuestions"]:
+        lines.append("")
+        lines.append("What you got wrong:")
+        for item in context["missedQuestions"][:4]:
+            lines.append(f"- {item['topic']}: {item['question']} Correct answer: {item['correctAnswer']}")
+    if context["recommendations"]:
+        lines.append("")
+        lines.append("Suggested next step:")
+        lines.append(f"- {context['recommendations'][0]['nextStep']}")
+    return "\n".join(lines)
+
+
+def performance_chat_fallback(message, context):
+    text = message.lower()
+    if not context["hasEnoughData"]:
+        return (
+            "I do not have enough quiz data yet to say what you missed. "
+            "Complete an assigned quiz first, then I can explain your score, "
+            "wrong answers, and what to revise."
+        )
+
+    if "miss" in text or "wrong" in text:
+        missed = context["missedQuestions"]
+        if not missed:
+            return "You did not miss any saved quiz questions in the latest data I can see. Nice work. Want to review your strongest topic?"
+        first = missed[0]
+        return (
+            f"In {first['topic']}, you missed: {first['question']} "
+            f"The correct answer was {first['correctAnswer']}. "
+            f"Revise {first['concept']} and try one more short practice question."
+        )
+
+    if "weak" in text or "improve" in text or "study" in text:
+        topic = (context["weakTopics"] or context["practiceTopics"] or context["topicPerformance"])[0]
+        return (
+            f"Focus on {topic['subject']} - {topic['topic']}. "
+            f"Your average there is {round(topic['averageScore'])}%, marked as {topic['status']}. "
+            f"Review the flashcards for {topic['topic']} and then attempt another quiz."
+        )
+
+    if "good" in text or "strong" in text:
+        if not context["strongTopics"]:
+            return "I do not have a strong-topic label yet. Complete a few more quizzes so I can be more reliable."
+        topic = context["strongTopics"][0]
+        return f"You are strongest in {topic['subject']} - {topic['topic']} with an average of {round(topic['averageScore'])}%."
+
+    return render_performance_text(context)
 
 
 def session_json(sess, booking_status=None):
@@ -702,6 +950,8 @@ def faqs():
 @student_required
 def quizzes():
     student = current_student()
+    if not student:
+        return fail("Student not found", 404)
 
     enrolled = {
         x.subject_id
@@ -710,15 +960,16 @@ def quizzes():
         ).all()
     }
 
-    qs = Quiz.query.order_by(
-        Quiz.created_at.desc()
-    ).all()
+    qs = assigned_student_quizzes(student.student_id)
 
     items = []
 
     for q in qs:
 
-        if enrolled and q.subject_id not in enrolled:
+        if q.assigned_student_id is None and enrolled and q.subject_id not in enrolled:
+            continue
+
+        if not student_can_access_quiz(student.student_id, q):
             continue
 
         attempt = QuizAttempt.query.filter_by(
@@ -730,6 +981,8 @@ def quizzes():
             "quiz_id": q.quiz_id,
             "subject": subject_name(q.subject_id),
             "title": q.title,
+            "topic": quiz_topic(q),
+            "difficulty": q.difficulty or "Not set",
             "weekNumber": q.week_number,
             "lastAttempt": (
                 attempt.attempted_at.strftime(
@@ -755,6 +1008,8 @@ def quizzes():
 @student_required
 def quiz_details(quiz_id):
     student = current_student()
+    if not student:
+        return fail("Student not found", 404)
 
     quiz = db.session.get(
         Quiz,
@@ -767,14 +1022,9 @@ def quiz_details(quiz_id):
             404
         )
 
-    enrolled = StudentSubject.query.filter_by(
-        student_id=student.student_id,
-        subject_id=quiz.subject_id
-    ).first()
-
-    if not enrolled:
+    if not student_can_access_quiz(student.student_id, quiz):
         return fail(
-            "You are not enrolled in this subject",
+            "You are not assigned to this quiz",
             403
         )
 
@@ -784,6 +1034,11 @@ def quiz_details(quiz_id):
         QuizQuestion.question_id
     ).all()
 
+    attempt = QuizAttempt.query.filter_by(
+        quiz_id=quiz_id,
+        student_id=student.student_id
+    ).first()
+
     return ok(
         {
             "quiz": {
@@ -792,6 +1047,8 @@ def quiz_details(quiz_id):
                 "subject": subject_name(
                     quiz.subject_id
                 ),
+                "topic": quiz_topic(quiz),
+                "difficulty": quiz.difficulty or "Not set",
                 "weekNumber": quiz.week_number,
             },
 
@@ -808,6 +1065,18 @@ def quiz_details(quiz_id):
                 }
                 for q in questions
             ],
+
+            "attempt": (
+                {
+                    "score": round(float(attempt.score or 0), 2),
+                    "correctCount": attempt.correct_count,
+                    "totalQuestions": attempt.total_questions,
+                    "review": attempt_review(attempt),
+                    "attemptedAt": attempt.attempted_at.isoformat() if attempt.attempted_at else None,
+                }
+                if attempt
+                else None
+            ),
         },
         meta={"total": len(questions)}
     )
@@ -820,6 +1089,8 @@ def quiz_details(quiz_id):
 @student_required
 def submit_quiz(quiz_id):
     student = current_student()
+    if not student:
+        return fail("Student not found", 404)
 
     quiz = db.session.get(
         Quiz,
@@ -832,12 +1103,9 @@ def submit_quiz(quiz_id):
             404
         )
 
-    if not StudentSubject.query.filter_by(
-        student_id=student.student_id,
-        subject_id=quiz.subject_id
-    ).first():
+    if not student_can_access_quiz(student.student_id, quiz):
         return fail(
-            "You are not enrolled in this subject",
+            "You are not assigned to this quiz",
             403
         )
 
@@ -850,12 +1118,15 @@ def submit_quiz(quiz_id):
             409
         )
 
-    answers = (
-        request.get_json(silent=True) or {}
-    ).get("answers") or {}
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return fail("Invalid quiz submission payload", 400)
+    answers = payload.get("answers") or {}
 
     questions = QuizQuestion.query.filter_by(
         quiz_id=quiz_id
+    ).order_by(
+        QuizQuestion.question_id
     ).all()
 
     if not questions:
@@ -865,6 +1136,7 @@ def submit_quiz(quiz_id):
         )
 
     correct = 0
+    review = []
 
     for q in questions:
 
@@ -872,13 +1144,29 @@ def submit_quiz(quiz_id):
             str(q.question_id),
             answers.get(q.question_id)
         )
+        selected = str(answer or "").strip().upper()
+        expected = str(q.correct_option or "").strip().upper()
+        is_correct = bool(selected and selected == expected)
 
-        if (
-            answer
-            and str(answer).upper()
-            == str(q.correct_option or "").upper()
-        ):
+        if is_correct:
             correct += 1
+
+        review.append({
+            "id": q.question_id,
+            "question": q.question,
+            "options": {
+                "A": q.option_a,
+                "B": q.option_b,
+                "C": q.option_c,
+                "D": q.option_d,
+            },
+            "selected": selected or None,
+            "selected_label": answer_label(q, selected),
+            "correct_option": expected,
+            "correct_label": answer_label(q, expected),
+            "is_correct": is_correct,
+            "explanation": q.explanation or "",
+        })
 
     score = round(
         (correct / len(questions)) * 100,
@@ -888,7 +1176,11 @@ def submit_quiz(quiz_id):
     attempt = QuizAttempt(
         quiz_id=quiz_id,
         student_id=student.student_id,
-        score=score
+        score=score,
+        correct_count=correct,
+        total_questions=len(questions),
+        answers_json=json.dumps(answers),
+        review_json=json.dumps(review),
     )
 
     db.session.add(attempt)
@@ -899,6 +1191,7 @@ def submit_quiz(quiz_id):
             "score": score,
             "correctCount": correct,
             "totalQuestions": len(questions),
+            "review": review,
         },
         message="Quiz submitted",
         meta={"total": len(questions)}
@@ -1365,6 +1658,110 @@ def join_session(session_id):
         'joined_at': progress.joined_at.isoformat() if progress.joined_at else None,
     }, 'Meeting join recorded')
 
+
+@student_bp.route('/meeting-request', methods=['POST'])
+@student_required
+def request_meeting():
+    student = current_student()
+    if not student:
+        return fail('Student not found', 404)
+
+    d = request.get_json(silent=True) or {}
+    try:
+        tutor_id = int(d.get('tutor_id'))
+    except (TypeError, ValueError):
+        return fail('tutor_id is required')
+
+    tutor = db.session.get(Tutor, tutor_id)
+    if not tutor:
+        return fail('Tutor not found', 404)
+
+    preferred_date = d.get('preferred_date')
+    preferred_time = d.get('preferred_time')
+    if not preferred_date or not preferred_time:
+        return fail('preferred_date and preferred_time are required')
+    try:
+        start_dt = datetime.strptime(f'{preferred_date} {preferred_time}', '%Y-%m-%d %H:%M')
+        end_time_value = d.get('preferred_end_time')
+        if end_time_value:
+            end_dt = datetime.strptime(f'{preferred_date} {end_time_value}', '%Y-%m-%d %H:%M')
+        else:
+            from datetime import timedelta
+            end_dt = start_dt + timedelta(hours=1)
+    except ValueError:
+        return fail('Invalid date/time')
+    if end_dt <= start_dt:
+        return fail('End time must be later than start time')
+
+    # Prevent duplicate requests for the same student/tutor/time, mirroring
+    # the existing parent meeting-request duplicate check.
+    duplicate_query = MeetingRequest.query.filter(
+        MeetingRequest.student_id == student.student_id,
+        MeetingRequest.tutor_id == tutor.tutor_id,
+        MeetingRequest.meeting_date == start_dt,
+        MeetingRequest.status.in_(['Pending Approval', 'Scheduled', 'Reschedule Requested'])
+    )
+    if duplicate_query.first():
+        return fail('A meeting request for this tutor and time already exists.', 409)
+
+    subject_row = StudentSubject.query.filter_by(student_id=student.student_id).first()
+    if not subject_row:
+        return fail('You have no registered subject')
+    subject = db.session.get(Subject, subject_row.subject_id)
+
+    # Requesting a meeting must use an existing tutor/student relationship or
+    # a tutor who is configured for the student's enrolled subject.
+    related = Session.query.join(SessionBooking, SessionBooking.session_id == Session.session_id).filter(
+        Session.tutor_id == tutor.tutor_id, SessionBooking.student_id == student.student_id
+    ).first()
+    if not related:
+        try:
+            configured = {str(x).strip().lower() for x in json.loads(tutor.subjects_json or '[]')}
+        except Exception:
+            configured = set()
+        if not subject or subject.subject_name.strip().lower() not in configured:
+            return fail('This tutor is not associated with your enrolled subject', 403)
+
+    conflicts = Session.query.filter(Session.tutor_id == tutor.tutor_id, Session.session_date == start_dt.date()).all()
+    for existing in conflicts:
+        if existing.status != 'Cancelled' and start_dt.time() < existing.end_time and end_dt.time() > existing.start_time:
+            return fail('The tutor already has another session scheduled during this time.', 409)
+
+    # Reuse the existing Session + SessionBooking system, same as the parent
+    # meeting-request flow. A pending request has no Meet resource yet; the
+    # tutor supplies or auto-generates the link on approval.
+    session_obj = Session(
+        tutor_id=tutor.tutor_id, subject_id=subject_row.subject_id,
+        session_date=start_dt.date(), start_time=start_dt.time(), end_time=end_dt.time(),
+        session_type='One-to-One', status='Scheduled'
+    )
+    db.session.add(session_obj)
+    db.session.flush()
+    db.session.add(SessionBooking(session_id=session_obj.session_id, student_id=student.student_id, booking_status='Confirmed'))
+
+    m = MeetingRequest(
+        tutor_id=tutor.tutor_id, student_id=student.student_id, parent_id=student.parent_id,
+        meeting_date=start_dt, meeting_link=None, meeting_reason=d.get('notes', ''),
+        session_id=session_obj.session_id, status='Pending Approval'
+    )
+    db.session.add(m)
+
+    display_date = start_dt.strftime('%d %b %Y')
+    display_start = start_dt.strftime('%I:%M %p')
+    display_end = end_dt.strftime('%I:%M %p')
+    db.session.add(Notification(
+        recipient_type='Tutor', recipient_id=tutor.tutor_id,
+        title=f'{subject.subject_name} meeting request',
+        message=f'{student.student_name} requested a one-on-one {subject.subject_name} meeting for {display_date}, {display_start}–{display_end}.',
+        notification_type='Meeting Request', action_url=f'/tutor/schedule?session_id={session_obj.session_id}'
+    ))
+    db.session.commit()
+    return ok({
+        'meeting_id': m.meeting_id, 'session_id': session_obj.session_id,
+        'meeting_date': m.meeting_date.isoformat(), 'meeting_link': None, 'status': m.status
+    }, 'Meeting scheduled', 201)
+
+
 @student_bp.route(
     '/next-session',
     methods=['GET']
@@ -1426,6 +1823,307 @@ def study_tips():
         {"studyTips": data},
         meta={"total": len(data)}
     )
+
+
+@student_bp.route(
+    '/performance-insights',
+    methods=['POST']
+)
+@student_required
+def performance_insights():
+    student = current_student()
+    if not student:
+        return fail("Student not found or not logged in", 404)
+
+    context = build_performance_context(student)
+
+    return ok(
+        {
+            "insights": render_performance_text(context),
+            "performance": context,
+            "sourceCounts": {
+                "quizAttempts": context["overall"]["completedQuizzes"],
+                "missedQuestions": len(context["missedQuestions"]),
+                "topics": len(context["topicPerformance"]),
+            },
+        }
+    )
+
+
+@student_bp.route('/flashcards', methods=['GET'])
+@student_required
+def flashcards():
+    student = current_student()
+    if not student:
+        return fail("Student not found", 404)
+
+    topic_filter = (request.args.get("topic") or "").strip().lower()
+    cards = []
+
+    for quiz in assigned_student_quizzes(student.student_id):
+        topic = quiz_topic(quiz)
+        if topic_filter and (topic_filter not in topic.lower() and topic.lower() not in topic_filter):
+            continue
+        questions = (
+            QuizQuestion.query
+            .filter_by(quiz_id=quiz.quiz_id)
+            .order_by(QuizQuestion.question_id)
+            .all()
+        )
+        if questions:
+            for question in questions:
+                correct = str(question.correct_option or "").strip().upper()
+                cards.append({
+                    "id": f"q-{question.question_id}",
+                    "quiz_id": quiz.quiz_id,
+                    "subject": subject_name(quiz.subject_id),
+                    "topic": topic,
+                    "front": question.question,
+                    "back": answer_label(question, correct) or correct,
+                    "explanation": question.explanation or "",
+                })
+        else:
+            cards.extend([
+                {
+                    "id": f"quiz-{quiz.quiz_id}-topic",
+                    "quiz_id": quiz.quiz_id,
+                    "subject": subject_name(quiz.subject_id),
+                    "topic": topic,
+                    "front": f"What topic is this quiz about?",
+                    "back": topic,
+                    "explanation": f"Review the exact topic your tutor assigned: {subject_name(quiz.subject_id)} - {topic}.",
+                },
+                {
+                    "id": f"quiz-{quiz.quiz_id}-next",
+                    "quiz_id": quiz.quiz_id,
+                    "subject": subject_name(quiz.subject_id),
+                    "topic": topic,
+                    "front": f"What should you revise before attempting {quiz.title}?",
+                    "back": topic,
+                    "explanation": "Your tutor has assigned this quiz for this specific concept.",
+                },
+            ])
+
+    return ok({"flashcards": cards[:20]}, meta={"total": len(cards)})
+
+
+def student_can_access_flashcard_set(student_id, fset):
+    if not fset:
+        return False
+    if fset.assigned_student_id is not None:
+        return fset.assigned_student_id == student_id
+    enrolled = StudentSubject.query.filter_by(
+        student_id=student_id,
+        subject_id=fset.subject_id
+    ).first()
+    return enrolled is not None
+
+
+@student_bp.route('/flashcard-sets', methods=['GET'])
+@student_required
+def flashcard_sets():
+    student = current_student()
+    if not student:
+        return fail("Student not found", 404)
+
+    sets = FlashcardSet.query.order_by(FlashcardSet.created_at.desc()).all()
+    accessible = [s for s in sets if student_can_access_flashcard_set(student.student_id, s)]
+
+    return ok({
+        "sets": [
+            {
+                "set_id": s.set_id,
+                "subject": subject_name(s.subject_id),
+                "title": s.title,
+                "topic": s.topic,
+                "class_level": s.class_level,
+                "cardCount": Flashcard.query.filter_by(set_id=s.set_id).count(),
+            }
+            for s in accessible
+        ]
+    }, meta={"total": len(accessible)})
+
+
+@student_bp.route('/flashcard-sets/<int:set_id>/cards', methods=['GET'])
+@student_required
+def flashcard_set_cards(set_id):
+    student = current_student()
+    if not student:
+        return fail("Student not found", 404)
+
+    fset = db.session.get(FlashcardSet, set_id)
+    if not fset:
+        return fail("Flashcard set not found", 404)
+    if not student_can_access_flashcard_set(student.student_id, fset):
+        return fail("You are not assigned to this flashcard set", 403)
+
+    cards = Flashcard.query.filter_by(set_id=set_id).order_by(Flashcard.card_id).all()
+
+    return ok({
+        "set": {
+            "set_id": fset.set_id,
+            "subject": subject_name(fset.subject_id),
+            "title": fset.title,
+            "topic": fset.topic,
+            "class_level": fset.class_level,
+        },
+        "cards": [
+            {"id": c.card_id, "front": c.front, "back": c.back, "explanation": c.explanation or ""}
+            for c in cards
+        ],
+    }, meta={"total": len(cards)})
+
+
+@student_bp.route('/flashcards/ai-generate', methods=['POST'])
+@student_required
+def student_flashcards_ai_generate():
+    student = current_student()
+    if not student:
+        return fail("Student not found", 404)
+
+    data = request.get_json(silent=True) or {}
+    subject = str(data.get("subject") or "").strip()
+    topic = str(data.get("topic") or "").strip()
+    class_level = str(data.get("class_level") or "").strip()
+    context = str(data.get("context") or "").strip()
+    try:
+        count = int(data.get("count") or 10)
+    except (TypeError, ValueError):
+        count = 10
+    count = max(1, min(count, 20))
+
+    if not subject:
+        return fail("subject is required")
+    if not topic:
+        return fail("topic is required")
+
+    prompt = (
+        "You are Student AI for LearnAtHome, helping a student self-practice. "
+        "Generate flashcards using only the exact requested subject, topic, "
+        "class level, and context below. Every flashcard must directly test "
+        "or explain the requested topic; do not drift into adjacent topics. "
+        "Do not invent content unrelated to what was provided. Return a "
+        "JSON array of objects with exactly the keys front, back, and "
+        "explanation. 'front' is a short question or term for the student "
+        "to recall, 'back' is the concise answer or definition, "
+        "'explanation' is one sentence giving context. Return exactly "
+        f"{count} flashcards.\n\n"
+        f"Subject: {subject}\n"
+        f"Topic: {topic}\n"
+        f"Class level: {class_level or 'Not specified'}\n"
+        f"Context: {context or 'None provided'}"
+    )
+
+    try:
+        raw_generated = generate_text(prompt, response_mime_type="application/json")
+        json_text = raw_generated.strip()
+        if json_text.startswith("```"):
+            json_text = json_text.removeprefix("```json").removeprefix("```")
+            json_text = json_text.removesuffix("```").strip()
+        generated = json.loads(json_text)
+        if not isinstance(generated, list) or not generated:
+            raise AIResponseError("AI provider returned an invalid flashcard set.")
+        required_fields = {"front", "back"}
+        for item in generated:
+            if not isinstance(item, dict) or not required_fields.issubset(item):
+                raise AIResponseError("AI provider returned an invalid flashcard set.")
+            if not str(item.get("front") or "").strip() or not str(item.get("back") or "").strip():
+                raise AIResponseError("AI provider returned an invalid flashcard set.")
+        generated = generated[:count]
+    except AIConfigError as exc:
+        return fail(str(exc), 503)
+    except json.JSONDecodeError:
+        return fail("AI flashcard generation failed: AI provider returned invalid flashcard JSON.", 502)
+    except (AIServiceError, AIResponseError) as exc:
+        return fail(f"AI flashcard generation failed: {exc}", 502)
+
+    return ok({"flashcards": generated}, message="AI flashcards generated")
+
+
+@student_bp.route('/flashcard-sets/self-generate', methods=['POST'])
+@student_required
+def student_create_flashcard_set():
+    student = current_student()
+    if not student:
+        return fail("Student not found", 404)
+
+    data = request.get_json(silent=True) or {}
+    try:
+        subject_id = int(data.get("subject_id"))
+    except (TypeError, ValueError):
+        return fail("subject_id is required")
+    if not db.session.get(Subject, subject_id):
+        return fail("Subject not found", 404)
+
+    title = (data.get("title") or "").strip()
+    if not title:
+        return fail("title is required")
+
+    cards = data.get("cards")
+    if not isinstance(cards, list) or not cards:
+        return fail("At least one flashcard is required")
+
+    fset = FlashcardSet(
+        tutor_id=None,
+        subject_id=subject_id,
+        assigned_student_id=student.student_id,
+        title=title,
+        topic=(data.get("topic") or "").strip() or None,
+        class_level=(data.get("class_level") or "").strip() or None,
+        context=(data.get("context") or "").strip() or None,
+    )
+    db.session.add(fset)
+    db.session.flush()
+
+    saved = 0
+    for card in cards:
+        front = str((card or {}).get("front") or "").strip()
+        back = str((card or {}).get("back") or "").strip()
+        if not front or not back:
+            continue
+        explanation = str((card or {}).get("explanation") or "").strip()
+        db.session.add(Flashcard(set_id=fset.set_id, front=front, back=back, explanation=explanation))
+        saved += 1
+
+    if not saved:
+        db.session.rollback()
+        return fail("At least one flashcard with front and back is required")
+
+    db.session.commit()
+    return ok({"set_id": fset.set_id, "cardCount": saved}, "Flashcard set created", 201)
+
+
+@student_bp.route('/performance-chat', methods=['POST'])
+@student_required
+def performance_chat():
+    student = current_student()
+    if not student:
+        return fail("Student not found or not logged in", 404)
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return fail("Invalid chat payload", 400)
+    message = (payload.get("message") or "").strip()
+    if not message:
+        return fail("Message is required")
+
+    context = build_performance_context(student)
+    prompt = (
+        "You are the existing LearnAtHome student helper inside Performance Insights. "
+        "Answer in a simple, encouraging tutor style. Use only the provided backend "
+        "performance context for factual claims. Do not invent scores, weak topics, "
+        "completed quizzes, or missed answers. If the context has insufficient data, "
+        "say that clearly. Keep the answer short and interactive.\n\n"
+        f"PERFORMANCE_CONTEXT:\n{json.dumps(context, ensure_ascii=False, default=str)}\n\n"
+        f"STUDENT_QUESTION: {message}"
+    )
+
+    try:
+        reply = generate_text(prompt)
+    except (AIConfigError, AIServiceError, AIResponseError):
+        reply = performance_chat_fallback(message, context)
+
+    return ok({"reply": reply})
 
 
 @student_bp.route(
@@ -2180,6 +2878,7 @@ def notifications():
                 "message": n.message,
                 "type": n.notification_type,
                 "isRead": n.is_read,
+                "actionUrl": n.action_url,
                 "createdAt": (
                     n.created_at.isoformat()
                     if n.created_at

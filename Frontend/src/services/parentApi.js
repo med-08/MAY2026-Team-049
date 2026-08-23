@@ -42,6 +42,9 @@ export const parentApi = {
   getWeeklySummary: (parentId, studentId) =>
     apiRequest(`${BASE}/weekly-summary/${parentId}/${studentId}`),
 
+  generateWeeklyReport: (parentId, studentId) =>
+    apiRequest(`${BASE}/ai-weekly-report/${parentId}/${studentId}`, { method: 'POST' }),
+
   getNotifications: (parentId) => apiRequest(`${BASE}/notifications/${parentId}`)
 }
 

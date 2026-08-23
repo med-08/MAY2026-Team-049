@@ -775,7 +775,10 @@ const routeProps = computed(() => {
         assignmentsState.value,
 
       sessions:
-        sessionsState.value
+        sessionsState.value,
+
+      subjects:
+        tutorUserState.value?.subjects || []
 
     },
 
