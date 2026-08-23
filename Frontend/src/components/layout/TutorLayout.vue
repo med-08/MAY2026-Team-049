@@ -822,7 +822,10 @@ const routeProps = computed(() => {
         activeConversationId.value,
 
       students:
-        studentsState.value
+        studentsState.value,
+
+      doubts:
+        doubts.value
 
     },
 

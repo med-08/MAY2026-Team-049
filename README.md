@@ -1,160 +1,92 @@
 # 📚 LearnAtHome
 
-### **A Modern Full-Stack Home Tuition Management Platform**
+<div align="center">
 
-[![Vue.js](https://img.shields.io/badge/Vue.js-3.x-4FC08D?style=for-the-badge\&logo=vue.js\&logoColor=white)](https://vuejs.org/)
-[![Flask](https://img.shields.io/badge/Flask-2.x-000000?style=for-the-badge\&logo=flask)](https://flask.palletsprojects.com/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.x-38B2AC?style=for-the-badge\&logo=tailwind-css\&logoColor=white)](https://tailwindcss.com/)
-[![SQLite](https://img.shields.io/badge/SQLite-3.x-003B57?style=for-the-badge\&logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge\&logo=python\&logoColor=white)](https://www.python.org/)
+# A Modern Home Tuition Management Platform
 
-**LearnAtHome** is a full-stack home tuition management platform that connects **Students, Tutors, Parents, and Administrators** through dedicated role-based dashboards.
+LearnAtHome is a full-stack web application that simplifies home tuition management by bringing **Students, Tutors, Parents, and Administrators** together on a single platform. It streamlines scheduling, progress tracking, communication, assessments, and resource management through dedicated role-based dashboards.
 
-The platform centralizes **scheduling, learning resources, assignments, quizzes, attendance, progress tracking, communication, notifications, and online meetings** into a single ecosystem.
+![Vue](https://img.shields.io/badge/Vue.js-3-42b883?logo=vue.js)
+![Flask](https://img.shields.io/badge/Flask-Backend-black?logo=flask)
+![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
+![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?logo=sqlite)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-Styled-38BDF8?logo=tailwindcss)
 
----
-
-## ✨ Key Highlights
-
-* 👥 **Four Role-Based Dashboards** — Admin, Tutor, Student, and Parent
-* 📅 **Smart Scheduling** — Sessions, timetables, bookings, and meetings
-* 📊 **Progress Tracking** — Student performance, attendance, and quiz results
-* 📝 **Assessments** — Assignments, quizzes, and question management
-* 📚 **Learning Resources** — Study materials and external resource links
-* 💬 **Communication** — Role-based messaging and notifications
-* 🎥 **Online Meetings** — Student-Tutor and Parent-related meeting workflows
-* 🔐 **Role-Based Access Control** — Protected functionality based on user roles
-* 🌓 **Modern Responsive UI** — Responsive design with Light/Dark mode
+</div>
 
 ---
 
-# 👥 Role-Based Features
+# ✨ Features
 
 ## 👨‍💼 Admin Dashboard
-
-* Platform analytics
-* Student, Tutor, and Parent management
-* User search and filtering
-* Approve new registrations
-* Block / Unblock users
-* Delete users
-* Profile management
-* Role-based administration
-* Responsive Light/Dark UI
+- Dashboard analytics
+- Student, Tutor & Parent management
+- User search and filtering
+- Block / Unblock users
+- Delete users
+- Approve new registrations
+- Profile management
+- Responsive UI
+- Light & Dark mode
 
 ---
 
 ## 👨‍🏫 Tutor Dashboard
-
-* View assigned students
-* Schedule and manage sessions
-* Track attendance
-* Create assignments
-* Create quizzes and question banks
-* Upload learning materials
-* Track student progress
-* Manage meetings
-* Messaging
-* Notifications
-* Earnings management
-* Profile management
+- Manage assigned students
+- Schedule sessions
+- Upload study materials
+- Track student progress
+- Notifications
+- Profile management
+- Responsive UI
+- Light & Dark mode
 
 ---
 
 ## 🎓 Student Dashboard
-
-* View upcoming classes
-* View timetable
-* Book sessions
-* Schedule 1-on-1 meetings with tutors
-* View assignments
-* Submit assignments
-* Attempt quizzes
-* View quiz results
-* Track learning progress
-* Access study materials
-* Personalized study tips
-* Notifications
-* FAQ
-* Profile management
+- Upcoming classes
+- Weekly quizzes
+- Quiz results
+- Learning progress
+- Study materials
+- Session booking
+- Personalized study tips
+- Notifications
+- FAQ section
+- Responsive UI
+- Light & Dark mode
 
 ---
 
 ## 👨‍👩‍👧 Parent Dashboard
-
-* Monitor child progress
-* View attendance
-* View upcoming sessions
-* View schedules
-* Monitor quiz performance
-* View activity summaries
-* Access relevant meetings
-* Message tutors
-* Receive notifications
-* Profile management
+- Child progress tracking
+- Attendance monitoring
+- Upcoming sessions
+- Quiz performance
+- Weekly summaries
+- Notifications
+- Profile management
+- Responsive UI
+- Light & Dark mode
 
 ---
 
 # 🛠 Tech Stack
 
-| Layer                  | Technologies                             |
-| :--------------------- | :--------------------------------------- |
-| **Frontend**           | Vue.js 3, Vue Router, Vite, Tailwind CSS |
-| **Backend**            | Flask, Python, REST APIs                 |
-| **Database**           | SQLite                                   |
-| **Data Visualization** | Chart.js                                 |
-| **Testing**            | Pytest                                   |
-| **Icons**              | Heroicons                                |
-| **API Documentation**  | OpenAPI / YAML                           |
+| Category | Technologies |
+|-----------|--------------|
+| Frontend | Vue.js 3, Vue Router, Tailwind CSS, Vite |
+| Backend | Flask, Python |
+| Database | SQLite |
+| Charts | Chart.js |
+| Icons | Heroicons |
+| Testing | Pytest |
 
 ---
 
-# 📂 Project Structure
+# 🚀 Quick Start
 
-```text
-LearnAtHome/
-│
-├── Backend/
-│   ├── admin/
-│   ├── auth/
-│   ├── models/
-│   ├── routes/
-│   ├── tests/
-│   ├── uploads/
-│   ├── app.py
-│   ├── database.py
-│   ├── seed.py
-│   ├── api_docs.yaml
-│   └── requirements.txt
-│
-├── Frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── views/
-│   │   ├── services/
-│   │   ├── router/
-│   │   └── assets/
-│   ├── public/
-│   └── package.json
-│
-└── README.md
-```
-
----
-
-# 🚀 Getting Started
-
-## Prerequisites
-
-Make sure the following are installed:
-
-* **Python 3.10+**
-* **Node.js + npm**
-* **Git**
-
----
-
-## 1️⃣ Clone the Repository
+## Clone Repository
 
 ```bash
 git clone https://github.com/med-08/MAY2026-Team-049.git
@@ -163,21 +95,16 @@ cd MAY2026-Team-049
 
 ---
 
-# 🐍 Backend Setup
+## Backend Setup
 
-## 2️⃣ Create a Virtual Environment
-
-Navigate to the backend:
-
-```bash
-cd Backend
-```
+### Create Virtual Environment and Enter inside backend folder
 
 ### Windows
 
 ```bash
 python -m venv venv
 venv\Scripts\activate
+cd Backend
 ```
 
 ### macOS / Linux
@@ -185,404 +112,258 @@ venv\Scripts\activate
 ```bash
 python3 -m venv venv
 source venv/bin/activate
+cd Backend
 ```
 
----
-
-## 3️⃣ Install Dependencies
+### Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-All required Python dependencies are maintained in:
-
-```text
-Backend/requirements.txt
-```
-
----
-
-## 4️⃣ Configure Environment Variables
-
-If environment variables are required by the backend, create:
-
-```text
-Backend/.env
-```
-
-Use the variable names required by the current application configuration.
-
-Example:
-
-```env
-SECRET_KEY=your_secret_key
-```
-
-> **Security:** Never commit `.env` files containing passwords, API keys, OAuth credentials, tokens, or other secrets.
-
-For team development, maintain a safe:
-
-```text
-Backend/.env.example
-```
-
-containing placeholder values only.
-
----
-
-# 🗄️ Database Initialization
-
-LearnAtHome uses **SQLite**.
-
-The project provides a `seed.py` script for initializing a clean database.
-
-Run:
+### Seed Database
 
 ```bash
 python seed.py
 ```
 
-The script:
+This creates:
 
-* Creates the database tables
-* Creates the required application roles
-* Creates the default subjects
-* Creates the initial Admin account
-* Does **not** create sample Tutor, Student, or Parent activity
+- `learnathome.db`
+- Demo users
+- Roles
+- Subjects
+- FAQs
 
-### Roles Created
-
-* Admin
-* Tutor
-* Parent
-* Student
-
-### Default Subjects
-
-* English
-* Mathematics
-* Physics
-* Science
-* Chemistry
-* Biology
-
-### Default Admin Account
-
-| Role      | Username | Password   |
-| :-------- | :------- | :--------- |
-| **Admin** | `admin`  | `admin123` |
-
-> The default Admin account is intended for local development/testing. Change or remove development credentials before deploying to a production environment.
-
----
-
-# ▶️ Run the Backend
-
-From the `Backend` directory:
+### Run Backend
 
 ```bash
 python app.py
 ```
 
-Backend:
+Backend runs at
 
-```text
+```
 http://localhost:5000
 ```
 
 ---
 
-# 💻 Frontend Setup
-
-Open a **new terminal**.
-
-From the project root:
+## Frontend Setup
 
 ```bash
 cd Frontend
-```
 
-Install dependencies:
-
-```bash
 npm install
+
 ```
 
----
+Update
 
-## Frontend Environment Variables
-
-If required by the current frontend configuration, create:
-
-```text
-Frontend/.env
+```
+VITE_API_BASE_URL
 ```
 
-Example:
+if required.
 
-```env
-VITE_API_BASE_URL=http://localhost:5000
-```
-
-Use the actual environment variable names configured in the frontend codebase.
-
-> Never commit sensitive `.env` values to Git.
-
----
-
-## ▶️ Run the Frontend
+Run
 
 ```bash
 npm run dev
 ```
 
-Frontend:
+Frontend runs at
 
-```text
+```
 http://localhost:5173
 ```
 
 ---
 
-# 🔐 Authentication & Access Control
+# 🔐 Demo Accounts
 
-LearnAtHome uses role-based authentication and authorization.
+| Role | Username | Password |
+|------|----------|----------|
+| Admin | admin@Learnathome.com | admin123 |
+| Tutor | tutor@example.com | tutor123 |
+| Student | student@example.com | student123 |
+| Parent | parent@example.com | parent123 |
 
-The application provides:
-
-* Secure login and logout
-* Session-based authentication
-* Role-based access control
-* Protected backend routes
-* Role-specific dashboards
-* Authenticated API requests
-
-New users can register through the application according to the available registration workflow.
-
-Where applicable, registrations requiring administrative approval are reviewed through the **Admin Dashboard**.
+> Select the appropriate role on the login page after entering the credentials.
 
 ---
 
-# 📅 Meeting Management
+# 🧪 Running Tests
 
-LearnAtHome supports separate meeting workflows for Students, Tutors, and Parents.
+Run the backend test suite:
 
-## 🎓 Student → Tutor Meeting
+```bash
+cd Backend
 
-When a **Student schedules a meeting with a Tutor**, it is treated as a private:
+python -m pytest tests/ test_db.py -v
+```
 
-**Student ↔ Tutor meeting**
+✔ 64 automated tests
 
-The Parent is **not automatically added as a participant** because the Student is associated with that Parent.
+✔ Uses an in-memory database
 
-### Meeting Status
-
-Before tutor approval:
-
-> **Tutor approval pending**
-
-After tutor approval:
-
-> **Meeting scheduled with student and tutor**
-
-The Parent:
-
-* Is not treated as a participant
-* Does not receive a Join Meeting action
-* Cannot join a private Student ↔ Tutor meeting
-
----
-
-## 👨‍👩‍👧 Parent Meeting
-
-Parent-created meetings follow the Parent scheduling workflow.
-
-The Parent is included as a participant **only when the meeting is explicitly created as a parent-involved meeting**.
-
-The system does not infer meeting participation solely from the Student → Parent relationship.
-
----
-
-# 🔄 Real-Data Integration
-
-The implemented Student, Tutor, and Parent workflows are connected to the backend database rather than relying solely on frontend mock data.
-
-### Student
-
-* Dashboard
-* Progress
-* Sessions
-* Timetable
-* Assignments
-* Quizzes
-* Resources
-* Meetings
-* Notifications
-* Profile
-
-### Tutor
-
-* Dashboard
-* Students
-* Schedule
-* Attendance
-* Assignments
-* Quizzes
-* Materials
-* Messages
-* Meetings
-* Earnings
-* Notifications
-* Profile
-
-### Parent
-
-* Child information
-* Overview
-* Progress
-* Schedule
-* Meetings
-* Messages
-* Notifications
-* Profile
-
-The application uses the existing database structure and does not require replacing the database schema during normal development.
-
----
-
-# 🔔 Notifications
-
-Role-based notifications are generated for relevant application activities, including:
-
-* Meeting requests
-* Tutor approvals
-* Scheduled meetings
-* Session updates
-* Messages
-* Other role-specific events
-
-Notifications are displayed according to the associated user and workflow.
+✔ Never modifies `learnathome.db`
 
 ---
 
 # 📖 API Documentation
 
-The backend API is documented using OpenAPI.
+OpenAPI Specification:
 
-Documentation:
-
-```text
+```
 Backend/api_docs.yaml
 ```
 
-The specification documents available API endpoints, request formats, responses, and API behavior.
+---
+
+# 📂 Project Structure
+
+```
+LearnAtHome
+│
+├── Backend
+│   ├── admin
+│   ├── auth
+│   ├── models
+│   ├── routes
+│   ├── tests
+│   ├── app.py
+│   ├── seed.py
+│   ├── api_docs.yaml
+│   └── requirements.txt
+│
+├── Frontend
+│   ├── src
+│   │   ├── components
+│   │   ├── views
+│   │   ├── services
+│   │   ├── router
+│   │   └── assets
+│   ├── public
+│   └── package.json
+│
+└── README.md
+```
 
 ---
 
-# 🧪 Testing
+# 🔒 Authentication
 
-Run the backend test suite from the `Backend` directory:
-
-```bash
-python -m pytest tests/ test_db.py -v
-```
-
-Tests cover backend functionality including areas such as:
-
-* Authentication
-* Database behavior
-* API functionality
-* Role-based workflows
-
-Keep the test suite updated whenever backend functionality changes.
+- Session-based authentication
+- Role-based access control
+- Protected Admin APIs
+- Secure login & logout
+- Credentials automatically included with API requests
 
 ---
 
-# 🌿 Git Workflow
+# 🌟 Highlights
 
-For new development, create a separate feature branch:
-
-```bash
-git switch -c feature/your-feature
-```
-
-Make your changes and test them locally.
-
-Then:
-
-```bash
-git add .
-git commit -m "Describe your changes"
-git push -u origin feature/your-feature
-```
-
-After testing, open a Pull Request for review.
-
-### Recommended Workflow
-
-```text
-Main / Development Branch
-          │
-          ├── feature/frontend-update
-          │
-          ├── feature/backend-update
-          │
-          ├── feature/meeting-update
-          │
-          └── feature/new-functionality
-```
-
-This keeps the stable branch protected and makes individual changes easier to review and merge.
+- Four dedicated dashboards
+- Role-based authorization
+- Responsive design
+- Light & Dark theme
+- RESTful API architecture
+- Real backend integration
+- Search & filtering
+- Analytics dashboard
+- Comprehensive test suite
+- OpenAPI documentation
 
 ---
 
-# ⚠️ Development & Security Notes
+# ⚠ Known Limitations
 
-* Never commit `.env` files containing secrets.
-* Never commit OAuth tokens or private credentials.
-* Keep `requirements.txt` synchronized with backend dependencies.
-* Keep frontend and backend API contracts synchronized.
-* Run backend tests after backend changes.
-* Test frontend functionality after API changes.
-* Use feature branches for new development.
-* Do not unnecessarily reset or replace the existing database.
-* Keep `.env.example` updated when new environment variables are introduced.
+- Tutor management UI is currently read-only.
+- Subjects taught are derived from scheduled sessions.
+- No cascade deletion for dependent records.
 
 ---
 
 # 🤝 Contributing
 
-1. Create a feature branch.
-2. Make your changes.
-3. Run the test suite.
-4. Update documentation when necessary.
-5. Commit your changes.
-6. Push your branch.
-7. Open a Pull Request.
+1. Fork the repository
 
-Example:
+2. Create a feature branch
 
 ```bash
-git switch -c feature/my-feature
-git add .
-git commit -m "Add my feature"
-git push -u origin feature/my-feature
+git checkout -b feature/your-feature
 ```
+
+3. Commit your changes
+
+```bash
+git commit -m "Add your feature"
+```
+
+4. Push the branch
+
+```bash
+git push origin feature/your-feature
+```
+
+5. Open a Pull Request
 
 ---
 
 # 💙 Built By
 
-### **Team Synergy — Team 049**
+**Team Synergy (Team-049)**
 
-**Indian Institute of Technology Madras**
-**BS Degree Program**
+Indian Institute of Technology Madras  
+BS Degree Program
 
 ---
 
-<div align="center">
+## ⭐ If you found this project useful, don't forget to star the repository!
 
-### ⭐ If you found LearnAtHome useful, consider starring the repository!
+## Real-data integration update
 
-</div>
+The Student, Tutor and Parent flows now use the existing database instead of frontend mock records for the implemented workflows.
+
+### Backend
+
+- Student routes cover dashboard, progress, FAQs, quizzes, quiz submission, booking, sessions, timetable, assignments, resources, study tips, profile, meetings and notifications.
+- Tutor routes cover dashboard, schedule creation, students, attendance, session updates/notifications, assignments, quizzes/questions, material upload/delete, FAQs, doubts, messages, meetings, earnings, profile and notifications.
+- Parent routes preserve the existing Student -> Parent relationship and provide real profile, overview, meetings, child progress, curriculum, schedule, messages and notifications.
+- No database reset or schema replacement is performed.
+
+### Tutor content flow
+
+Tutor-created data is stored in the existing database and is then exposed to the relevant Student through the existing Subject/Session/Booking/StudentSubject relationships.
+
+Tutor can:
+
+1. Add a session from **Tutor > Schedule**.
+2. Create assignments or quizzes from **Tutor > Assignments**.
+3. Add quiz questions after creating a quiz.
+4. Upload a local file or external resource link from **Tutor > Materials**.
+5. Record attendance and session updates from **Tutor > Attendance**.
+6. Schedule meetings and send messages from **Tutor > Messages**.
+
+Uploaded files are stored locally under `Backend/uploads/` and served through the authenticated application's tutor upload endpoint.
+
+### Run locally
+
+Backend:
+
+```bash
+cd Backend
+python -m pip install -r requirements.txt
+python app.py
+```
+
+Frontend:
+
+```bash
+cd Frontend
+npm install
+npm run dev
+```
+
+The frontend defaults to `http://localhost:5000` for the backend and `http://localhost:5173` for Vite.
