@@ -72,6 +72,10 @@ def ensure_database_compatibility(db_path):
             meeting_columns.add("meeting_type")
         if meeting_columns and "session_id" not in meeting_columns:
             connection.execute("ALTER TABLE meeting_request ADD COLUMN session_id INTEGER")
+            meeting_columns.add("session_id")
+        if meeting_columns and "denial_reason" not in meeting_columns:
+            connection.execute("ALTER TABLE meeting_request ADD COLUMN denial_reason VARCHAR(500)")
+            meeting_columns.add("denial_reason")
 
         notification_columns = {row[1] for row in connection.execute("PRAGMA table_info(notification)").fetchall()}
         if notification_columns and "action_url" not in notification_columns:

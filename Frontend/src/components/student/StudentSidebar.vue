@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from "vue"
+import { ref, computed, onMounted, onUnmounted } from "vue"
 import { useRoute } from "vue-router"
 import {
   Squares2X2Icon,
@@ -7,7 +7,6 @@ import {
   ClipboardDocumentCheckIcon,
   TableCellsIcon,
   PuzzlePieceIcon,
-  PencilSquareIcon,
   ClipboardDocumentListIcon,
   BookOpenIcon,
   LightBulbIcon,
@@ -19,18 +18,49 @@ import {
   XMarkIcon,
   AcademicCapIcon,
 } from "@heroicons/vue/24/outline"
+import { studentApi } from "../../services/studentApi"
 
 defineProps({ open: Boolean })
 const emit = defineEmits(["close", "logout"])
 const route = useRoute()
+const notifications = ref([])
+const bookableSessionIds = ref(new Set())
+let bookingBadgeTimer = null
+
+const newSessionCount = computed(() => {
+  if (route.path === "/student/booking") return 0
+  return notifications.value.filter(n => {
+    if (n.isRead || n.type !== "Session Available") return false
+    const match = String(n.actionUrl || '').match(/session_id=(\d+)/)
+    return !match || bookableSessionIds.value.has(Number(match[1]))
+  }).length
+})
+
+async function loadBookingBadge() {
+  try {
+    const [notificationRes, bookingRes] = await Promise.all([
+      studentApi.getNotifications(),
+      studentApi.getBookingSlots(),
+    ])
+    notifications.value = notificationRes?.data?.notifications || []
+    const allSlots = [
+      ...(bookingRes?.data?.bookingSlots?.regular || []),
+      ...(bookingRes?.data?.bookingSlots?.oneToOne || []),
+    ]
+    bookableSessionIds.value = new Set(
+      allSlots.filter(s => !s.booked).map(s => Number(s.id))
+    )
+  } catch {
+    // Preserve the last known badge state during transient network failures.
+  }
+}
 
 const navItems = [
   { name: "Dashboard", to: "/student/dashboard", icon: Squares2X2Icon },
   { name: "My Sessions", to: "/student/sessions", icon: CalendarDaysIcon },
-  { name: "Session Booking", to: "/student/booking", icon: ClipboardDocumentCheckIcon },
+  { name: "Session Booking", to: "/student/booking", icon: ClipboardDocumentCheckIcon, bookingBadge: true },
   { name: "Timetable", to: "/student/timetable", icon: TableCellsIcon },
   { name: "Weekly Quiz", to: "/student/quiz", icon: PuzzlePieceIcon },
-  { name: "Interactive Assignments", to: "/student/assignments", icon: PencilSquareIcon },
   { name: "Homework", to: "/student/homework", icon: ClipboardDocumentListIcon },
   { name: "Study Resources", to: "/student/resources", icon: BookOpenIcon },
   { name: "Performance Insights", to: "/student/study-tips", icon: LightBulbIcon },
@@ -40,6 +70,15 @@ const navItems = [
   { name: "Messages", to: "/student/messages", icon: ChatBubbleLeftRightIcon },
   { name: "Profile", to: "/student/profile", icon: UserCircleIcon },
 ]
+onMounted(async () => {
+  await loadBookingBadge()
+  bookingBadgeTimer = window.setInterval(loadBookingBadge, 15000)
+})
+
+onUnmounted(() => {
+  if (bookingBadgeTimer) window.clearInterval(bookingBadgeTimer)
+})
+
 </script>
 
 <template>
@@ -79,7 +118,13 @@ const navItems = [
         @click="emit('close')"
       >
         <component :is="item.icon" class="w-5 h-5 shrink-0" />
-        <span class="truncate">{{ item.name }}</span>
+        <span class="min-w-0 flex-1 truncate">{{ item.name }}</span>
+        <span
+          v-if="item.bookingBadge && newSessionCount > 0"
+          class="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-white shadow-sm"
+        >
+          {{ newSessionCount > 9 ? '9+' : newSessionCount }}
+        </span>
       </router-link>
     </nav>
 

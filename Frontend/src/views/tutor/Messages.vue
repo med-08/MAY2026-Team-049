@@ -463,14 +463,14 @@
         <div>
 
           <h3>
-            Parent Meeting Requests
+            One-to-One Meeting Requests
           </h3>
 
           <p
             class="eyebrow"
             style="margin-top:6px"
           >
-            Meeting requests from parents appear here.
+            Student/parent requests awaiting your approval appear here.
             Approve, request another time, or deny the request.
           </p>
 
@@ -498,11 +498,11 @@
         <div>
 
           <strong>
-            No pending parent requests
+            No pending meeting requests
           </strong>
 
           <p>
-            New parent meeting requests will appear here.
+            New One-to-One requests will appear here.
           </p>
 
         </div>
@@ -528,10 +528,12 @@
           <div class="request-meta">
 
             <span>
-              👤 {{ request.parent_name || 'Parent' }}
+              👤 {{ request.creator_type === 'Student'
+                ? (request.student_name || 'Student')
+                : (request.parent_name || 'Parent') }}
             </span>
 
-            <span v-if="request.student_name">
+            <span v-if="request.creator_type === 'Parent' && request.student_name">
               🎓 {{ request.student_name }}
             </span>
 
@@ -563,7 +565,7 @@
 
 
           <span class="request-status">
-            {{ request.status }}
+            {{ request.display_status || request.status }}
           </span>
 
         </div>
@@ -640,45 +642,168 @@
 
         <div class="clist">
 
+          <!-- Connect With selector -->
+
+          <div class="connect-with">
+
+            <label class="lab">
+              Connect With
+            </label>
+
+            <div
+              class="contact-type-toggle"
+              role="tablist"
+            >
+
+              <button
+                type="button"
+                class="ct-pill"
+                :class="{ on: contactFilter === 'all' }"
+                @click="contactFilter = 'all'"
+              >
+                All
+              </button>
+
+              <button
+                type="button"
+                class="ct-pill student-pill"
+                :class="{ on: contactFilter === 'student' }"
+                @click="contactFilter = 'student'"
+              >
+                🎓 Students
+              </button>
+
+              <button
+                type="button"
+                class="ct-pill parent-pill"
+                :class="{ on: contactFilter === 'parent' }"
+                @click="contactFilter = 'parent'"
+              >
+                👨‍👩‍👧 Parents
+              </button>
+
+            </div>
+
+
+            <input
+              v-model="contactSearch"
+              class="field search-field"
+              placeholder="🔍 Search student or parent..."
+            >
+
+          </div>
+
+
           <TutorEmptyState
             v-if="!conversationList.length"
             title="No messages"
           />
 
+          <div
+            v-else-if="!filteredStudentConversations.length && !filteredParentConversations.length"
+            class="clist-no-results"
+          >
+            No matches for "{{ contactSearch }}"
+          </div>
 
-          <button
-            v-for="c in conversationList"
-            :key="c.id"
-            class="ci"
-            :class="{
-              on: activeConversationId === c.id
-            }"
-            @click="$emit('select-conversation', c.id)"
+
+          <!-- Students group -->
+
+          <div
+            v-if="filteredStudentConversations.length"
+            class="clist-group"
           >
 
-            <div
-              class="av"
-              :style="{
-                background: c.gradient
+            <div class="clist-group-label student-label">
+              👨‍🎓 STUDENTS
+            </div>
+
+            <button
+              v-for="c in filteredStudentConversations"
+              :key="c.id"
+              class="ci"
+              :class="{
+                on: activeConversationId === c.id
               }"
+              @click="$emit('select-conversation', c.id)"
             >
-              {{ c.initials }}
-            </div>
 
-
-            <div>
-
-              <div class="t">
-                {{ c.participantName }}
+              <div
+                class="av student-av"
+              >
+                {{ c.initials }}
               </div>
 
-              <div class="s">
-                {{ c.subtitle }}
+
+              <div class="ci-body">
+
+                <div class="t">
+                  {{ c.participantName }}
+                </div>
+
+                <div class="s">
+                  Student
+                </div>
+
               </div>
 
+
+              <span
+                v-if="hasOpenDoubt(c.otherId)"
+                class="new-doubt-badge"
+                title="New doubt"
+              >
+                🔴 New doubt
+              </span>
+
+            </button>
+
+          </div>
+
+
+          <!-- Parents group -->
+
+          <div
+            v-if="filteredParentConversations.length"
+            class="clist-group"
+          >
+
+            <div class="clist-group-label parent-label">
+              👨‍👩‍👧 PARENTS
             </div>
 
-          </button>
+            <button
+              v-for="c in filteredParentConversations"
+              :key="c.id"
+              class="ci"
+              :class="{
+                on: activeConversationId === c.id
+              }"
+              @click="$emit('select-conversation', c.id)"
+            >
+
+              <div
+                class="av parent-av"
+              >
+                {{ c.initials }}
+              </div>
+
+
+              <div class="ci-body">
+
+                <div class="t">
+                  {{ c.participantName }}
+                </div>
+
+                <div class="s">
+                  Parent → {{ linkedStudentNames(c) }}
+                </div>
+
+              </div>
+
+            </button>
+
+          </div>
 
         </div>
 
@@ -692,6 +817,17 @@
 
           <div class="conversation-heading">
 
+            <div
+              class="av heading-av"
+              :class="
+                activeConversation.otherType === 'Parent'
+                  ? 'parent-av'
+                  : 'student-av'
+              "
+            >
+              {{ activeConversation.initials }}
+            </div>
+
             <div>
 
               <strong>
@@ -699,7 +835,41 @@
               </strong>
 
               <span>
-                {{ activeConversation.subtitle }}
+                {{
+                  activeConversation.otherType === 'Parent'
+                    ? `Parent of ${linkedStudentNames(activeConversation)}`
+                    : activeConversation.subtitle
+                }}
+              </span>
+
+
+              <div
+                v-if="
+                  activeConversation.otherType === 'Parent' &&
+                  (activeConversation.linkedStudents || []).length
+                "
+                class="child-chips"
+              >
+
+                <span
+                  v-for="child in activeConversation.linkedStudents"
+                  :key="child.studentId"
+                  class="child-chip"
+                >
+                  👤 {{ child.studentName }}
+                </span>
+
+              </div>
+
+
+              <span
+                v-else-if="
+                  activeConversation.otherType === 'Student' &&
+                  hasOpenDoubt(activeConversation.otherId)
+                "
+                class="new-doubt-badge heading-badge"
+              >
+                🔴 New doubt
               </span>
 
             </div>
@@ -813,6 +983,11 @@ const props = defineProps({
   students: {
     type: Array,
     default: () => []
+  },
+
+  doubts: {
+    type: Array,
+    default: () => []
   }
 
 })
@@ -908,6 +1083,132 @@ const activeConversation = computed(() =>
     props.activeConversationId
   ] || null
 )
+
+
+/* =========================================================
+   CHATBOT-STYLE CONTACT SELECTOR
+   Splits the existing conversation list into Student /
+   Parent groups and makes it searchable, without changing
+   any backend data. "linkedStudents" and "otherType" both
+   already come from the existing conversations API.
+========================================================= */
+
+const contactFilter = ref('all')
+
+const contactSearch = ref('')
+
+
+function linkedStudentNames(conversation) {
+
+  const linked =
+    conversation?.linkedStudents || []
+
+  if (!linked.length) {
+    return 'Unlinked student'
+  }
+
+  return linked
+    .map(child => child.studentName)
+    .join(', ')
+
+}
+
+
+function matchesSearch(conversation) {
+
+  const query =
+    contactSearch.value.trim().toLowerCase()
+
+  if (!query) {
+    return true
+  }
+
+  const haystack =
+    [
+      conversation.participantName,
+      ...(
+        (conversation.linkedStudents || [])
+          .map(child => child.studentName)
+      )
+    ]
+      .join(' ')
+      .toLowerCase()
+
+  return haystack.includes(query)
+
+}
+
+
+const studentConversations = computed(() =>
+
+  conversationList.value.filter(c =>
+    c.otherType === 'Student'
+  )
+
+)
+
+
+const parentConversations = computed(() =>
+
+  conversationList.value.filter(c =>
+    c.otherType === 'Parent'
+  )
+
+)
+
+
+const filteredStudentConversations = computed(() => {
+
+  if (contactFilter.value === 'parent') {
+    return []
+  }
+
+  return studentConversations.value.filter(matchesSearch)
+
+})
+
+
+const filteredParentConversations = computed(() => {
+
+  if (contactFilter.value === 'student') {
+    return []
+  }
+
+  return parentConversations.value.filter(matchesSearch)
+
+})
+
+
+/* =========================================================
+   NEW DOUBT INDICATOR
+   Uses the existing /tutor/doubts data (status "Open")
+   rather than inventing a new unread-message concept.
+========================================================= */
+
+const openDoubtStudentIds = computed(() => {
+
+  const ids = new Set()
+
+  for (const doubt of props.doubts || []) {
+
+    if (doubt?.status === 'Open') {
+      ids.add(String(doubt.studentId))
+    }
+
+  }
+
+  return ids
+
+})
+
+
+function hasOpenDoubt(studentId) {
+
+  return openDoubtStudentIds.value.has(
+    String(studentId)
+  )
+
+}
 
 
 /* =========================================================
@@ -1614,21 +1915,6 @@ async function decideRequest(
   }
 
 
-  if (decision === 'approve') {
-
-    const link =
-      window.prompt(
-        'Meeting link (leave blank to auto-generate a Google Meet link):',
-        ''
-      )
-
-    if (link) {
-      payload.meeting_link = link
-    }
-
-  }
-
-
   if (decision === 'deny') {
 
     const reason =
@@ -1643,9 +1929,13 @@ async function decideRequest(
     }
 
 
-    payload.reason =
-      reason.trim() ||
-      'Tutor is unavailable for the requested time.'
+    const trimmedReason = reason.trim()
+    if (!trimmedReason) {
+      message.value = 'A denial reason is required.'
+      emit('toast', 'A denial reason is required.')
+      return
+    }
+    payload.reason = trimmedReason
 
   }
 
@@ -1746,10 +2036,10 @@ async function decideRequest(
 
     const text =
       decision === 'approve'
-        ? 'Meeting approved and parent notified.'
+        ? 'Meeting approved. It is now scheduled and appears in Schedule.'
         : decision === 'deny'
-          ? 'Meeting denied and parent notified.'
-          : 'Change request sent to the parent.'
+          ? 'Meeting denied and the reason was sent to the requester.'
+          : 'Change request sent to the requester.'
 
 
     message.value =
@@ -2396,6 +2686,319 @@ onMounted(() => {
 
 
 /* =========================================================
+   CHATBOT-STYLE CONTACT SELECTOR
+========================================================= */
+
+.chat {
+
+  grid-template-columns:
+    272px 1fr !important;
+
+}
+
+
+.clist {
+
+  display: flex;
+
+  flex-direction: column;
+
+  overflow-y: auto;
+
+  max-height: 560px;
+
+}
+
+
+.connect-with {
+
+  display: grid;
+
+  gap: 8px;
+
+  padding: 14px 13px 12px;
+
+  border-bottom:
+    1px solid
+    var(--border);
+
+  position: sticky;
+
+  top: 0;
+
+  background:
+    var(--panel);
+
+  backdrop-filter: blur(22px);
+
+  z-index: 1;
+
+}
+
+
+.contact-type-toggle {
+
+  display: flex;
+
+  gap: 6px;
+
+  flex-wrap: wrap;
+
+}
+
+
+.ct-pill {
+
+  padding: 6px 10px;
+
+  border-radius: 999px;
+
+  font-size: 11px;
+
+  font-weight: 700;
+
+  border:
+    1px solid
+    var(--border);
+
+  background:
+    var(--panel);
+
+  color:
+    var(--muted);
+
+  cursor: pointer;
+
+  transition:
+    background .18s ease,
+    color .18s ease,
+    border-color .18s ease;
+
+}
+
+
+.ct-pill.on {
+
+  color: #fff;
+
+  border-color: transparent;
+
+}
+
+
+.ct-pill.student-pill.on {
+
+  background:
+    linear-gradient(135deg, #2563eb, #38bdf8);
+
+}
+
+
+.ct-pill.parent-pill.on {
+
+  background:
+    linear-gradient(135deg, #7c3aed, #14b8a6);
+
+}
+
+
+.ct-pill:not(.student-pill):not(.parent-pill).on {
+
+  background:
+    linear-gradient(135deg, var(--g1), var(--g2));
+
+}
+
+
+.search-field {
+
+  font-size: 12.5px;
+
+  padding: 9px 11px;
+
+}
+
+
+.clist-no-results {
+
+  padding: 18px 14px;
+
+  font-size: 12px;
+
+  color: var(--muted);
+
+  text-align: center;
+
+}
+
+
+.clist-group {
+
+  padding: 6px 0 4px;
+
+}
+
+
+.clist-group-label {
+
+  padding: 9px 13px 5px;
+
+  font-size: 10.5px;
+
+  font-weight: 800;
+
+  letter-spacing: .04em;
+
+}
+
+
+.clist-group-label.student-label {
+
+  color: #2563eb;
+
+}
+
+
+.clist-group-label.parent-label {
+
+  color: #7c3aed;
+
+}
+
+
+.ci {
+
+  position: relative;
+
+}
+
+
+.ci-body {
+
+  min-width: 0;
+
+}
+
+
+.ci-body .t {
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+}
+
+
+.ci-body .s {
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+}
+
+
+.av.student-av {
+
+  background:
+    linear-gradient(135deg, #2563eb, #38bdf8);
+
+}
+
+
+.av.parent-av {
+
+  background:
+    linear-gradient(135deg, #7c3aed, #14b8a6);
+
+}
+
+
+.new-doubt-badge {
+
+  flex:
+    0 0 auto;
+
+  font-size: 9.5px;
+
+  font-weight: 800;
+
+  color: #e11d48;
+
+  white-space: nowrap;
+
+}
+
+
+.heading-badge {
+
+  display: inline-block;
+
+  margin-top: 6px;
+
+}
+
+
+.conversation-heading {
+
+  display: flex;
+
+  align-items: flex-start;
+
+  gap: 10px;
+
+}
+
+
+.heading-av {
+
+  width: 36px;
+
+  height: 36px;
+
+  font-size: 12px;
+
+}
+
+
+.child-chips {
+
+  display: flex;
+
+  flex-wrap: wrap;
+
+  gap: 5px;
+
+  margin-top: 6px;
+
+}
+
+
+.child-chip {
+
+  padding: 3px 8px;
+
+  border-radius: 999px;
+
+  background:
+    rgba(20, 184, 166, 0.12);
+
+  color: #0f766e;
+
+  font-size: 10.5px;
+
+  font-weight: 700;
+
+  white-space: nowrap;
+
+}
+
+
+/* =========================================================
    RESPONSIVE
 ========================================================= */
 
@@ -2405,6 +3008,27 @@ onMounted(() => {
 
     grid-template-columns:
       1fr;
+
+  }
+
+
+  .chat {
+
+    grid-template-columns:
+      1fr !important;
+
+  }
+
+
+  .clist {
+
+    max-height: 280px;
+
+    border-right: none;
+
+    border-bottom:
+      1px solid
+      var(--border);
 
   }
 

@@ -57,12 +57,14 @@ const {
   }
 })
 
-const filters = ['All', 'Active', 'Blocked']
+const filters = ['All', 'Active', 'Blocked', 'Pending']
 
 const confirmOpen = ref(false)
 const target = ref(null)
 
 async function toggleBlock(p) {
+  if (p.status === 'Pending') return
+
   const newStatus =
     p.status === 'Active'
       ? 'Blocked'
@@ -93,6 +95,7 @@ async function toggleBlock(p) {
 }
 
 function askDelete(p) {
+  if (p.status === 'Pending') return
   target.value = p
   confirmOpen.value = true
 }
@@ -182,7 +185,10 @@ async function confirmDelete() {
                     f === 'Active',
 
                   'bg-red-500 text-white shadow-sm':
-                    f === 'Blocked'
+                    f === 'Blocked',
+
+                  'bg-amber-500 text-white shadow-sm':
+                    f === 'Pending'
                 }
               : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200'
           "
@@ -406,6 +412,8 @@ async function confirmDelete() {
                     :class="
                       p.status === 'Active'
                         ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20'
+                        : p.status === 'Pending'
+                        ? 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20'
                         : 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20'
                     "
                   >
@@ -414,6 +422,8 @@ async function confirmDelete() {
                       :class="
                         p.status === 'Active'
                           ? 'bg-emerald-500'
+                          : p.status === 'Pending'
+                          ? 'bg-amber-500'
                           : 'bg-red-500'
                       "
                     />
@@ -428,12 +438,15 @@ async function confirmDelete() {
                     class="flex items-center justify-end gap-1.5"
                   >
                     <button
-                      class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                      class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                       :title="
-                        p.status === 'Active'
+                        p.status === 'Pending'
+                          ? 'Awaiting approval — review in Pending Approvals'
+                          : p.status === 'Active'
                           ? 'Block parent'
                           : 'Unblock parent'
                       "
+                      :disabled="p.status === 'Pending'"
                       @click="toggleBlock(p)"
                     >
                       <LockClosedIcon
@@ -448,8 +461,13 @@ async function confirmDelete() {
                     </button>
 
                     <button
-                      class="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition-all hover:bg-rose-50 hover:text-rose-600 dark:text-rose-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
-                      title="Delete parent"
+                      class="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition-all hover:bg-rose-50 hover:text-rose-600 disabled:pointer-events-none disabled:opacity-40 dark:text-rose-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+                      :title="
+                        p.status === 'Pending'
+                          ? 'Awaiting approval — review in Pending Approvals'
+                          : 'Delete parent'
+                      "
+                      :disabled="p.status === 'Pending'"
                       @click="askDelete(p)"
                     >
                       <TrashIcon class="h-4 w-4" />

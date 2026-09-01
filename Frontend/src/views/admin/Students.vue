@@ -66,13 +66,15 @@ const {
   }
 })
 
-const filters = ['All', 'Active', 'Blocked']
+const filters = ['All', 'Active', 'Blocked', 'Pending']
 
 const confirmOpen = ref(false)
 const targetStudent = ref(null)
 const actionInFlight = ref(false)
 
 async function toggleBlock(student) {
+  if (student.status === 'Pending') return
+
   const newStatus =
     student.status === 'Active'
       ? 'Blocked'
@@ -107,6 +109,7 @@ async function toggleBlock(student) {
 }
 
 function askDelete(student) {
+  if (student.status === 'Pending') return
   targetStudent.value = student
   confirmOpen.value = true
 }
@@ -206,7 +209,10 @@ const columns = [
                     f === 'Active',
 
                   'bg-red-500 text-white shadow-sm':
-                    f === 'Blocked'
+                    f === 'Blocked',
+
+                  'bg-amber-500 text-white shadow-sm':
+                    f === 'Pending'
                 }
               : {
                   'text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200':
@@ -434,6 +440,8 @@ const columns = [
                     :class="
                       s.status === 'Active'
                         ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20'
+                        : s.status === 'Pending'
+                        ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20'
                         : 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20'
                     "
                   >
@@ -443,6 +451,8 @@ const columns = [
                       :class="
                         s.status === 'Active'
                           ? 'bg-emerald-500'
+                          : s.status === 'Pending'
+                          ? 'bg-amber-500'
                           : 'bg-red-500'
                       "
                     />
@@ -464,11 +474,13 @@ const columns = [
                     <button
                       class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                       :title="
-                        s.status === 'Active'
+                        s.status === 'Pending'
+                          ? 'Awaiting approval — review in Pending Approvals'
+                          : s.status === 'Active'
                           ? 'Block student'
                           : 'Unblock student'
                       "
-                      :disabled="actionInFlight"
+                      :disabled="actionInFlight || s.status === 'Pending'"
                       @click="toggleBlock(s)"
                     >
                       <LockClosedIcon
@@ -486,8 +498,13 @@ const columns = [
 
                     <!-- Delete -->
                     <button
-                      class="flex h-8 w-8 items-center justify-center rounded-lg text-rose-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
-                      title="Delete student"
+                      class="flex h-8 w-8 items-center justify-center rounded-lg text-rose-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+                      :title="
+                        s.status === 'Pending'
+                          ? 'Awaiting approval — review in Pending Approvals'
+                          : 'Delete student'
+                      "
+                      :disabled="s.status === 'Pending'"
                       @click="askDelete(s)"
                     >
                       <TrashIcon

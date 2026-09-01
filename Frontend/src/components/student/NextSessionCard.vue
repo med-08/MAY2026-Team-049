@@ -47,7 +47,7 @@ async function join() {
         <div><p class="text-white/70 text-xs">Tutor</p><p class="text-sm font-semibold">{{ session.tutor }}</p></div>
         <div><p class="text-white/70 text-xs">Session Type</p><p class="text-sm font-semibold">{{ session.type }}</p></div>
         <div><p class="text-white/70 text-xs">Date</p><p class="text-sm font-semibold">{{ session.date }}</p></div>
-        <div><p class="text-white/70 text-xs">Time</p><p class="text-sm font-semibold">{{ session.time }} – {{ session.end_time }} · {{ session.duration }}</p></div>
+        <div><p class="text-white/70 text-xs">Time</p><p class="text-sm font-semibold">{{ session.start_time_display || session.time }} – {{ session.end_time_display || session.end_time }} · {{ session.duration }}</p></div>
       </div>
     </div>
 

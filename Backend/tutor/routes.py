@@ -232,11 +232,6 @@ def session_item(s):
     bookings = SessionBooking.query.filter_by(session_id=s.session_id, booking_status="Confirmed").all()
     lifecycle = meeting_lifecycle(s)
     meeting_request = MeetingRequest.query.filter_by(session_id=s.session_id).first()
-    if (meeting_request and meeting_request.status == "Scheduled"
-            and s.session_type == "One-to-One"
-            and s.meeting_url
-            and lifecycle["status"] == "Meeting Not Started"):
-        lifecycle = {**lifecycle, "status": "Request Accepted", "can_join": True}
 
     # -----------------------------------------------------
     # WHO IS ACTUALLY IN THE ONE-TO-ONE MEETING?
@@ -827,6 +822,20 @@ def schedule():
         .all()
     )
 
+    # A one-to-one request is not a scheduled tutor meeting until approved.
+    # Keep pending/change-request records exclusively in Messages.
+    pending_meeting_session_ids = {
+        m.session_id
+        for m in MeetingRequest.query.filter_by(tutor_id=tutor.tutor_id)
+        .filter(MeetingRequest.status.in_(("Pending Approval", "Reschedule Requested")))
+        .all()
+        if m.session_id
+    }
+    sessions = [
+        s for s in sessions
+        if s.session_id not in pending_meeting_session_ids
+    ]
+
     # -----------------------------------------------------
     # SUBJECTS AVAILABLE TO THIS TUTOR
     # -----------------------------------------------------
@@ -1166,6 +1175,26 @@ def add_class():
             message=f"{tutor.tutor_name} scheduled your one-on-one {subject_name(subject_id)} session for {session_date.strftime('%d %b %Y')}, {start_time.strftime('%I:%M %p')}–{end_time.strftime('%I:%M %p')}.",
             notification_type="Meeting Scheduled", action_url=f"/student/sessions?session_id={s.session_id}"
         ))
+    else:
+        # Notify enrolled students only for genuinely bookable regular sessions.
+        # The existing notification read state drives the Session Booking badge.
+        enrolled_students = (
+            Student.query
+            .join(StudentSubject, StudentSubject.student_id == Student.student_id)
+            .filter(StudentSubject.subject_id == subject_id)
+            .all()
+        )
+        display_date = session_date.strftime('%d %b %Y')
+        display_time = f"{start_time.strftime('%I:%M %p')}–{end_time.strftime('%I:%M %p')}"
+        for student in enrolled_students:
+            db.session.add(Notification(
+                recipient_type="Student",
+                recipient_id=student.student_id,
+                title=f"New {subject_name(subject_id)} session available",
+                message=f"A new {subject_name(subject_id)} session with {tutor.tutor_name} is available to book for {display_date}, {display_time}.",
+                notification_type="Session Available",
+                action_url=f"/student/booking?session_id={s.session_id}",
+            ))
     db.session.commit()
 
     # -----------------------------------------------------
@@ -1693,6 +1722,10 @@ def start_class(session_id):
             404
         )
 
+    linked_request = MeetingRequest.query.filter_by(session_id=s.session_id, tutor_id=tutor.tutor_id).first()
+    if linked_request and linked_request.status in ("Pending Approval", "Reschedule Requested"):
+        return fail("This one-to-one meeting is waiting for tutor approval.", 409)
+
     if s.status not in (
         "Scheduled",
         "Rescheduled",
@@ -1955,6 +1988,13 @@ def end_class(session_id):
             action_url="/parent/meetings"
         ))
 
+    linked_meeting = MeetingRequest.query.filter_by(
+        session_id=s.session_id,
+        tutor_id=tutor.tutor_id,
+    ).first()
+    if linked_meeting:
+        linked_meeting.status = "Completed"
+
     db.session.commit()
 
     return ok(
@@ -1996,11 +2036,10 @@ def meeting_requests():
         parent = db.session.get(Parent, m.parent_id) if (m.parent_id and m.creator_type == 'Parent') else None
         subject = db.session.get(Subject, sess.subject_id) if sess else None
         display_status = m.status
-        if m.creator_type != 'Parent':
-            if m.status == 'Pending Approval':
-                display_status = 'Tutor approval pending'
-            elif m.status == 'Scheduled':
-                display_status = 'Meeting scheduled with student and tutor'
+        if m.status == 'Pending Approval':
+            display_status = 'Tutor Approval Pending'
+        elif m.status == 'Scheduled':
+            display_status = 'Approved'
         data.append({
             'meeting_id': m.meeting_id, 'session_id': m.session_id, 'status': m.status,
             'display_status': display_status,
@@ -2011,6 +2050,7 @@ def meeting_requests():
             'parent_id': parent.parent_id if parent else None, 'parent_name': parent.parent_name if parent else None,
             'creator_type': m.creator_type,
             'subject': subject.subject_name if subject else 'General', 'reason': m.meeting_reason or '',
+            'denial_reason': m.denial_reason,
             'session_type': sess.session_type if sess else 'One-to-One', 'meeting_link': (sess.meeting_url if sess and sess.meeting_url else m.meeting_link),
             'meeting_started_at': sess.meeting_started_at.isoformat() if sess and sess.meeting_started_at else None, 'meeting_ended_at': sess.meeting_ended_at.isoformat() if sess and sess.meeting_ended_at else None,
         })
@@ -2050,32 +2090,19 @@ def decide_meeting(meeting_id):
     subject = db.session.get(Subject, sess.subject_id)
     label = subject.subject_name if subject else 'session'
     if decision == 'approve':
-        # Approval is the point at which the one-to-one becomes an official
-        # tutor session. Make sure a Meet URL exists before notifying users.
-        try:
-            provided_link = clean_optional_url(data.get('meeting_link'))
-        except ValueError as exc:
-            return fail(str(exc))
-        if provided_link:
-            sess.meeting_url = provided_link
-        elif not sess.meeting_url:
-            try:
-                sess.meeting_url = create_meeting_space()
-            except GoogleMeetNotConfigured as exc:
-                db.session.rollback()
-                current_app.logger.warning('Google Meet setup required for approval: %s', exc)
-                return fail('Google Meet is not connected. Please configure Google Meet before approving this request.', 503)
-            except Exception as exc:
-                db.session.rollback()
-                current_app.logger.exception('Google Meet creation failed during approval: %s', exc)
-                return fail('Google Meet link could not be created. Please try again.', 502)
-        meeting.meeting_link = sess.meeting_url
+        # Approval only changes the request into an official scheduled
+        # session. Google Meet creation belongs to Start Meeting, not approval.
         meeting.status = 'Scheduled'
+        meeting.denial_reason = None
+        meeting.meeting_link = sess.meeting_url or None
         if not meeting.meeting_type:
             meeting.meeting_type = 'STUDENT_TUTOR' if meeting.creator_type == 'Student' else ('PARENT_TUTOR' if meeting.parent_id else 'TUTOR_STUDENT')
         sess.status = 'Scheduled'
+        sess.meeting_started_at = None
+        sess.meeting_ended_at = None
+        sess.meeting_duration_seconds = None
         meeting_type = 'One-to-One' if sess.session_type == 'One-to-One' else 'Regular'
-        message = f'Tutor {tutor.tutor_name} approved your {meeting_type} {label} meeting for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}–{sess.end_time.strftime("%I:%M %p")}. The meeting link is ready and will become joinable when the tutor starts the meeting.'
+        message = f'Tutor {tutor.tutor_name} approved your {meeting_type} {label} meeting for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}–{sess.end_time.strftime("%I:%M %p")}. The meeting is scheduled and will become joinable when the tutor starts it.'
         if student:
             db.session.add(Notification(recipient_type='Student', recipient_id=student.student_id, title=f'{label} meeting approved', message=message, notification_type='Meeting Approved', action_url=f'/student/sessions?session_id={sess.session_id}'))
         if parent:
@@ -2089,7 +2116,10 @@ def decide_meeting(meeting_id):
             action_url=f'/tutor/schedule?session_id={sess.session_id}'
         ))
     elif decision in ('deny', 'decline'):
-        reason = str(data.get('reason') or '').strip() or 'No reason provided.'
+        reason = str(data.get('reason') or '').strip()
+        if not reason:
+            return fail('A denial reason is required.', 400)
+        meeting.denial_reason = reason
         meeting.status = 'Denied'
         sess.status = 'Cancelled'
         message = f'Tutor {tutor.tutor_name} denied the {label} meeting scheduled for {sess.session_date.strftime("%d %b %Y")}, {sess.start_time.strftime("%I:%M %p")}. Reason: {reason}'

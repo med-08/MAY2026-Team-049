@@ -252,14 +252,6 @@
             {{ s.badge }}
           </span>
 
-
-          <div v-if="s.meeting_request_status === 'Pending Approval'" class="flex flex-wrap items-center gap-2 w-full justify-end">
-            <span class="badge warn">Parent request pending</span>
-            <button type="button" class="btn grad sm" @click="decideRequest(s, 'approve')">Approve</button>
-            <button type="button" class="btn sm" @click="decideRequest(s, 'change')">Request Change</button>
-            <button type="button" class="btn sm cancel-session-btn" @click="decideRequest(s, 'deny')">Deny</button>
-          </div>
-
           <!-- =================================================
                JOIN MEETING
 
@@ -844,10 +836,7 @@ async function saveDetails() {
 async function decideRequest(s, decision) {
   if (!s.meeting_id) return
   let payload = { decision }
-  if (decision === 'approve') {
-    const link = window.prompt('Meeting link (leave blank to auto-generate a Google Meet link):', '')
-    if (link) payload.meeting_link = link
-  } else if (decision === 'deny') {
+  if (decision === 'deny') {
     const reason = window.prompt('Reason for denying this meeting request:')
     if (reason === null) return
     payload.reason = reason

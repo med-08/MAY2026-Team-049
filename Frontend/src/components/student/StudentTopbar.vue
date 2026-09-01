@@ -150,12 +150,6 @@ onUnmounted(() => {
 })
 
 const searchIndex = computed(() => [
-  ...assignments.value.map((a) => ({
-    type: "Assignment",
-    title: a.title || "",
-    subtitle: a.subject || "",
-    to: "/student/assignments",
-  })),
   ...homeworkList.value.map((h) => ({
     type: "Homework",
     title: h.title || "",

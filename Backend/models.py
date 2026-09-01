@@ -286,6 +286,7 @@ class MeetingRequest(db.Model):
     meeting_date = db.Column(db.DateTime, nullable=False)
     meeting_link = db.Column(db.String(255))
     meeting_reason = db.Column(db.String(255))
+    denial_reason = db.Column(db.String(500), nullable=True)
     session_id = db.Column(db.Integer, db.ForeignKey('session.session_id'), nullable=True)
     status = db.Column(db.String(20), default='Scheduled')
     creator_type = db.Column(db.String(20), nullable=True)  # Parent, Student, Tutor

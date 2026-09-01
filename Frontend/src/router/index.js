@@ -28,7 +28,6 @@ import StudentSessionBooking from '../views/student/SessionBooking.vue'
 import StudentTimetable from '../views/student/Timetable.vue'
 import StudentWeeklyQuiz from '../views/student/WeeklyQuiz.vue'
 import StudentQuizAttempt from '../views/student/QuizAttempt.vue'
-import StudentAssignments from '../views/student/Assignments.vue'
 import StudentHomework from '../views/student/Homework.vue'
 import StudentStudyResources from '../views/student/StudyResources.vue'
 import StudentStudyTips from '../views/student/StudyTips.vue'
@@ -114,7 +113,6 @@ const routes = [
       { path: 'timetable', name: 'student-timetable', component: StudentTimetable, meta: { title: 'Timetable' } },
       { path: 'quiz', name: 'student-weekly-quiz', component: StudentWeeklyQuiz, meta: { title: 'Weekly Quiz' } },
       { path: 'quiz/:id', name: 'student-quiz-attempt', component: StudentQuizAttempt, meta: { title: 'Take Quiz' } },
-      { path: 'assignments', name: 'student-assignments', component: StudentAssignments, meta: { title: 'Interactive Assignments' } },
       { path: 'homework', name: 'student-homework', component: StudentHomework, meta: { title: 'Homework' } },
       { path: 'resources', name: 'student-study-resources', component: StudentStudyResources, meta: { title: 'Study Resources' } },
       { path: 'study-tips', name: 'student-study-tips', component: StudentStudyTips, meta: { title: 'Performance Insights' } },

@@ -299,13 +299,12 @@ def meetings(parent_id):
         lifecycle = meeting_lifecycle(sess) if sess else {'status': m.status, 'can_join': bool(m.meeting_link), 'can_start': False, 'can_end': False}
         if m.status == 'Pending Approval':
             lifecycle = {**lifecycle, 'status': 'Awaiting Tutor Approval', 'can_join': False}
-        elif m.status == 'Scheduled' and lifecycle.get('status') == 'Meeting Not Started':
+        elif m.status == 'Scheduled':
+            # Approval is not the meeting lifecycle. Keep the authoritative
+            # Not Started/Started/Ended state from the linked Session.
             link = sess.meeting_url if sess and sess.meeting_url else m.meeting_link
-            # Parent-created ONE-TO-ONE meetings expose the persisted meeting
-            # immediately after approval; regular sessions still require the
-            # tutor to start them first.
-            can_join = bool(link) and sess and sess.session_type == 'One-to-One'
-            lifecycle = {**lifecycle, 'status': 'Request Accepted', 'can_join': can_join}
+            can_join = bool(link) and sess and sess.session_type == 'One-to-One' and lifecycle.get('status') == 'Meeting Started'
+            lifecycle = {**lifecycle, 'can_join': can_join}
         elif m.status in ('Denied', 'Reschedule Requested'):
             lifecycle = {**lifecycle, 'status': m.status, 'can_join': False}
         feedback = Message.query.filter(
@@ -320,7 +319,7 @@ def meetings(parent_id):
             'meeting_id': m.meeting_id, 'student_id': m.student_id, 'student_name': st.student_name if st else None,
             'tutor_id': m.tutor_id, 'tutor_name': t.tutor_name if t else None,
             'meeting_date': m.meeting_date.isoformat(), 'meeting_link': (sess.meeting_url if sess and sess.meeting_url else m.meeting_link),
-            'meeting_reason': m.meeting_reason, 'status': m.status, 'session_id': m.session_id,
+            'meeting_reason': m.meeting_reason, 'denial_reason': m.denial_reason, 'status': m.status, 'session_id': m.session_id,
             'tutor_message': feedback.message if feedback else None,
             'meeting_lifecycle': lifecycle['status'], 'can_join': lifecycle['can_join'], 'can_start': lifecycle.get('can_start', False), 'can_end': bool(sess and sess.session_type == 'One-to-One' and sess.status == 'Live'), 'meeting_started_at': sess.meeting_started_at.isoformat() if sess and sess.meeting_started_at else None,
             'meeting_ended_at': sess.meeting_ended_at.isoformat() if sess and sess.meeting_ended_at else None,
@@ -341,8 +340,24 @@ def all_meetings(parent_id):
     parent = current_parent()
     if not parent or parent.parent_id != parent_id:
         return fail('Unauthorized parent access', 403)
+    # All Meetings is a family-wide visibility view. Include requests that
+    # belong directly to the parent, requests made by any of the parent's
+    # children, and requests linked to a session booked by one of those
+    # children. The latter keeps the view resilient when an older meeting
+    # record is missing parent_id/student_id but is correctly linked to the
+    # family's Session/SessionBooking record.
+    child_ids = [x.student_id for x in Student.query.filter_by(parent_id=parent_id).all()]
+    family_session_ids = [
+        x.session_id
+        for x in SessionBooking.query.filter(
+            SessionBooking.student_id.in_(child_ids or [-1]),
+            SessionBooking.booking_status == 'Confirmed'
+        ).all()
+    ]
     rows = MeetingRequest.query.filter(
-        (MeetingRequest.parent_id == parent_id) | (MeetingRequest.student_id.in_([x.student_id for x in Student.query.filter_by(parent_id=parent_id).all()] or [-1]))
+        (MeetingRequest.parent_id == parent_id)
+        | MeetingRequest.student_id.in_(child_ids or [-1])
+        | MeetingRequest.session_id.in_(family_session_ids or [-1])
     ).order_by(MeetingRequest.meeting_date.desc()).all()
     out = []
     for m in rows:
@@ -359,20 +374,19 @@ def all_meetings(parent_id):
         # is in.
         is_parent_participant = (m.creator_type == 'Parent')
 
-        if not is_parent_participant:
-            if m.status == 'Pending Approval':
-                display_status = 'Tutor approval pending'
-            elif m.status == 'Scheduled':
-                display_status = 'Meeting scheduled with student and tutor'
-            elif m.status in ('Denied', 'Reschedule Requested', 'Cancelled'):
-                display_status = m.status
-            else:
-                display_status = lifecycle['status']
-            lifecycle = {**lifecycle, 'status': display_status, 'can_join': False, 'can_start': False}
-        elif m.status == 'Pending Approval':
-            lifecycle = {**lifecycle, 'status': 'Pending Tutor Approval', 'can_join': False}
+        # The Session lifecycle is the source of truth for meeting state.
+        # Do not replace a real Started/Ended state with an approval label.
+        # Approval is represented separately by approval_status below.
+        if m.status == 'Pending Approval':
+            lifecycle = {**lifecycle, 'status': 'Tutor Approval Pending', 'can_join': False, 'can_start': False}
         elif m.status in ('Denied', 'Reschedule Requested', 'Cancelled'):
-            lifecycle = {**lifecycle, 'status': m.status, 'can_join': False}
+            lifecycle = {**lifecycle, 'status': m.status, 'can_join': False, 'can_start': False, 'can_end': False}
+        elif lifecycle['status'] == 'Meeting Ended':
+            # Explicitly ended sessions must remain ended even if an older
+            # MeetingRequest row still has Scheduled as its request status.
+            lifecycle = {**lifecycle, 'status': 'Meeting Ended', 'can_join': False, 'can_start': False, 'can_end': False}
+        elif not is_parent_participant:
+            lifecycle = {**lifecycle, 'can_join': False, 'can_start': False, 'can_end': False}
         out.append({
             'meeting_id': m.meeting_id, 'session_id': m.session_id,
             'meeting_type': m.meeting_type or 'PARENT_TUTOR',
@@ -381,11 +395,16 @@ def all_meetings(parent_id):
             'creator_type': m.creator_type, 'created_by_label': f'Created by {m.creator_type}' if m.creator_type else 'Created by system',
             'student_id': student.student_id if student else None, 'student_name': student.student_name if student else None,
             'tutor_id': tutor.tutor_id if tutor else None, 'tutor_name': tutor.tutor_name if tutor else None,
-            'topic': subject.subject_name if subject else 'General', 'reason': m.meeting_reason or 'Reason not specified',
+            'topic': subject.subject_name if subject else 'General', 'reason': m.meeting_reason or 'Reason not specified', 'denial_reason': m.denial_reason,
             'date': sess.session_date.isoformat() if sess else m.meeting_date.date().isoformat(),
             'start_time': sess.start_time.strftime('%H:%M') if sess else m.meeting_date.strftime('%H:%M'),
             'end_time': sess.end_time.strftime('%H:%M') if sess else None,
-            'approval_status': m.status if m.status in ('Pending Approval','Scheduled','Denied','Reschedule Requested') else 'Not Required',
+            'approval_status': (
+                'Pending Approval' if m.status == 'Pending Approval' else
+                'Approved' if m.status in ('Scheduled', 'Completed') else
+                m.status if m.status in ('Denied', 'Reschedule Requested', 'Cancelled') else
+                'Not Required'
+            ),
             'meeting_status': lifecycle['status'], 'can_join': lifecycle.get('can_join', False), 'can_start': lifecycle.get('can_start', False),
             'meeting_url': sess.meeting_url if sess else m.meeting_link,
         })

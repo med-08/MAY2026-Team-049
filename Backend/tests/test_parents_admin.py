@@ -68,3 +68,25 @@ def test_delete_parent_nulls_child_fk(admin_client, seed_students):
 def test_delete_parent_not_found(admin_client, seed_parent):
     resp = admin_client.delete('/admin/parents/99999')
     assert resp.status_code == 404
+
+
+def test_block_pending_parent_is_rejected(admin_client, seed_roles):
+    from models import Parent
+    from database import db as _db
+    from werkzeug.security import generate_password_hash
+
+    pending_parent = Parent(
+        role_id=seed_roles['Parent'].role_id,
+        parent_name='Pending Parent',
+        email='pending2.parent@parentmail.com',
+        password_hash=generate_password_hash('Parent@123'),
+        status='Pending',
+    )
+    _db.session.add(pending_parent)
+    _db.session.commit()
+
+    resp = admin_client.patch(f'/admin/parents/{pending_parent.parent_id}/status', json={"status": "Blocked"})
+    assert resp.status_code == 409
+
+    del_resp = admin_client.delete(f'/admin/parents/{pending_parent.parent_id}')
+    assert del_resp.status_code == 409

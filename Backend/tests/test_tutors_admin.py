@@ -9,8 +9,10 @@ Test cases for /admin/tutors/*
 | GET /tutors/<id> | non-existent id | 404 Not Found | 404 Not Found | Success |
 | PATCH /tutors/<id>/status | {"status": "Blocked"} | 200, status now Blocked | 200, status now Blocked | Success |
 | PATCH /tutors/<id>/status | {"status": "Approved"} invalid value | 400 Bad Request | 400 Bad Request | Success |
-| DELETE /tutors/<id> | valid id | 200, tutor removed | 200, tutor removed | Success |
+| DELETE /tutors/<id> | valid id (non-pending) | 200, tutor removed | 200, tutor removed | Success |
 | DELETE /tutors/<id> | non-existent id | 404 Not Found | 404 Not Found | Success |
+| PATCH /tutors/<id>/status | Pending tutor, {"status": "Blocked"} | 409 Conflict | 409 Conflict | Success |
+| DELETE /tutors/<id> | Pending tutor | 409 Conflict | 409 Conflict | Success |
 """
 
 
@@ -55,7 +57,7 @@ def test_update_tutor_status_invalid_value(admin_client, seed_tutors):
 
 
 def test_delete_tutor(admin_client, seed_tutors):
-    tutor = seed_tutors[1]
+    tutor = seed_tutors[0]  # Active tutor -- Pending tutors can't be deleted here
     resp = admin_client.delete(f'/admin/tutors/{tutor.tutor_id}')
     assert resp.status_code == 200
 
@@ -66,3 +68,15 @@ def test_delete_tutor(admin_client, seed_tutors):
 def test_delete_tutor_not_found(admin_client, seed_tutors):
     resp = admin_client.delete('/admin/tutors/99999')
     assert resp.status_code == 404
+
+
+def test_block_pending_tutor_is_rejected(admin_client, seed_tutors):
+    pending_tutor = next(t for t in seed_tutors if t.status == 'Pending')
+    resp = admin_client.patch(f'/admin/tutors/{pending_tutor.tutor_id}/status', json={"status": "Blocked"})
+    assert resp.status_code == 409
+
+
+def test_delete_pending_tutor_is_rejected(admin_client, seed_tutors):
+    pending_tutor = next(t for t in seed_tutors if t.status == 'Pending')
+    resp = admin_client.delete(f'/admin/tutors/{pending_tutor.tutor_id}')
+    assert resp.status_code == 409

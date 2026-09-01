@@ -335,9 +335,10 @@ def session_json(sess, booking_status=None):
         session_id=sess.session_id
     ).first()
 
-    meeting_request = MeetingRequest.query.filter_by(session_id=sess.session_id, student_id=sess.session_id if False else None).first()
-    if not meeting_request:
-        meeting_request = MeetingRequest.query.filter_by(session_id=sess.session_id).first()
+    meeting_request = MeetingRequest.query.filter_by(
+        session_id=sess.session_id
+    ).first()
+
 
     # Safe date formatting
     session_date = sess.session_date
@@ -372,6 +373,12 @@ def session_json(sess, booking_status=None):
 
     end_time_value = (
         end_time.strftime("%H:%M")
+        if end_time
+        else None
+    )
+
+    end_display = (
+        end_time.strftime("%I:%M %p")
         if end_time
         else None
     )
@@ -435,6 +442,13 @@ def session_json(sess, booking_status=None):
         "time": start_display,
         "start_time": start_time_value,
         "end_time": end_time_value,
+        "start_time_display": start_display,
+        "end_time_display": end_display,
+        "time_range": (
+            f"{start_display} – {end_display}"
+            if start_display and end_display
+            else start_display or end_display
+        ),
 
         "duration": duration,
 
@@ -464,6 +478,7 @@ def session_json(sess, booking_status=None):
         "meeting_duration_seconds": sess.meeting_duration_seconds,
         "meeting_request_status": meeting_request.status if meeting_request else None,
         "meeting_reason": meeting_request.meeting_reason if meeting_request else None,
+        "denial_reason": meeting_request.denial_reason if meeting_request else None,
         "creator_type": meeting_request.creator_type if meeting_request else None,
         "created_by_label": f"Created by {meeting_request.creator_type}" if meeting_request and meeting_request.creator_type else None,
         "meeting_type_label": "One-on-One Session" if sess.session_type == "One-to-One" else "Regular Session",
@@ -779,9 +794,10 @@ def dashboard():
         link = (sess.meeting_url if sess and sess.meeting_url else m.meeting_link)
         if m.status == "Pending Approval":
             lifecycle = {**lifecycle, "status": "Awaiting Tutor Approval", "can_join": False}
-        elif (m.status == "Scheduled" and sess and sess.session_type == "One-to-One"
-              and link and lifecycle["status"] == "Meeting Not Started"):
-            lifecycle = {**lifecycle, "status": "Request Accepted", "can_join": True}
+        elif m.status == "Scheduled" and sess and sess.session_type == "One-to-One":
+            # Approval does not override the authoritative meeting lifecycle.
+            # Students can join only after the tutor has actually started it.
+            lifecycle = {**lifecycle, "can_join": lifecycle["can_join"] and bool(link)}
         meetings.append({
             "id": m.meeting_id,
             "meeting_id": m.meeting_id,
@@ -1531,8 +1547,16 @@ def sessions():
         # that has already ended must never remain in "Upcoming Sessions"
         # merely because the persisted session status was not updated.
         lifecycle_status = item.get("meeting_lifecycle")
+        meeting_request = MeetingRequest.query.filter_by(
+            session_id=sess.session_id
+        ).first()
+        request_completed = bool(
+            meeting_request and meeting_request.status == "Completed"
+        )
+
         if (
             sess.status == "Completed"
+            or request_completed
             or lifecycle_status == "Meeting Ended"
             or sess.session_date < date.today()
         ):
@@ -1777,7 +1801,7 @@ def request_meeting():
     return ok({
         'meeting_id': m.meeting_id, 'session_id': session_obj.session_id,
         'meeting_date': m.meeting_date.isoformat(), 'meeting_link': None, 'status': m.status
-    }, 'Meeting scheduled', 201)
+    }, 'Meeting request submitted for tutor approval', 201)
 
 
 @student_bp.route(
@@ -2722,12 +2746,10 @@ def meetings():
             "can_start": False, "can_end": False,
         }
         meeting_link = (sess.meeting_url if sess and sess.meeting_url else m.meeting_link)
-        # Accepted parent-created ONE-TO-ONE meetings have a persisted link
-        # and must be visible to authorised participants immediately. Regular
-        # sessions retain the normal "join after tutor starts" lifecycle.
-        if m.status == "Scheduled" and sess and sess.session_type == "One-to-One" and meeting_link:
-            if lifecycle["status"] == "Meeting Not Started":
-                lifecycle = {**lifecycle, "status": "Request Accepted", "can_join": True}
+        # Approval does not make a meeting started. Preserve the authoritative
+        # lifecycle so an ended meeting can never fall back to Not Started.
+        if m.status == "Scheduled" and sess and sess.session_type == "One-to-One":
+            lifecycle = {**lifecycle, "can_join": lifecycle["can_join"] and bool(meeting_link)}
 
         result.append({
             "meeting_id": m.meeting_id,

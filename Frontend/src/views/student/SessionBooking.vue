@@ -69,6 +69,18 @@ const typeAccentClasses = s =>
     ? 'border-l-4 border-l-violet-400 dark:border-l-violet-500'
     : 'border-l-4 border-l-blue-400 dark:border-l-blue-500'
 
+async function acknowledgeNewSessionNotifications() {
+  try {
+    const res = await studentApi.getNotifications()
+    const unread = (res?.data?.notifications || []).filter(
+      n => !n.isRead && n.type === 'Session Available'
+    )
+    await Promise.all(unread.map(n => studentApi.markNotificationRead(n.id)))
+  } catch {
+    // Notification acknowledgement is non-blocking for booking.
+  }
+}
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -87,7 +99,10 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await acknowledgeNewSessionNotifications()
+  await load()
+})
 
 function openConfirm(s) {
   if (s.booked || busy.value) return

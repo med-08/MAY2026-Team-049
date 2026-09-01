@@ -313,6 +313,12 @@ def update_student_status(student_id):
     if new_status not in STATUS_UPDATES:
         return error_response(f"'status' must be one of {sorted(STATUS_UPDATES)}.", 400)
 
+    if student.status == 'Pending':
+        return error_response(
+            "This student is awaiting approval and cannot be blocked/unblocked yet. "
+            "Approve or reject the registration from Pending Approvals first.", 409
+        )
+
     try:
         student.status = new_status
         db.session.commit()
@@ -340,6 +346,12 @@ def delete_student(student_id):
     student = Student.query.get(student_id)
     if not student:
         return error_response(f"Student with id {student_id} not found.", 404)
+
+    if student.status == 'Pending':
+        return error_response(
+            "This student is awaiting approval and cannot be deleted from User Manager. "
+            "Use Approve or Reject from Pending Approvals instead.", 409
+        )
 
     try:
         name = student.student_name
@@ -439,6 +451,12 @@ def update_parent_status(parent_id):
     if new_status not in STATUS_UPDATES:
         return error_response(f"'status' must be one of {sorted(STATUS_UPDATES)}.", 400)
 
+    if parent.status == 'Pending':
+        return error_response(
+            "This parent is awaiting approval and cannot be blocked/unblocked yet. "
+            "Approve or reject the registration from Pending Approvals first.", 409
+        )
+
     try:
         parent.status = new_status
         db.session.commit()
@@ -464,6 +482,12 @@ def delete_parent(parent_id):
     parent = Parent.query.get(parent_id)
     if not parent:
         return error_response(f"Parent with id {parent_id} not found.", 404)
+
+    if parent.status == 'Pending':
+        return error_response(
+            "This parent is awaiting approval and cannot be deleted from User Manager. "
+            "Use Approve or Reject from Pending Approvals instead.", 409
+        )
 
     try:
         name = parent.parent_name
@@ -577,6 +601,12 @@ def update_tutor_status(tutor_id):
     if new_status not in STATUS_UPDATES:
         return error_response(f"'status' must be one of {sorted(STATUS_UPDATES)}.", 400)
 
+    if tutor.status == 'Pending':
+        return error_response(
+            "This tutor is awaiting approval and cannot be blocked/unblocked yet. "
+            "Approve or reject the registration from Pending Approvals first.", 409
+        )
+
     try:
         tutor.status = new_status
         db.session.commit()
@@ -598,6 +628,12 @@ def delete_tutor(tutor_id):
     tutor = Tutor.query.get(tutor_id)
     if not tutor:
         return error_response(f"Tutor with id {tutor_id} not found.", 404)
+
+    if tutor.status == 'Pending':
+        return error_response(
+            "This tutor is awaiting approval and cannot be deleted from User Manager. "
+            "Use Approve or Reject from Pending Approvals instead.", 409
+        )
 
     try:
         name = tutor.tutor_name
@@ -675,7 +711,7 @@ ENTITY_MAP = {
     'tutor': (Tutor, 'tutor_id', 'tutor_name'),
     'parent': (Parent, 'parent_id', 'parent_name'),
 }
-APPROVAL_STATUS_FILTERS = {'All', 'Pending', 'Active', 'Blocked', 'Rejected'}
+APPROVAL_STATUS_FILTERS = {'All', 'Pending', 'Active', 'Blocked'}
 
 
 def _serialize_entity(entity_type, entity, id_attr, name_attr):
@@ -745,6 +781,13 @@ def approve_entity(entity_type, entity_id):
 @admin_bp.route('/approvals/<string:entity_type>/<int:entity_id>/reject', methods=['PATCH'])
 @admin_required
 def reject_entity(entity_type, entity_id):
+    """Rejecting a pending registration permanently deletes the record --
+    a rejected sign-up never becomes a "Rejected" account, it simply
+    never joins the platform. This keeps a single source of truth (the
+    row's existence) instead of a status value that every other endpoint
+    (list_students/list_parents/list_tutors, search, stats, etc.) would
+    then have to know to filter out.
+    """
     entity_type = entity_type.lower()
     if entity_type not in ENTITY_MAP:
         return error_response(f"Invalid entity type '{entity_type}'. Must be one of {sorted(ENTITY_MAP)}.", 400)
@@ -757,16 +800,24 @@ def reject_entity(entity_type, entity_id):
     if entity.status != 'Pending':
         return error_response(f"Only pending registrations can be rejected. Current status: '{entity.status}'.", 409)
 
+    serialized = _serialize_entity(entity_type, entity, id_attr, name_attr)
+    serialized["status"] = "Rejected"
+    name = getattr(entity, name_attr)
+
     try:
-        entity.status = 'Rejected'
+        if entity_type == 'parent':
+            # Same defensive FK cleanup as delete_parent(): a rejected
+            # parent shouldn't leave dangling parent_id references behind.
+            Student.query.filter(Student.parent_id == entity_id).update({"parent_id": None})
+        db.session.delete(entity)
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to reject registration.", 500, errors=str(e))
 
     return success_response(
-        data=_serialize_entity(entity_type, entity, id_attr, name_attr),
-        message=f"{getattr(entity, name_attr)}'s registration was rejected.",
+        data=serialized,
+        message=f"{name}'s registration was rejected and the account was removed.",
     )
 
 

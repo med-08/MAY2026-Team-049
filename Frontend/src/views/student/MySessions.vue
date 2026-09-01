@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import PageHeader from '../../components/student/PageHeader.vue'
 import StatusBadge from '../../components/student/StatusBadge.vue'
 import { studentApi } from '../../services/studentApi'
@@ -14,6 +14,41 @@ let refreshTimer = null
 
 const tutors = ref([])
 const requestForm = ref({ tutor_id: '', date: '', startTime: '', endTime: '', notes: '' })
+
+const timeOptions = computed(() => {
+  const options = []
+  for (let minutes = 0; minutes < 24 * 60; minutes += 15) {
+    const hour24 = Math.floor(minutes / 60)
+    const minute = minutes % 60
+    const value = `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+    const hour12 = hour24 % 12 || 12
+    const suffix = hour24 < 12 ? 'AM' : 'PM'
+    options.push({ value, label: `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`, minutes })
+  }
+  return options
+})
+
+const endTimeOptions = computed(() => {
+  const start = timeOptions.value.find(o => o.value === requestForm.value.startTime)
+  return start ? timeOptions.value.filter(o => o.minutes > start.minutes) : []
+})
+
+function handleStartTimeChange() {
+  const start = timeOptions.value.find(o => o.value === requestForm.value.startTime)
+  if (!start) {
+    requestForm.value.endTime = ''
+    return
+  }
+  const defaultEnd = timeOptions.value.find(o => o.minutes === start.minutes + 60)
+  requestForm.value.endTime = defaultEnd?.value || endTimeOptions.value[0]?.value || ''
+}
+
+function formatTime12(value) {
+  if (!value) return ''
+  const [hour, minute] = String(value).split(':').map(Number)
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return value
+  return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
+}
 const requesting = ref(false)
 
 async function loadTutors() {
@@ -40,7 +75,7 @@ async function submitMeetingRequest() {
       preferred_end_time: f.endTime || undefined,
       notes: f.notes
     })
-    showToast('Meeting requested. Your tutor has been notified.', 'success')
+    showToast('Meeting request submitted. It is waiting for tutor approval.', 'success')
     requestForm.value = { tutor_id: '', date: '', startTime: '', endTime: '', notes: '' }
     await loadSessions(false)
   } catch (e) {
@@ -95,6 +130,15 @@ async function completeSession(s) {
 }
 
 function meetingLabel(s) {
+  const requestStatus = s?.meeting_request_status
+  if (requestStatus === 'Pending Approval') return 'Tutor Approval Pending'
+  if (requestStatus === 'Denied') return 'Denied'
+  if (requestStatus === 'Reschedule Requested') return 'Change Requested'
+  if (requestStatus === 'Scheduled' && s?.meeting_lifecycle === 'Meeting Not Started') {
+    return 'Approved — Meeting Not Started'
+  }
+  if (s?.meeting_lifecycle === 'Meeting Started') return 'Meeting Started'
+  if (s?.status === 'Completed' || s?.meeting_request_status === 'Completed' || s?.meeting_lifecycle === 'Meeting Ended') return 'Completed'
   return s?.meeting_lifecycle || s?.meeting_status || 'Meeting Not Started'
 }
 
@@ -131,21 +175,38 @@ onUnmounted(() => {
     <div class="card mb-6 px-5 py-5">
       <h3 class="font-display text-lg font-bold text-slate-800 dark:text-white">Request a Meeting</h3>
       <p class="mb-3 text-xs text-slate-500">Ask a tutor for a one-on-one session at a time that works for you.</p>
-      <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
-        <select v-model="requestForm.tutor_id" class="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-          <option value="">Choose tutor</option>
-          <option v-for="t in tutors" :key="t.tutor_id" :value="t.tutor_id">{{ t.name }}</option>
-        </select>
-        <input v-model="requestForm.date" type="date" class="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-        <input v-model="requestForm.startTime" type="time" class="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-        <input v-model="requestForm.endTime" type="time" class="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="End (optional)">
-        <button
-          type="button"
-          class="rounded-lg bg-gradient-to-r from-teal-500 to-blue-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-          :disabled="requesting"
-          @click="submitMeetingRequest"
-        >{{ requesting ? 'Requesting...' : 'Request Meeting' }}</button>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <label class="relative block">
+          <span class="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-400">Tutor</span>
+          <select v-model="requestForm.tutor_id" class="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 pr-9 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <option value="">Choose tutor</option>
+            <option v-for="t in tutors" :key="t.tutor_id" :value="t.tutor_id">{{ t.name }}</option>
+          </select>
+          <span class="pointer-events-none absolute bottom-3 right-3 text-slate-400">⌄</span>
+        </label>
+        <label class="block">
+          <span class="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-400">Date</span>
+          <input v-model="requestForm.date" type="date" :min="new Date().toISOString().slice(0, 10)" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+        </label>
+        <label class="relative block">
+          <span class="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-400">Start time</span>
+          <select v-model="requestForm.startTime" class="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 pr-9 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" @change="handleStartTimeChange">
+            <option value="">Choose time</option>
+            <option v-for="option in timeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+          <span class="pointer-events-none absolute bottom-3 right-3 text-slate-400">⌄</span>
+        </label>
+        <label class="relative block">
+          <span class="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-400">End time</span>
+          <select v-model="requestForm.endTime" :disabled="!requestForm.startTime" class="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 pr-9 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <option value="">Choose time</option>
+            <option v-for="option in endTimeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+          <span class="pointer-events-none absolute bottom-3 right-3 text-slate-400">⌄</span>
+        </label>
+        <button type="button" class="h-11 self-end rounded-xl bg-gradient-to-r from-teal-500 to-blue-500 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50" :disabled="requesting" @click="submitMeetingRequest">{{ requesting ? 'Requesting...' : 'Request Meeting' }}</button>
       </div>
+      <p class="mt-2 text-[11px] text-slate-400">Choose a start and end time in 15-minute steps. Times are shown in 12-hour format.</p>
       <input v-model="requestForm.notes" class="mt-2.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="What would you like to discuss? (optional)">
     </div>
 
@@ -195,10 +256,14 @@ onUnmounted(() => {
                 <span>👨‍🏫 {{ s.tutor }}</span>
                 <span v-if="s.parent">👪 {{ s.parent }}</span>
                 <span>📅 {{ s.date }}</span>
-                <span>🕐 {{ s.time }} – {{ s.end_time }}</span>
+                <span>🕐 {{ s.start_time_display || formatTime12(s.time) }} – {{ s.end_time_display || formatTime12(s.end_time) }}</span>
                 <span v-if="s.duration">⏱ {{ s.duration }}</span>
               </div>
               <div v-if="s.meeting_reason" class="mt-1 truncate text-xs text-slate-500">Reason: {{ s.meeting_reason }}</div>
+              <div v-if="s.meeting_request_status === 'Denied' && s.denial_reason"
+                   class="mt-1 text-xs font-semibold text-red-600">
+                Denial reason: {{ s.denial_reason }}
+              </div>
               <div v-if="s.attendance_status" class="mt-1 text-[11px] font-semibold text-slate-400">
                 Attendance: {{ s.attendance_status }}
               </div>
@@ -254,7 +319,7 @@ onUnmounted(() => {
               <div class="mt-1 flex flex-wrap gap-x-4 text-xs text-slate-500">
                 <span>👨‍🏫 {{ s.tutor }}</span>
                 <span v-if="s.parent">👪 {{ s.parent }}</span>
-                <span>📅 {{ s.date }} · {{ s.time }} – {{ s.end_time }}</span>
+                <span>📅 {{ s.date }} · {{ s.start_time_display || formatTime12(s.time) }} – {{ s.end_time_display || formatTime12(s.end_time) }}</span>
                 <span v-if="s.meeting_request_status === 'Pending Approval'" class="text-[11px] font-semibold text-indigo-600">Tutor approval pending</span>
                 <span v-if="s.attendance_status">Attendance: {{ s.attendance_status }}</span>
               </div>
