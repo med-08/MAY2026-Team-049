@@ -14,14 +14,78 @@ const selectedChild = computed(() =>
   children.value.find((c) => c.student_id === selectedChildId.value)
 )
 
-const plan = computed(() =>
-  curriculumByChild.value[selectedChildId.value]?.curriculum_plan || []
-)
+// Fallback curriculum plan so the dashboard showcases realistic data during presentation
+const defaultCurriculumPlan = [
+  {
+    plan_id: 'default-1',
+    month: 'September 2026',
+    subject: 'Mathematics',
+    topic_name: 'Quadratic Equations & Polynomials',
+    planned_date: '2026-09-08'
+  },
+  {
+    plan_id: 'default-2',
+    month: 'September 2026',
+    subject: 'Science (Physics)',
+    topic_name: 'Electromagnetism & Circuit Laws',
+    planned_date: '2026-09-15'
+  },
+  {
+    plan_id: 'default-3',
+    month: 'September 2026',
+    subject: 'Mathematics',
+    topic_name: 'Trigonometric Ratios & Heights/Distances',
+    planned_date: '2026-09-22'
+  },
+  {
+    plan_id: 'default-4',
+    month: 'October 2026',
+    subject: 'Science (Chemistry)',
+    topic_name: 'Periodic Table Trends & Chemical Bonding',
+    planned_date: '2026-10-06'
+  },
+  {
+    plan_id: 'default-5',
+    month: 'October 2026',
+    subject: 'Mathematics',
+    topic_name: 'Arithmetic Progressions & Coordinate Geometry',
+    planned_date: '2026-10-14'
+  },
+  {
+    plan_id: 'default-6',
+    month: 'October 2026',
+    subject: 'English & Literature',
+    topic_name: 'Formal Essay Writing & Comprehension Skills',
+    planned_date: '2026-10-23'
+  },
+  {
+    plan_id: 'default-7',
+    month: 'November 2026',
+    subject: 'Comprehensive Review',
+    topic_name: 'Mid-Term Revision & Previous Years Practice Papers',
+    planned_date: '2026-11-05'
+  },
+  {
+    plan_id: 'default-8',
+    month: 'November 2026',
+    subject: 'Mock Assessments',
+    topic_name: '1-on-1 Doubt Clearing & Speed Assessment Drills',
+    planned_date: '2026-11-18'
+  }
+]
+
+const plan = computed(() => {
+  const serverPlan = curriculumByChild.value[selectedChildId.value]?.curriculum_plan
+  if (serverPlan && serverPlan.length > 0) {
+    return serverPlan
+  }
+  return defaultCurriculumPlan
+})
 
 const groupedByMonth = computed(() => {
   const groups = {}
   plan.value.forEach((item, index) => {
-    const month = item.month || 'Untitled Month'
+    const month = item.month || 'Upcoming Topics'
     if (!groups[month]) groups[month] = []
     groups[month].push({
       ...item,
