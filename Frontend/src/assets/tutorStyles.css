@@ -36,13 +36,6 @@ html.dark .tutor-portal{
   @keyframes drift2{50%{transform:translate(-90px,60px) scale(1.1)}}
   @keyframes drift3{50%{transform:translate(60px,-70px) scale(1.2)}}
 
-  /* custom cursor */
-  .cur-dot,.cur-ring{position:fixed;top:0;left:0;z-index:9999;pointer-events:none;border-radius:50%;mix-blend-mode:normal}
-  .cur-dot{width:7px;height:7px;background:var(--g1);margin:-3.5px 0 0 -3.5px;transition:opacity .3s}
-  .cur-ring{width:34px;height:34px;border:1.5px solid var(--g1);margin:-17px 0 0 -17px;transition:width .22s ease,height .22s ease,margin .22s ease,border-color .22s ease,background .22s ease,opacity .3s}
-  .cur-ring.big{width:56px;height:56px;margin:-28px 0 0 -28px;background:var(--ring);border-color:transparent}
-  @media (hover:none),(pointer:coarse){.cur-dot,.cur-ring{display:none!important}}
-
   /* glass */
   .glass{background:var(--panel);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--border);box-shadow:var(--shadow)}
   .panel{background:var(--panel);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--border);border-radius:22px}
@@ -55,7 +48,7 @@ html.dark .tutor-portal{
   .brand .mk svg{width:18px;height:18px;stroke:#fff}
   .brand .nm{font-family:'Space Grotesk';font-weight:700;font-size:18px;letter-spacing:-.02em}
   .brand .nm b{background:linear-gradient(135deg,var(--g1),var(--g2));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .navwrap{position:relative;margin-top:4px}
+  .navwrap{position:relative;margin-top:4px;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scroll-behavior:smooth;overscroll-behavior:contain}
   .nav-pill{position:absolute;left:0;right:0;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--g1),var(--g2));opacity:.16;border:1px solid var(--ring);transition:transform .32s cubic-bezier(.4,1.1,.4,1);z-index:0}
   .navlbl{font-family:'Space Mono';font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);padding:15px 12px 8px}
   .nav{position:relative;z-index:1;display:flex;align-items:center;gap:12px;min-height:44px;padding:11px 12px;border-radius:12px;font-size:14px;line-height:1.35;font-weight:500;color:var(--muted);cursor:pointer;transition:color .2s;user-select:none}
@@ -368,6 +361,5 @@ html.dark .tutor-portal{
   @media (prefers-reduced-motion:reduce){
     *{animation:none!important;transition:none!important}
     .reveal{opacity:1;transform:none}
-    .cur-dot,.cur-ring{display:none!important}
   }
 }

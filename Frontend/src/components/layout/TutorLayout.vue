@@ -34,16 +34,6 @@
     </div>
 
     <div
-      ref="ringRef"
-      class="cur-ring"
-    ></div>
-
-    <div
-      ref="dotRef"
-      class="cur-dot"
-    ></div>
-
-    <div
       class="scrim"
       :class="{ on: Boolean(selectedStudent) }"
       @click="closeDrawer"
@@ -509,6 +499,8 @@ const attendanceAnalyticsState = ref([])
 
 const assignmentsState = ref([])
 
+const assignmentLinkedStudentsState = ref([])
+
 const studyResourcesState = ref([])
 
 const notificationState = ref([])
@@ -526,13 +518,7 @@ const conversations = ref({})
 
 const mainRef = ref(null)
 
-const ringRef = ref(null)
-
-const dotRef = ref(null)
-
 const reduceMotion = ref(false)
-
-const hoverPointer = ref(false)
 
 
 let clockTimer = 0
@@ -541,16 +527,6 @@ let meetingRefreshTimer = 0
 let toastId = 0
 
 let revealObserver = null
-
-let cursorFrame = 0
-
-let mx = 0
-
-let my = 0
-
-let rx = 0
-
-let ry = 0
 
 
 const chatTimers = new Set()
@@ -778,7 +754,13 @@ const routeProps = computed(() => {
         sessionsState.value,
 
       subjects:
-        tutorUserState.value?.subjects || []
+        tutorUserState.value?.subjects || [],
+
+      subjectCatalog:
+        scheduleSubjectsState.value,
+
+      students:
+        assignmentLinkedStudentsState.value
 
     },
 
@@ -1120,6 +1102,9 @@ async function fetchBackendData() {
 
       assignmentsState.value =
         asgRes.value.assignments || []
+
+      assignmentLinkedStudentsState.value =
+        asgRes.value.students || []
 
     }
 
@@ -1873,81 +1858,10 @@ function setupReveal() {
 
 
 /* ============================================================
-   CURSOR
+   MAGNETIC BUTTONS
 ============================================================ */
 
-function setupCursor() {
-
-  if (
-    reduceMotion.value ||
-    !hoverPointer.value
-  ) {
-    return
-  }
-
-
-  mx =
-    window.innerWidth / 2
-
-  my =
-    window.innerHeight / 2
-
-  rx =
-    mx
-
-  ry =
-    my
-
-
-  const loop = () => {
-
-    rx +=
-      (mx - rx) * 0.16
-
-    ry +=
-      (my - ry) * 0.16
-
-
-    if (ringRef.value) {
-
-      ringRef.value.style.transform =
-        `translate(${rx}px,${ry}px)`
-
-    }
-
-
-    cursorFrame =
-      requestAnimationFrame(
-        loop
-      )
-
-  }
-
-
-  cursorFrame =
-    requestAnimationFrame(
-      loop
-    )
-
-}
-
-
 function onMouseMove(event) {
-
-  mx =
-    event.clientX
-
-  my =
-    event.clientY
-
-
-  if (dotRef.value) {
-
-    dotRef.value.style.transform =
-      `translate(${mx}px,${my}px)`
-
-  }
-
 
   if (
     reduceMotion.value
@@ -1995,66 +1909,6 @@ function onMouseMove(event) {
 
       }
     )
-
-}
-
-
-function onMouseOver(event) {
-
-  if (
-    !event.target.closest(
-      '.tutor-portal'
-    )
-  ) {
-    return
-  }
-
-
-  const selector =
-    'a,button,.nav,.qact,.scard,.ci,.icbtn,.ava,.seg span,.toggle span,.lnk,.tt .cell.free,[data-cur],[data-go],[data-student]'
-
-
-  if (
-    event.target.closest(
-      selector
-    )
-  ) {
-
-    ringRef.value?.classList.add(
-      'big'
-    )
-
-  }
-
-}
-
-
-function onMouseOut(event) {
-
-  if (
-    !event.target.closest(
-      '.tutor-portal'
-    )
-  ) {
-    return
-  }
-
-
-  const selector =
-    'a,button,.nav,.qact,.scard,.ci,.icbtn,.ava,.seg span,.toggle span,.lnk,.tt .cell.free,[data-cur],[data-go],[data-student]'
-
-
-  if (
-    event.target.closest(
-      selector
-    )
-  ) {
-
-    ringRef.value?.classList.remove(
-      'big'
-    )
-
-  }
 
 }
 
@@ -2167,12 +2021,6 @@ onMounted(() => {
     ).matches
 
 
-  hoverPointer.value =
-    window.matchMedia(
-      '(hover: hover)'
-    ).matches
-
-
   updateClock()
 
 
@@ -2185,24 +2033,12 @@ onMounted(() => {
 
   setupReveal()
 
-  setupCursor()
-
   runReveal()
 
 
   document.addEventListener(
     'mousemove',
     onMouseMove
-  )
-
-  document.addEventListener(
-    'mouseover',
-    onMouseOver
-  )
-
-  document.addEventListener(
-    'mouseout',
-    onMouseOut
   )
 
   document.addEventListener(
@@ -2231,11 +2067,6 @@ onUnmounted(() => {
   revealObserver?.disconnect()
 
 
-  cancelAnimationFrame(
-    cursorFrame
-  )
-
-
   chatTimers.forEach(
     timer =>
       clearTimeout(timer)
@@ -2245,16 +2076,6 @@ onUnmounted(() => {
   document.removeEventListener(
     'mousemove',
     onMouseMove
-  )
-
-  document.removeEventListener(
-    'mouseover',
-    onMouseOver
-  )
-
-  document.removeEventListener(
-    'mouseout',
-    onMouseOut
   )
 
   document.removeEventListener(

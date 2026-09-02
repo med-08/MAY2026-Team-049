@@ -1394,6 +1394,8 @@ async function add() {
 
   flex-direction: row;
 
+  flex-wrap: wrap;
+
   align-items: center;
 
   gap: 10px;
@@ -1485,6 +1487,8 @@ async function add() {
   display: flex;
 
   flex-direction: row;
+
+  flex-wrap: wrap;
 
   align-items: center;
 
@@ -1632,7 +1636,7 @@ async function add() {
 
   .meeting-info {
 
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
 
   }
 

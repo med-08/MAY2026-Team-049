@@ -35,12 +35,12 @@
           <label class="lab">Subject</label>
           <select v-model="subjectId" class="field" style="margin-bottom:12px">
             <option value="">Choose subject</option>
-            <option v-for="s in uniqueSubjects" :key="s.subjectId" :value="s.subjectId">{{ s.subject }}</option>
+            <option v-for="s in registeredSubjects" :key="s.subjectId" :value="s.subjectId">{{ s.subject }}</option>
           </select>
           <label class="lab">Assign to student</label>
           <select v-model="assignedStudentId" class="field" style="margin-bottom:12px">
             <option value="">Choose assigned student</option>
-            <option v-for="student in studentsForSubject" :key="student.studentId" :value="student.studentId">{{ student.name }}</option>
+            <option v-for="student in linkedStudents" :key="student.studentId" :value="student.studentId">{{ student.name }}</option>
           </select>
           <label class="lab">Topic / concept</label>
           <input v-model="topic" class="field" placeholder="Exact topic, e.g. Vowels" style="margin-bottom:12px">
@@ -56,7 +56,7 @@
       </div>
     </div>
 
-    <div class="card glass reveal" style="margin-top:18px">
+    <div v-if="type === 'Quiz'" class="card glass" style="margin-top:18px">
       <div class="ch"><h3>Quiz questions</h3></div>
       <p v-if="!quizzes.length" class="eyebrow">Create a quiz first.</p>
       <template v-else>
@@ -125,16 +125,16 @@
       </div>
     </div>
 
-    <div class="card glass reveal" style="margin-top:18px">
+    <div v-else class="card glass" style="margin-top:18px">
       <div class="ch"><h3>Flashcards</h3><span class="eyebrow">AI generated from topic + class level + context</span></div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
         <select v-model="aiFcSubjectId" class="field">
           <option value="">Choose subject</option>
-          <option v-for="s in uniqueSubjects" :key="s.subjectId" :value="s.subjectId">{{ s.subject }}</option>
+          <option v-for="s in registeredSubjects" :key="s.subjectId" :value="s.subjectId">{{ s.subject }}</option>
         </select>
         <select v-model="aiFcAssignedStudentId" class="field">
           <option value="">All students (subject-wide)</option>
-          <option v-for="student in fcStudentsForSubject" :key="student.studentId" :value="student.studentId">{{ student.name }}</option>
+          <option v-for="student in linkedStudents" :key="student.studentId" :value="student.studentId">{{ student.name }}</option>
         </select>
         <input v-model="aiFcTopic" class="field" placeholder="Exact topic, e.g. Vowels">
         <input v-model="aiFcClassLevel" class="field" placeholder="Class level, e.g. Grade 5">
@@ -176,7 +176,7 @@ import { computed, ref, onMounted } from 'vue'
 import TutorEmptyState from '../../components/tutor/TutorEmptyState.vue'
 import { tutorApi } from '../../services/tutorApi'
 
-const props = defineProps({ assignments: { type: Array, required: true }, sessions: { type: Array, default: () => [] }, subjects: { type: Array, default: () => [] } })
+const props = defineProps({ assignments: { type: Array, required: true }, sessions: { type: Array, default: () => [] }, subjects: { type: Array, default: () => [] }, subjectCatalog: { type: Array, default: () => [] }, students: { type: Array, default: () => [] } })
 const emit = defineEmits(['toast'])
 const type = ref('Assignment')
 const title = ref('')
@@ -213,45 +213,36 @@ const aiFlashcards = ref([])
 const aiFcLoading = ref(false)
 const saveFlashcardSetId = ref('')
 const savingFcAi = ref(false)
-const assignments = computed(() => props.assignments)
+const localAssignments = ref(null)
+const assignments = computed(() => localAssignments.value ?? props.assignments)
 const uniqueSubjects = computed(() => {
   const m = new Map()
   props.sessions.forEach(s => m.set(s.subjectId, { subjectId: s.subjectId, subject: s.subject }))
   return [...m.values()]
 })
-const studentsForSubject = computed(() => {
-  const m = new Map()
-  props.sessions
-    .filter(s => !subjectId.value || String(s.subjectId) === String(subjectId.value))
-    .forEach(s => (s.students || []).forEach(st => {
-      const id = st.studentId || st.student_id || st.id
-      if (id) m.set(id, { studentId: id, name: st.name || st.student_name || `Student #${id}` })
-    }))
-  return [...m.values()]
+const registeredSubjects = computed(() => props.subjectCatalog)
+const linkedStudents = computed(() => {
+  return (props.students || [])
+    .filter(st => (st.studentId ?? st.student_id ?? st.id) != null)
+    .map(st => {
+      const id = st.studentId ?? st.student_id ?? st.id
+      return { studentId: id, name: st.name || st.studentName || st.student_name || `Student #${id}` }
+    })
 })
 const aiSubjects = computed(() => props.subjects.length ? props.subjects : uniqueSubjects.value.map(s => s.subject))
 const optionLetters = ['A', 'B', 'C', 'D']
-const aiSubjectLabel = computed(() => aiSubject.value || uniqueSubjects.value.find(s => String(s.subjectId) === String(subjectId.value))?.subject || 'Subject')
+const aiSubjectLabel = computed(() => aiSubject.value || registeredSubjects.value.find(s => String(s.subjectId) === String(subjectId.value))?.subject || 'Subject')
 const aiQuizTitle = computed(() => `${aiSubjectLabel.value}: ${aiTopic.value || title.value || 'Generated Quiz'}`)
 const selectedQuiz = computed(() => quizzes.value.find(q => String(q.quiz_id) === String(question.value.quizId || saveQuizId.value)))
 
-const aiFcSubjectLabel = computed(() => uniqueSubjects.value.find(s => String(s.subjectId) === String(aiFcSubjectId.value))?.subject || 'Subject')
+const aiFcSubjectLabel = computed(() => registeredSubjects.value.find(s => String(s.subjectId) === String(aiFcSubjectId.value))?.subject || 'Subject')
 const aiFcSetTitle = computed(() => `${aiFcSubjectLabel.value}: ${aiFcTopic.value || 'Flashcards'}`)
-const fcStudentsForSubject = computed(() => {
-  const m = new Map()
-  props.sessions
-    .filter(s => !aiFcSubjectId.value || String(s.subjectId) === String(aiFcSubjectId.value))
-    .forEach(s => (s.students || []).forEach(st => {
-      const id = st.studentId || st.student_id || st.id
-      if (id) m.set(id, { studentId: id, name: st.name || st.student_name || `Student #${id}` })
-    }))
-  return [...m.values()]
-})
 const selectedFlashcardSet = computed(() => flashcardSets.value.find(s => String(s.set_id) === String(saveFlashcardSetId.value)))
 
 function statusClass(s) { return { Submitted: 'done', Late: 'warn', Missing: 'warn' }[s] || '' }
 async function loadQuizzes() { try { quizzes.value = (await tutorApi.getQuizzes()).quizzes || [] } catch { quizzes.value = [] } }
 async function loadFlashcardSets() { try { flashcardSets.value = (await tutorApi.getFlashcardSets()).sets || [] } catch { flashcardSets.value = [] } }
+async function loadAssignments() { try { localAssignments.value = (await tutorApi.getAssignments()).assignments || [] } catch { /* keep current list on failure */ } }
 onMounted(loadQuizzes)
 onMounted(loadFlashcardSets)
 
@@ -261,6 +252,7 @@ async function create() {
     if (type.value === 'Assignment') {
       if (!sessionId.value) throw new Error('Choose a session')
       await tutorApi.createAssignment({ session_id: Number(sessionId.value), title: title.value, description: description.value, due_date: dueDate.value })
+      await loadAssignments()
     } else {
       if (!subjectId.value) throw new Error('Choose a subject')
       if (!topic.value.trim()) throw new Error('Enter the exact topic/concept')
@@ -399,7 +391,7 @@ async function remove(id) {
   try {
     await tutorApi.deleteAssignment(id)
     emit('toast', 'Assignment deleted')
-    location.reload()
+    await loadAssignments()
   } catch (e) {
     emit('toast', e.message)
   }

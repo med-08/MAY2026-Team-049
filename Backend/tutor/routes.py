@@ -2772,8 +2772,35 @@ def assignments():
                 ),
         })
 
+    subject_ids = get_tutor_subject_ids(tutor)
+
+    if not subject_ids:
+        subject_ids = {
+            subject.subject_id
+            for subject in Subject.query.all()
+        }
+
+    linked_students = [
+        {
+            "studentId": student.student_id,
+            "name": student.student_name,
+        }
+        for student in (
+            Student.query
+            .join(StudentSubject, StudentSubject.student_id == Student.student_id)
+            .filter(
+                StudentSubject.subject_id.in_(subject_ids),
+                Student.status == "Active",
+            )
+            .order_by(Student.student_name)
+            .distinct()
+            .all()
+        )
+    ]
+
     return ok({
-        "assignments": data
+        "assignments": data,
+        "students": linked_students,
     })
 
 
