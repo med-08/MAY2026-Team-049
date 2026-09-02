@@ -24,6 +24,7 @@ User stories covered (Sprint 1 - Admin Dashboard):
   - View/edit own admin profile, change own password
 """
 import calendar
+import json
 from datetime import date
 
 from flask import jsonify, request, session
@@ -507,18 +508,26 @@ TUTOR_SORT_FIELDS = {'tutor_id', 'tutor_name', 'email', 'experience_years', 'sta
 
 
 def _tutor_subjects(tutor_id):
-    """NOTE (assumption): there's no direct Tutor<->Subject table; we derive
-    "subjects taught" from distinct subjects across the tutor's scheduled
-    Sessions, which is the closest real signal available.
+    """Return the subject names a tutor teaches.
+
+    Tutors don't need a scheduled Session for a subject to "teach" it --
+    the subjects they registered/were approved for are stored directly on
+    Tutor.subjects_json (see auth/routes.py registration and
+    tutor/routes.py profile editing, which both treat this field as the
+    source of truth). Deriving subjects from Session rows instead misses
+    any subject a tutor hasn't had a session scheduled for yet, which is
+    why names were showing up blank/incomplete in the admin dashboard.
     """
-    rows = (
-        db.session.query(Subject.subject_name)
-        .join(Session, Session.subject_id == Subject.subject_id)
-        .filter(Session.tutor_id == tutor_id)
-        .distinct()
-        .all()
-    )
-    return [r[0] for r in rows]
+    tutor = db.session.get(Tutor, tutor_id)
+    if not tutor:
+        return []
+
+    try:
+        configured = json.loads(tutor.subjects_json or "[]")
+    except (TypeError, ValueError):
+        configured = []
+
+    return [str(name).strip() for name in configured if str(name).strip()]
 
 
 def _serialize_tutor(t):

@@ -100,13 +100,34 @@ const totalSubjectStudents = computed(() => {
   )
 })
 
-const topSubject = computed(() => {
-  if (!subjectData.value.length) return null
+const topSubjects = computed(() => {
+  if (!subjectData.value.length) return []
 
-  return [...subjectData.value].sort(
-    (a, b) => b.count - a.count
-  )[0]
+  const maxCount = Math.max(
+    ...subjectData.value.map((s) => s.count)
+  )
+
+  // A subject with 0 enrolled students isn't actually "leading" anything --
+  // treat that the same as having no data yet, matching the empty state
+  // used elsewhere on this page.
+  if (maxCount <= 0) return []
+
+  // Picking just [0] after a sort silently drops ties (e.g. Maths and
+  // English both at 2 students) and always favors whichever subject
+  // happens to come first in the backend's result order. Surface every
+  // subject tied for the top spot instead.
+  return subjectData.value.filter(
+    (s) => s.count === maxCount
+  )
 })
+
+const topSubjectNames = computed(() =>
+  topSubjects.value.map((s) => s.subject).join(', ')
+)
+
+const topSubjectCount = computed(() =>
+  topSubjects.value.length ? topSubjects.value[0].count : 0
+)
 
 /* -----------------------------
    Doughnut Chart
@@ -549,7 +570,7 @@ const statusBarOptions = {
           />
 
           <div
-            v-if="topSubject"
+            v-if="topSubjects.length"
             class="relative flex items-center gap-4"
           >
             <div
@@ -562,19 +583,19 @@ const statusBarOptions = {
               <p
                 class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400"
               >
-                Leading Subject
+                {{ topSubjects.length > 1 ? 'Leading Subjects' : 'Leading Subject' }}
               </p>
 
               <p
                 class="mt-1 truncate text-lg font-bold text-slate-800 dark:text-slate-100"
               >
-                {{ topSubject.subject }}
+                {{ topSubjectNames }}
               </p>
 
               <p
                 class="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
               >
-                {{ topSubject.count }} students across
+                {{ topSubjectCount }} students{{ topSubjects.length > 1 ? ' each' : '' }} across
                 {{ subjectData.length }} subjects
               </p>
             </div>
